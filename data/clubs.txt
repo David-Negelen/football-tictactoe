@@ -1,19 +1,8 @@
-# Bundesliga clubs – 2024/25 season squad pages
-https://www.transfermarkt.de/fc-bayern-munchen/kader/verein/27
-https://www.transfermarkt.de/bayer-04-leverkusen/kader/verein/15
-https://www.transfermarkt.de/borussia-dortmund/kader/verein/16
-https://www.transfermarkt.de/rb-leipzig/kader/verein/23826
-https://www.transfermarkt.de/eintracht-frankfurt/kader/verein/24
-https://www.transfermarkt.de/vfb-stuttgart/kader/verein/79
-https://www.transfermarkt.de/sc-freiburg/kader/verein/60
-https://www.transfermarkt.de/tsg-1899-hoffenheim/kader/verein/533
-https://www.transfermarkt.de/borussia-monchengladbach/kader/verein/18
-https://www.transfermarkt.de/1-fc-union-berlin/kader/verein/89
-https://www.transfermarkt.de/sv-werder-bremen/kader/verein/86
-https://www.transfermarkt.de/vfl-wolfsburg/kader/verein/82
-https://www.transfermarkt.de/fc-augsburg/kader/verein/167
-https://www.transfermarkt.de/1-fsv-mainz-05/kader/verein/39
-https://www.transfermarkt.de/fc-st-pauli/kader/verein/35
-https://www.transfermarkt.de/holstein-kiel/kader/verein/364
-https://www.transfermarkt.de/sport-club-heidenheim-1846/kader/verein/2036
-https://www.transfermarkt.de/vfl-bochum-1848/kader/verein/80
+# Bundesliga (1. Liga)
+https://www.transfermarkt.de/bundesliga/startseite/wettbewerb/L1
+
+# Bundesliga (2. Liga)
+https://www.transfermarkt.de/bundesliga/startseite/wettbewerb/L2
+
+# Premier League
+https://www.transfermarkt.de/premier-league/startseite/wettbewerb/GB1

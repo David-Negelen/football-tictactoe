@@ -19,11 +19,28 @@ class ParsedClubPage:
     player_urls: list[str]
 
 
+@dataclass
+class ParsedLeaguePage:
+    name: str
+    club_urls: list[str]
+
+
 class TransfermarktScraper:
     def __init__(self, http_client: Optional[HttpClient] = None) -> None:
         self._http = http_client or HttpClient()
 
     # ------------------------------------------------------------------ public
+
+    @staticmethod
+    def is_league_url(url: str) -> bool:
+        return "/wettbewerb/" in url
+
+    def fetch_league(self, league_url: str) -> ParsedLeaguePage:
+        result = self._http.get_html(league_url)
+        soup = BeautifulSoup(result.html, "html.parser")
+        name = self._extract_title(soup) or league_url
+        club_urls = self._extract_club_urls(soup)
+        return ParsedLeaguePage(name=name, club_urls=club_urls)
 
     def fetch_club(self, club_url: str) -> ParsedClubPage:
         result = self._http.get_html(club_url)
@@ -73,6 +90,26 @@ class TransfermarktScraper:
         )
 
     # --------------------------------------------------------------- internals
+
+    def _extract_club_urls(self, soup: BeautifulSoup) -> list[str]:
+        seen: set[str] = set()
+        urls: list[str] = []
+        for link in soup.select("a[href]"):
+            href = link.get("href") or ""
+            if "/verein/" not in href:
+                continue
+            absolute_url = urljoin(BASE_URL, href)
+            parts = urlsplit(absolute_url)
+            path = parts.path
+            # Normalize to kader URL and strip any /saison_id/... suffix
+            path = re.sub(r'/(?:startseite|kader)/verein/(\d+).*', r'/kader/verein/\1', path)
+            if "/kader/verein/" not in path:
+                continue
+            canonical = urlunsplit(parts._replace(path=path, query="", fragment=""))
+            if canonical not in seen:
+                seen.add(canonical)
+                urls.append(canonical)
+        return urls
 
     def _build_info_map(self, soup: BeautifulSoup) -> dict[str, str]:
         info: dict[str, str] = {}
