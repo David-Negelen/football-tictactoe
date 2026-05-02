@@ -6,3 +6,9 @@ https://www.transfermarkt.de/bundesliga/startseite/wettbewerb/L2
 
 # Premier League
 https://www.transfermarkt.de/premier-league/startseite/wettbewerb/GB1
+
+#La Liga
+https://www.transfermarkt.de/laliga/startseite/wettbewerb/ES1
+
+#Serie A
+https://www.transfermarkt.de/serie-a/startseite/wettbewerb/IT1

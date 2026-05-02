@@ -92,6 +92,27 @@ class Database:
                     status TEXT NOT NULL,
                     message TEXT
                 );
+
+                -- Aggregated player stats for sorting and exploration.
+                -- career_start/end are "YY/YY" season strings (lexicographic order works for sorting).
+                CREATE VIEW IF NOT EXISTS player_stats AS
+                SELECT
+                    p.id,
+                    p.name,
+                    p.nationality,
+                    p.position,
+                    p.market_value,
+                    p.current_club_name,
+                    p.age,
+                    p.contract_expires,
+                    COUNT(DISTINCT cs.club_name)  AS clubs_count,
+                    COUNT(DISTINCT t.id)           AS transfer_count,
+                    MIN(cs.start_season)           AS career_start,
+                    MAX(COALESCE(cs.end_season, cs.start_season)) AS career_end
+                FROM players p
+                LEFT JOIN career_stints cs ON p.id = cs.player_id
+                LEFT JOIN transfers     t  ON p.id = t.player_id
+                GROUP BY p.id;
                 """
             )
 
