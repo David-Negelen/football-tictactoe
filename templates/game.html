@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tiki-Taka-Toe</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #14532d; min-height: 100vh; }
+    .cell-btn { transition: transform .12s, filter .12s; }
+    .cell-btn:not(:disabled):hover { transform: scale(1.04); filter: brightness(1.15); }
+    .cell-btn:disabled { cursor: default; }
+    @keyframes pop {
+      0%   { transform: scale(.45); opacity: 0; }
+      70%  { transform: scale(1.08); }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    .pop { animation: pop .28s ease forwards; }
+    @keyframes pulse-gold {
+      0%, 100% { box-shadow: 0 0 0 0 #fbbf24bb; }
+      50%       { box-shadow: 0 0 0 10px #fbbf2400; }
+    }
+    .win-cell { animation: pulse-gold 1.3s ease-in-out infinite; }
+    .diff-btn { transition: background .15s, color .15s; }
+  </style>
+</head>
+<body class="flex flex-col items-center min-h-screen py-5 px-2">
+
+  <!-- Nav -->
+  <div class="w-full max-w-xl mb-3 flex justify-between items-center px-1">
+    <a href="/" class="text-green-300 hover:text-white text-sm transition-colors">← DB Explorer</a>
+    <div class="flex items-center gap-2">
+      <!-- Schwierigkeitsgrad -->
+      <div class="flex rounded-full overflow-hidden border border-green-600 text-xs font-bold">
+        <button data-diff="1"
+          class="diff-btn px-3 py-1.5 bg-green-900 text-green-300 hover:text-white">Leicht</button>
+        <button data-diff="2"
+          class="diff-btn px-3 py-1.5 bg-green-900 text-green-300 hover:text-white border-x border-green-600">Mittel</button>
+        <button data-diff="3"
+          class="diff-btn px-3 py-1.5 bg-yellow-500 text-green-900">Schwer</button>
+      </div>
+      <button id="btn-new-game"
+        class="bg-yellow-400 hover:bg-yellow-300 text-green-900 font-bold text-sm px-4 py-1.5 rounded-full transition-colors">
+        Neues Spiel
+      </button>
+    </div>
+  </div>
+
+  <!-- Statusleiste -->
+  <div id="status-bar"
+    class="w-full max-w-xl mb-3 rounded-xl px-4 py-2 text-center font-bold text-white text-sm bg-green-800 border border-green-600 min-h-[38px]">
+    Rätsel wird geladen…
+  </div>
+
+  <!-- Spielfeld: 4×4 CSS-Grid -->
+  <div id="board"
+    class="grid gap-1.5 w-full max-w-xl"
+    style="grid-template-columns: repeat(4, 1fr);">
+  </div>
+
+  <!-- Buttons -->
+  <div class="mt-4 flex gap-3">
+    <button id="btn-draw"
+      class="bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs px-5 py-2 rounded-full tracking-widest uppercase transition-colors opacity-80 hover:opacity-100 disabled:opacity-30"
+      disabled>
+      Unentschieden
+    </button>
+    <button id="btn-solve"
+      class="bg-slate-600 hover:bg-slate-500 text-white font-bold text-xs px-5 py-2 rounded-full tracking-widest uppercase transition-colors opacity-80 hover:opacity-100 disabled:opacity-30"
+      disabled>
+      Lösung
+    </button>
+  </div>
+
+  <!-- Spieler-Suche Modal -->
+  <div id="modal"
+    class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+    style="backdrop-filter:blur(3px)">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div class="bg-green-800 px-5 py-3 flex items-center justify-between">
+        <span id="modal-title" class="text-white font-bold text-sm leading-snug"></span>
+        <button id="modal-close" class="text-green-300 hover:text-white text-2xl leading-none ml-3 flex-shrink-0">×</button>
+      </div>
+      <div class="p-4">
+        <input id="search-input" type="text" placeholder="Spieler suchen…" autocomplete="off"
+          class="w-full border-2 border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-600 mb-3">
+        <div id="search-results" class="space-y-1 max-h-64 overflow-y-auto"></div>
+        <p id="search-hint" class="text-xs text-slate-400 mt-2 text-center">
+          Mindestens 3 Buchstaben eingeben
+        </p>
+        <p id="search-error" class="text-xs text-red-500 mt-1 text-center hidden"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lösung-Modal -->
+  <div id="solve-modal"
+    class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+    style="backdrop-filter:blur(4px)">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+      <div class="bg-slate-700 px-5 py-3 flex items-center justify-between">
+        <span class="text-white font-bold text-sm">Lösung</span>
+        <button id="solve-close" class="text-slate-300 hover:text-white text-2xl leading-none">×</button>
+      </div>
+      <div id="solve-body" class="p-4 overflow-y-auto max-h-[80vh]"></div>
+    </div>
+  </div>
+
+  <!-- Endspiel-Overlay -->
+  <div id="end-modal"
+    class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+    style="backdrop-filter:blur(4px)">
+    <div class="bg-white rounded-3xl shadow-2xl p-8 text-center max-w-xs w-full">
+      <div id="end-icon" class="text-6xl mb-3"></div>
+      <h2 id="end-title" class="text-2xl font-black mb-1"></h2>
+      <p id="end-sub" class="text-slate-500 text-sm mb-6"></p>
+      <button id="end-new-game"
+        class="bg-green-700 hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-full transition-colors">
+        Nochmal spielen
+      </button>
+    </div>
+  </div>
+
+<script>
+// ─── SVG ──────────────────────────────────────────────────────────────────────
+
+function shirtSvg() {
+  return `<svg class="text-green-500 w-10 h-10 mx-auto mb-1 opacity-60" viewBox="0 0 80 72" fill="currentColor">
+    <path d="M22 4 L10 14 L2 36 L18 42 L18 68 L62 68 L62 42 L78 36 L70 14 L58 4
+             C54 14 46 18 40 18 C34 18 26 14 22 4 Z"/>
+  </svg>`;
+}
+
+function markBadge(player) {
+  const color = player === 1 ? 'bg-red-500' : 'bg-blue-500';
+  const sym   = player === 1 ? 'X' : 'O';
+  return `<span class="${color} text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">${sym}</span>`;
+}
+
+// ─── Zustand ──────────────────────────────────────────────────────────────────
+
+const g = {
+  rows: [], cols: [],
+  board: [[null,null,null],[null,null,null],[null,null,null]],
+  current: 1,       // 1 = Spieler 1 (X), 2 = Spieler 2 (O)
+  winner: null,     // null | 1 | 2 | 'draw'
+  usedIds: new Set(),
+  activeCell: null, // {r, c}
+  winCells: [],
+};
+let difficulty = 3; // aktuell gewählter Schwierigkeitsgrad
+
+// ─── Rätsel laden ─────────────────────────────────────────────────────────────
+
+async function newGame() {
+  setStatus('Rätsel wird geladen…');
+  document.getElementById('board').innerHTML = '';
+  document.getElementById('btn-draw').disabled = true;
+  document.getElementById('btn-solve').disabled = true;
+
+  Object.assign(g, {
+    rows: [], cols: [],
+    board: [[null,null,null],[null,null,null],[null,null,null]],
+    current: 1, winner: null, usedIds: new Set(), activeCell: null, winCells: [],
+  });
+
+  const resp = await fetch(`/api/game/new?difficulty=${difficulty}`);
+  if (!resp.ok) {
+    setStatus('Kein Rätsel gefunden – bitte erneut versuchen.');
+    document.getElementById('btn-draw').disabled = true;
+    return;
+  }
+  const data = await resp.json();
+  g.rows = data.rows;
+  g.cols = data.cols;
+
+  renderBoard();
+  document.getElementById('btn-draw').disabled = false;
+  document.getElementById('btn-solve').disabled = false;
+  updateStatus();
+}
+
+// ─── Spielfeld rendern ────────────────────────────────────────────────────────
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  const cells = [];
+
+  // Oben-links: Titel
+  cells.push(`
+    <div class="rounded-xl bg-indigo-900 flex flex-col items-center justify-center p-2 h-24">
+      <div class="text-2xl mb-0.5">⚽</div>
+      <div class="text-white font-black text-center leading-tight text-[10px] tracking-tight">TIKI<br>TAKA<br>TOE</div>
+    </div>`);
+
+  // Spalten-Header
+  g.cols.forEach(cat => {
+    cells.push(headerCellHtml(cat));
+  });
+
+  // Zeilen
+  g.rows.forEach((rowCat, r) => {
+    cells.push(headerCellHtml(rowCat));
+    g.cols.forEach((_, c) => cells.push(cellHtml(r, c)));
+  });
+
+  board.innerHTML = cells.join('');
+  board.querySelectorAll('[data-cell]').forEach(el => {
+    el.addEventListener('click', () => {
+      const [r, c] = el.dataset.cell.split(',').map(Number);
+      openCell(r, c);
+    });
+  });
+}
+
+function headerCellHtml(cat) {
+  return `
+    <div class="rounded-xl bg-green-900/80 border border-green-700 flex flex-col items-center justify-center p-1.5 h-24 overflow-hidden"
+         title="${esc(cat.label)}">
+      <div class="text-xl leading-none flex-shrink-0">${cat.icon}</div>
+      <div class="text-white font-bold text-center leading-tight mt-1 px-1 overflow-hidden"
+           style="font-size:10px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">
+        ${esc(cat.label)}
+      </div>
+    </div>`;
+}
+
+function cellHtml(r, c) {
+  const entry = g.board[r][c];
+  const isWin = g.winCells.some(([wr, wc]) => wr === r && wc === c);
+  const gone  = g.winner !== null;
+
+  if (entry) {
+    const p1  = entry.player === 1;
+    const bg  = p1 ? 'bg-red-900/50'  : 'bg-blue-900/50';
+    const ring = isWin
+      ? 'win-cell ring-4 ring-yellow-400'
+      : `ring-2 ${p1 ? 'ring-red-400' : 'ring-blue-400'}`;
+    return `
+      <div class="rounded-xl ${bg} ${ring} flex flex-col items-center justify-center p-2 h-24 pop"
+           data-cell="${r},${c}">
+        <div class="flex justify-end w-full mb-1">${markBadge(entry.player)}</div>
+        <div class="text-white font-bold text-center leading-tight px-1 text-xs">${esc(entry.name)}</div>
+        <div class="text-green-300 text-[10px] mt-0.5 truncate max-w-full px-1">${esc(entry.club || '')}</div>
+      </div>`;
+  }
+
+  const hoverBg = gone
+    ? 'bg-green-800/40 opacity-40'
+    : 'bg-green-700/60 hover:bg-green-600/70 cursor-pointer';
+  return `
+    <button ${gone ? 'disabled' : ''} data-cell="${r},${c}"
+      class="cell-btn rounded-xl ${hoverBg} border border-green-600/50 flex flex-col items-center justify-center h-24 w-full">
+      ${shirtSvg()}
+      <span class="text-green-300 font-semibold tracking-wide" style="font-size:9px;">SPIELER<br>WÄHLEN</span>
+    </button>`;
+}
+
+function refreshCell(r, c) {
+  const board = document.getElementById('board');
+  const idx = 1 + 3 + r * 4 + 1 + c; // title + 3 col headers + row*(header + 3 cells)
+  const existing = board.children[idx];
+  const tmp = document.createElement('div');
+  tmp.innerHTML = cellHtml(r, c);
+  const newEl = tmp.firstElementChild;
+  existing.replaceWith(newEl);
+  if (!g.board[r][c]) {
+    newEl.addEventListener('click', () => openCell(r, c));
+  }
+}
+
+// ─── Spiellogik ───────────────────────────────────────────────────────────────
+
+const WIN_LINES = [
+  [[0,0],[0,1],[0,2]], [[1,0],[1,1],[1,2]], [[2,0],[2,1],[2,2]],
+  [[0,0],[1,0],[2,0]], [[0,1],[1,1],[2,1]], [[0,2],[1,2],[2,2]],
+  [[0,0],[1,1],[2,2]], [[0,2],[1,1],[2,0]],
+];
+
+function checkWinner() {
+  for (const line of WIN_LINES) {
+    const vals = line.map(([r, c]) => g.board[r][c]?.player);
+    if (vals[0] && vals[0] === vals[1] && vals[1] === vals[2]) {
+      g.winner  = vals[0];
+      g.winCells = line;
+      return;
+    }
+  }
+  if (g.board.flat().every(c => c !== null)) g.winner = 'draw';
+}
+
+function placePlayer(r, c, playerId, name, club) {
+  g.board[r][c] = { player: g.current, id: playerId, name, club };
+  g.usedIds.add(playerId);
+  checkWinner();
+  refreshCell(r, c);
+  if (g.winner) { endGame(); return; }
+  g.current = g.current === 1 ? 2 : 1;
+  updateStatus();
+}
+
+function endGame() {
+  g.rows.forEach((_, r) => g.cols.forEach((__, c) => refreshCell(r, c)));
+  document.getElementById('btn-draw').disabled = true;
+  if (g.winner === 'draw') {
+    showEndModal('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.');
+  } else {
+    showEndModal(
+      g.winner === 1 ? '🔴' : '🔵',
+      `Spieler ${g.winner} gewinnt!`,
+      g.winner === 1 ? 'X hat das Spiel gewonnen!' : 'O hat das Spiel gewonnen!'
+    );
+  }
+}
+
+// ─── Zell-Interaktion ─────────────────────────────────────────────────────────
+
+function openCell(r, c) {
+  if (g.winner || g.board[r][c]) return;
+  g.activeCell = { r, c };
+  const rowCat = g.rows[r];
+  const colCat = g.cols[c];
+  document.getElementById('modal-title').textContent =
+    `${rowCat.label} × ${colCat.label}`;
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results').innerHTML = '';
+  document.getElementById('search-hint').textContent = 'Mindestens 3 Buchstaben eingeben';
+  document.getElementById('search-error').classList.add('hidden');
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('search-input').focus();
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+  g.activeCell = null;
+}
+
+// ─── Spieler-Suche ────────────────────────────────────────────────────────────
+
+let searchTimer = null;
+document.getElementById('search-input').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  document.getElementById('search-error').classList.add('hidden');
+  if (q.length < 3) {
+    document.getElementById('search-results').innerHTML = '';
+    document.getElementById('search-hint').textContent = 'Mindestens 3 Buchstaben eingeben';
+    return;
+  }
+  document.getElementById('search-hint').textContent = '';
+  searchTimer = setTimeout(() => doSearch(q), 280);
+});
+
+async function doSearch(q) {
+  if (!g.activeCell) return;
+  const resp = await fetch(`/api/game/search?q=${encodeURIComponent(q)}`);
+  const data = await resp.json();
+  const container = document.getElementById('search-results');
+
+  if (!data.players?.length) {
+    container.innerHTML = '<p class="text-slate-400 text-xs text-center py-2">Keine Spieler gefunden</p>';
+    return;
+  }
+
+  container.innerHTML = data.players.map(p => {
+    const used = g.usedIds.has(p.id);
+    const cls  = used
+      ? 'opacity-40 cursor-not-allowed bg-slate-50'
+      : 'hover:bg-green-50 cursor-pointer';
+    return `
+      <div class="flex items-center justify-between rounded-lg px-3 py-2 text-sm border border-transparent hover:border-green-200 transition-colors ${cls}"
+           data-pid="${p.id}" data-name="${esc(p.name)}" data-club="${esc(p.current_club_name || '')}">
+        <div class="min-w-0">
+          <span class="font-semibold">${esc(p.name)}</span>
+          ${p.current_club_name
+            ? `<span class="text-slate-400 text-xs ml-1 truncate">${esc(p.current_club_name)}</span>`
+            : ''}
+        </div>
+        ${used ? '<span class="text-xs text-red-400 ml-2 flex-shrink-0">bereits gespielt</span>' : ''}
+      </div>`;
+  }).join('');
+
+  container.querySelectorAll('[data-pid]').forEach(el => {
+    const pid  = parseInt(el.dataset.pid);
+    const name = el.dataset.name;
+    const club = el.dataset.club;
+    if (g.usedIds.has(pid)) return;
+    el.addEventListener('click', () => selectPlayer(pid, name, club));
+  });
+}
+
+async function selectPlayer(pid, name, club) {
+  if (g.usedIds.has(pid) || !g.activeCell) return;
+  const { r, c } = g.activeCell;
+  const resp = await fetch('/api/game/validate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ player_id: pid, row_id: g.rows[r].id, col_id: g.cols[c].id }),
+  });
+  const data = await resp.json();
+  if (data.valid) {
+    closeModal();
+    placePlayer(r, c, pid, name, club);
+  } else {
+    const err = document.getElementById('search-error');
+    err.textContent = `${name} passt hier nicht!`;
+    err.classList.remove('hidden');
+    setTimeout(() => err.classList.add('hidden'), 2500);
+  }
+}
+
+// ─── Lösung ───────────────────────────────────────────────────────────────────
+
+async function showSolve() {
+  const rows = g.rows.map(c => c.id).join(',');
+  const cols = g.cols.map(c => c.id).join(',');
+  const resp = await fetch(`/api/game/solve?rows=${rows}&cols=${cols}`);
+  const data = await resp.json();
+
+  const colLabels = g.cols.map(c => `<th class="text-xs font-bold text-slate-600 px-2 py-1 text-center">${esc(c.label)}</th>`).join('');
+  const bodyRows = data.grid.map((row, r) => {
+    const cells = row.map(cell => {
+      const names = cell.players.map(p =>
+        `<div class="text-xs text-slate-700 truncate">${esc(p.name)}</div>`
+      ).join('');
+      return `<td class="border border-slate-200 px-2 py-2 align-top min-w-0" style="max-width:160px">
+        <div class="text-[10px] text-slate-400 mb-1">${cell.count} Spieler</div>
+        ${names}
+      </td>`;
+    }).join('');
+    return `<tr>
+      <td class="border border-slate-200 px-2 py-2 text-xs font-bold text-slate-600 whitespace-nowrap bg-slate-50">${esc(g.rows[r].label)}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  document.getElementById('solve-body').innerHTML = `
+    <table class="w-full border-collapse text-sm">
+      <thead><tr>
+        <th class="px-2 py-1"></th>
+        ${colLabels}
+      </tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>`;
+  document.getElementById('solve-modal').classList.remove('hidden');
+}
+
+// ─── Status & Hilfsfunktionen ─────────────────────────────────────────────────
+
+function updateStatus() {
+  if (g.winner) return;
+  const sym = g.current === 1 ? '🔴 X' : '🔵 O';
+  setStatus(`${sym} – Spieler ${g.current} ist dran`);
+}
+
+function setStatus(msg) {
+  document.getElementById('status-bar').textContent = msg;
+}
+
+function showEndModal(icon, title, sub) {
+  document.getElementById('end-icon').textContent  = icon;
+  document.getElementById('end-title').textContent = title;
+  document.getElementById('end-sub').textContent   = sub;
+  document.getElementById('end-modal').classList.remove('hidden');
+}
+
+function esc(v) {
+  if (v == null) return '';
+  const d = document.createElement('div');
+  d.textContent = String(v);
+  return d.innerHTML;
+}
+
+// ─── Schwierigkeitsgrad-Buttons ───────────────────────────────────────────────
+
+function setDifficulty(d) {
+  difficulty = d;
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    const active = parseInt(btn.dataset.diff) === d;
+    btn.className = `diff-btn px-3 py-1.5 text-xs font-bold ${
+      active
+        ? 'bg-yellow-500 text-green-900'
+        : 'bg-green-900 text-green-300 hover:text-white'
+    }`;
+    // restore borders for middle button
+    if (btn.dataset.diff === '2') btn.classList.add('border-x', 'border-green-600');
+  });
+}
+
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    setDifficulty(parseInt(btn.dataset.diff));
+    newGame();
+  });
+});
+
+// ─── Event-Listener ───────────────────────────────────────────────────────────
+
+document.getElementById('btn-new-game').addEventListener('click', newGame);
+document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target.id === 'modal') closeModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+document.getElementById('btn-draw').addEventListener('click', () => {
+  if (g.winner) return;
+  g.winner = 'draw';
+  endGame();
+  showEndModal('🤝', 'Unentschieden vereinbart!', 'Beide Spieler einigen sich auf ein Unentschieden.');
+});
+
+document.getElementById('btn-solve').addEventListener('click', showSolve);
+document.getElementById('solve-close').addEventListener('click', () => {
+  document.getElementById('solve-modal').classList.add('hidden');
+});
+document.getElementById('solve-modal').addEventListener('click', e => {
+  if (e.target.id === 'solve-modal') document.getElementById('solve-modal').classList.add('hidden');
+});
+
+document.getElementById('end-new-game').addEventListener('click', () => {
+  document.getElementById('end-modal').classList.add('hidden');
+  newGame();
+});
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+newGame();
+</script>
+</body>
+</html>

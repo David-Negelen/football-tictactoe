@@ -10,20 +10,27 @@ class CategoryType(str, Enum):
     NATIONALITY = "nationality"
     POSITION = "position"
     AWARD = "award"
+    LEAGUE = "league"
+    CONTINENT = "continent"
 
 
 class Category:
-    def __init__(self, id: str, label: str, type: CategoryType, icon: Optional[str] = None) -> None:
+    def __init__(self, id: str, label: str, type: CategoryType, icon: Optional[str] = None, difficulty: int = 1) -> None:
         self.id = id
         self.label = label
         self.type = type
         self.icon = icon
+        self.difficulty = difficulty
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
         raise NotImplementedError
 
     def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         """Return the set of all player IDs that satisfy this category."""
+        raise NotImplementedError
+
+    def sql_filter(self) -> tuple[str, list]:
+        """Return (sql_condition, params) referencing alias `p` for the players table."""
         raise NotImplementedError
 
     def __repr__(self) -> str:
@@ -33,8 +40,8 @@ class Category:
 class ClubCategory(Category):
     """Player must have a career stint at the given club (exact name match against career_stints.club_name)."""
 
-    def __init__(self, id: str, label: str, club_name: str, icon: Optional[str] = None) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.CLUB, icon=icon)
+    def __init__(self, id: str, label: str, club_name: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.CLUB, icon=icon, difficulty=difficulty)
         self.club_name = club_name
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -51,6 +58,9 @@ class ClubCategory(Category):
         ).fetchall()
         return {row[0] for row in rows}
 
+    def sql_filter(self) -> tuple[str, list]:
+        return "EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name = ?)", [self.club_name]
+
 
 class NationalityCategory(Category):
     """Player must hold the given nationality.
@@ -59,8 +69,8 @@ class NationalityCategory(Category):
     space-separated strings (e.g. "Deutschland Türkei" for dual nationals).
     """
 
-    def __init__(self, id: str, label: str, nationality: str, icon: Optional[str] = None) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.NATIONALITY, icon=icon)
+    def __init__(self, id: str, label: str, nationality: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.NATIONALITY, icon=icon, difficulty=difficulty)
         self.nationality = nationality
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -77,6 +87,9 @@ class NationalityCategory(Category):
         ).fetchall()
         return {row[0] for row in rows}
 
+    def sql_filter(self) -> tuple[str, list]:
+        return "p.nationality LIKE ?", [f"%{self.nationality}%"]
+
 
 class PositionCategory(Category):
     """Player must play the given position.
@@ -87,8 +100,8 @@ class PositionCategory(Category):
     (e.g. "Abwehr") to match all defenders.
     """
 
-    def __init__(self, id: str, label: str, position_prefix: str, icon: Optional[str] = None) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.POSITION, icon=icon)
+    def __init__(self, id: str, label: str, position_prefix: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.POSITION, icon=icon, difficulty=difficulty)
         self.position_prefix = position_prefix
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -105,6 +118,9 @@ class PositionCategory(Category):
         ).fetchall()
         return {row[0] for row in rows}
 
+    def sql_filter(self) -> tuple[str, list]:
+        return "p.position LIKE ?", [f"{self.position_prefix}%"]
+
 
 class AwardCategory(Category):
     """Player must appear in a manually maintained list of award winners.
@@ -115,8 +131,8 @@ class AwardCategory(Category):
     Keep the list updated as new winners are announced.
     """
 
-    def __init__(self, id: str, label: str, player_names: list[str], icon: Optional[str] = None) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.AWARD, icon=icon)
+    def __init__(self, id: str, label: str, player_names: list[str], icon: Optional[str] = None, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.AWARD, icon=icon, difficulty=difficulty)
         self.player_names = player_names
         self._lower_names = {n.lower() for n in player_names}
 
@@ -150,3 +166,73 @@ class AwardCategory(Category):
             list(self._lower_names),
         ).fetchall()
         return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        placeholders = ",".join("?" * len(self._lower_names))
+        sql = (
+            f"LOWER(CASE WHEN p.name LIKE '#% %' THEN SUBSTR(p.name, INSTR(p.name, ' ') + 1)"
+            f" ELSE p.name END) IN ({placeholders})"
+        )
+        return sql, list(self._lower_names)
+
+
+class LeagueCategory(Category):
+    """Player must have a career stint at any first-team club in the league."""
+
+    def __init__(self, id: str, label: str, club_names: list[str], icon: Optional[str] = None, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.LEAGUE, icon=icon, difficulty=difficulty)
+        self.club_names = club_names
+
+    def _ph(self) -> str:
+        return ",".join("?" * len(self.club_names))
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        row = conn.execute(
+            f"SELECT 1 FROM career_stints WHERE player_id = ? AND club_name IN ({self._ph()}) LIMIT 1",
+            [player_id] + self.club_names,
+        ).fetchone()
+        return row is not None
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        rows = conn.execute(
+            f"SELECT DISTINCT player_id FROM career_stints WHERE club_name IN ({self._ph()})",
+            self.club_names,
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        return (
+            f"EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name IN ({self._ph()}))",
+            list(self.club_names),
+        )
+
+
+class ContinentCategory(Category):
+    """Player must have a career stint at any club on the given continent."""
+
+    def __init__(self, id: str, label: str, club_names: list[str], icon: Optional[str] = None, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.CONTINENT, icon=icon, difficulty=difficulty)
+        self.club_names = club_names
+
+    def _ph(self) -> str:
+        return ",".join("?" * len(self.club_names))
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        row = conn.execute(
+            f"SELECT 1 FROM career_stints WHERE player_id = ? AND club_name IN ({self._ph()}) LIMIT 1",
+            [player_id] + self.club_names,
+        ).fetchone()
+        return row is not None
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        rows = conn.execute(
+            f"SELECT DISTINCT player_id FROM career_stints WHERE club_name IN ({self._ph()})",
+            self.club_names,
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        return (
+            f"EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name IN ({self._ph()}))",
+            list(self.club_names),
+        )

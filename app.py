@@ -1,6 +1,10 @@
 from flask import Flask, jsonify, render_template, request
 import sqlite3
+import unicodedata
 import os
+import random
+
+from src.category_config import ALL_CATEGORIES, CATEGORY_BY_ID
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "tictactoe.db")
@@ -25,9 +29,16 @@ END
 """
 
 
+def _normalize(s: str | None) -> str:
+    if not s:
+        return ""
+    return unicodedata.normalize("NFKD", s.lower()).encode("ascii", "ignore").decode("ascii")
+
+
 def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.create_function("normalize", 1, _normalize)
     return conn
 
 
@@ -56,8 +67,9 @@ def api_players():
     params: list = []
 
     if search:
-        where_parts.append("ps.name LIKE ?")
-        params.append(f"%{search}%")
+        for word in _normalize(search).split():
+            where_parts.append("normalize(ps.name) LIKE ?")
+            params.append(f"%{word}%")
     if club:
         where_parts.append("ps.current_club_name = ?")
         params.append(club)
@@ -163,5 +175,176 @@ def api_filters():
     return jsonify({"clubs": clubs, "positions": positions})
 
 
+_CAT_ICONS: dict[str, str] = {
+    "nat_ger": "🇩🇪", "nat_eng": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "nat_esp": "🇪🇸",
+    "nat_fra": "🇫🇷", "nat_bra": "🇧🇷", "nat_arg": "🇦🇷",
+    "nat_ned": "🇳🇱", "nat_por": "🇵🇹", "nat_ita": "🇮🇹",
+    "nat_hrv": "🇭🇷", "nat_bel": "🇧🇪", "nat_dnk": "🇩🇰",
+    "nat_swe": "🇸🇪", "nat_tur": "🇹🇷", "nat_aut": "🇦🇹",
+    "nat_pol": "🇵🇱", "nat_sco": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "nat_wal": "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
+    "club_bay": "🔴", "club_bvb": "🟡", "club_b04": "⚫",
+    "club_rbl": "🔴", "club_sge": "⚫", "club_s04": "🔵",
+    "club_hsv": "🔴", "club_svw": "🟢", "club_bmg": "⚫",
+    "club_mnu": "🔴", "club_mci": "🔵", "club_lfc": "🔴",
+    "club_ars": "🔴", "club_che": "🔵", "club_tot": "⚪",
+    "club_rma": "⚪", "club_fcb": "🔵", "club_atm": "🔴",
+    "club_sev": "⚪", "club_val": "🟠", "club_juv": "⚫",
+    "club_int": "🔵", "club_mil": "🔴", "club_psg": "🔵",
+    "club_laz": "🔵",
+    "award_bdo": "🏅", "award_euro": "🏆", "award_ucl": "⭐",
+    "league_buli": "🇩🇪", "league_pl": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "league_laliga": "🇪🇸",
+    "league_seriea": "🇮🇹", "league_ligue1": "🇫🇷",
+    "cont_eur": "🌍", "cont_sam": "🌎", "cont_afr": "🌍", "cont_asia": "🌏",
+    "pos_gk": "🧤", "pos_def": "🛡️", "pos_mid": "⚽",
+    "pos_fwd": "⚡", "pos_cb": "🛡️", "pos_lb": "◀️",
+    "pos_rb": "▶️", "pos_dm": "🧲", "pos_cm": "⚙️",
+    "pos_am": "🎯", "pos_st": "⚡", "pos_lw": "◀️", "pos_rw": "▶️",
+}
+
+
+def _cat_display(cat) -> dict:
+    return {
+        "id": cat.id,
+        "label": cat.label,
+        "type": cat.type.value,
+        "icon": _CAT_ICONS.get(cat.id, "⚽"),
+        "difficulty": cat.difficulty,
+    }
+
+
+def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_attempts: int = 300):
+    pool = [cat for cat in ALL_CATEGORIES if cat.difficulty <= max_difficulty]
+    eligible: dict[str, set[int]] = {cat.id: cat.eligible_player_ids(db) for cat in pool}
+    for _ in range(max_attempts):
+        if len(pool) < 6:
+            return None, None
+        sample = random.sample(pool, 6)
+        rows, cols = sample[:3], sample[3:]
+        if {c.id for c in rows} & {c.id for c in cols}:
+            continue
+        if all(
+            len(eligible[r.id] & eligible[c.id]) >= min_players
+            for r in rows for c in cols
+        ):
+            return rows, cols
+    return None, None
+
+
+@app.route("/game")
+def game():
+    return render_template("game.html")
+
+
+@app.route("/api/game/new")
+def api_game_new():
+    difficulty = min(3, max(1, int(request.args.get("difficulty", 3))))
+    db = get_db()
+    try:
+        rows, cols = _generate_puzzle(db, max_difficulty=difficulty)
+    finally:
+        db.close()
+    if rows is None:
+        return jsonify({"error": "Kein gültiges Rätsel gefunden"}), 500
+    return jsonify({"rows": [_cat_display(c) for c in rows], "cols": [_cat_display(c) for c in cols]})
+
+
+@app.route("/api/game/search")
+def api_game_search():
+    """Search all players by name (no category filter) — category check happens on validate."""
+    q = request.args.get("q", "").strip()
+    if len(q) < 3:
+        return jsonify({"players": []})
+
+    where_parts = []
+    params: list = []
+    for word in _normalize(q).split():
+        where_parts.append("normalize(p.name) LIKE ?")
+        params.append(f"%{word}%")
+    where = "WHERE " + " AND ".join(where_parts)
+
+    db = get_db()
+    try:
+        rows_db = db.execute(
+            f"SELECT p.id, p.name, p.current_club_name, p.nationality "
+            f"FROM players p {where} ORDER BY p.name LIMIT 20",
+            params,
+        ).fetchall()
+    finally:
+        db.close()
+    return jsonify({"players": [dict(r) for r in rows_db]})
+
+
+@app.route("/api/game/solve")
+def api_game_solve():
+    """Return valid players for every cell in the grid (for the solve view)."""
+    row_ids = request.args.get("rows", "").split(",")
+    col_ids = request.args.get("cols", "").split(",")
+    if len(row_ids) != 3 or len(col_ids) != 3:
+        return jsonify({"error": "Need exactly 3 row and 3 col IDs"}), 400
+
+    cats: dict = {}
+    for cat_id in row_ids + col_ids:
+        cat = CATEGORY_BY_ID.get(cat_id)
+        if not cat:
+            return jsonify({"error": f"Invalid category: {cat_id}"}), 400
+        cats[cat_id] = cat
+
+    db = get_db()
+    try:
+        grid = []
+        for row_id in row_ids:
+            row_cat = cats[row_id]
+            row_sql, row_params = row_cat.sql_filter()
+            row_cells = []
+            for col_id in col_ids:
+                col_cat = cats[col_id]
+                col_sql, col_params = col_cat.sql_filter()
+                params = row_params + col_params
+                rows_db = db.execute(
+                    f"""SELECT COUNT(*) OVER() AS total, p.id, p.name, p.current_club_name
+                        FROM players p
+                        WHERE {row_sql} AND {col_sql}
+                        ORDER BY (
+                            CASE
+                                WHEN p.market_value LIKE '%m'
+                                    THEN CAST(REPLACE(REPLACE(p.market_value, '€', ''), 'm', '') AS REAL) * 1000000
+                                WHEN p.market_value LIKE '%k'
+                                    THEN CAST(REPLACE(REPLACE(p.market_value, '€', ''), 'k', '') AS REAL) * 1000
+                                ELSE 0
+                            END
+                        ) DESC
+                        LIMIT 6""",
+                    params,
+                ).fetchall()
+                count = rows_db[0]["total"] if rows_db else 0
+                row_cells.append({"count": count, "players": [dict(r) for r in rows_db]})
+            grid.append(row_cells)
+    finally:
+        db.close()
+    return jsonify({"grid": grid})
+
+
+@app.route("/api/game/validate", methods=["POST"])
+def api_game_validate():
+    data = request.get_json() or {}
+    player_id = data.get("player_id")
+    row_id = data.get("row_id")
+    col_id = data.get("col_id")
+
+    row_cat = CATEGORY_BY_ID.get(row_id or "")
+    col_cat = CATEGORY_BY_ID.get(col_id or "")
+    if not row_cat or not col_cat or player_id is None:
+        return jsonify({"valid": False, "error": "Invalid input"}), 400
+
+    db = get_db()
+    try:
+        valid = row_cat.check_player(player_id, db) and col_cat.check_player(player_id, db)
+        player = db.execute("SELECT id, name, current_club_name FROM players WHERE id = ?", [player_id]).fetchone()
+    finally:
+        db.close()
+    return jsonify({"valid": valid, "player": dict(player) if player else None})
+
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(debug=True, port=port)
