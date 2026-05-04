@@ -10,12 +10,7 @@ from __future__ import annotations
 
 from .categories import AwardCategory, Category, ClubCategory, ContinentCategory, LeagueCategory, NationalityCategory, PositionCategory
 
-# ---------------------------------------------------------------------------
-# Club categories
-# Only include clubs with enough career stints to produce valid puzzle
-# intersections (~150+ distinct players). Clubs listed here are the first-team
-# entries as they appear in career_stints (Transfermarkt DE abbreviations).
-# ---------------------------------------------------------------------------
+
 CLUB_CATEGORIES: list[ClubCategory] = [
     # Bundesliga
     ClubCategory("club_bay", "Bayern München",           "Bayern München",   difficulty=1),
@@ -26,11 +21,16 @@ CLUB_CATEGORIES: list[ClubCategory] = [
     ClubCategory("club_s04", "Schalke 04",               "FC Schalke 04",    difficulty=3),
     ClubCategory("club_hsv", "Hamburger SV",             "Hamburger SV",     difficulty=3),
     ClubCategory("club_svw", "Werder Bremen",            "Werder Bremen",    difficulty=3),
+    ClubCategory("club_aug", "FC Augsburg",              "FC Augsburg",      difficulty=3),
+    ClubCategory("club_wob", "VfL Wolfsburg",            "VfL Wolfsburg",    difficulty=3),
+    ClubCategory("club_stu", "VfB Stuttgart",            "VfB Stuttgart",    difficulty=3),
+    ClubCategory("club_frb", "1.FC Freiburg",            "SC Freiburg",      difficulty=3),
     ClubCategory("club_bmg", "Borussia Mönchengladbach", "Bor. M'gladbach",  difficulty=3),
+    ClubCategory("club_koe", "1.FC Köln",                "1.FC Köln",        difficulty=3),
     # Premier League
-    ClubCategory("club_mnu", "Manchester United",        "Manchester Utd.",  difficulty=1),
-    ClubCategory("club_mci", "Manchester City",          "Manchester City",  difficulty=1),
-    ClubCategory("club_lfc", "Liverpool",                "Liverpool",        difficulty=1),
+    ClubCategory("club_mnu", "Manchester United",        "Manchester Utd.",  difficulty=2),
+    ClubCategory("club_mci", "Manchester City",          "Manchester City",  difficulty=2),
+    ClubCategory("club_lfc", "Liverpool",                "Liverpool",        difficulty=2),
     ClubCategory("club_ars", "Arsenal",                  "Arsenal",          difficulty=2),
     ClubCategory("club_che", "Chelsea",                  "Chelsea",          difficulty=2),
     ClubCategory("club_tot", "Tottenham Hotspur",        "Tottenham",        difficulty=3),
@@ -39,22 +39,25 @@ CLUB_CATEGORIES: list[ClubCategory] = [
     ClubCategory("club_fcb", "FC Barcelona",             "FC Barcelona",     difficulty=1),
     ClubCategory("club_atm", "Atlético Madrid",          "Atlético Madrid",  difficulty=2),
     ClubCategory("club_sev", "FC Sevilla",               "FC Sevilla",       difficulty=3),
-    ClubCategory("club_val", "FC Valencia",              "FC Valencia",      difficulty=3),
     # Serie A
     ClubCategory("club_juv", "Juventus",                 "Juventus",         difficulty=3),
     ClubCategory("club_int", "Inter Mailand",            "Inter",            difficulty=3),
     ClubCategory("club_mil", "AC Milan",                 "Milan",            difficulty=3),
-    # Sonstige Topklubs
+    # Sonstiges
     ClubCategory("club_psg", "Paris Saint-Germain",      "Paris SG",         difficulty=2),
-    ClubCategory("club_laz", "Lazio Rom",                "Lazio Rom",        difficulty=3),
+    ClubCategory("club_ajx", "Ajax Amsterdam",           "Ajax",             difficulty=3),
+    ClubCategory("club_psv", "PSV Eindhoven",            "PSV",              difficulty=3),
+
+    ClubCategory("club_sve", "SV Eintracht Trier",       "SV Eintracht Trier", difficulty=3),
 ]
 
-# ---------------------------------------------------------------------------
-# Nationality categories
-# Stored in German in players.nationality. Dual nationals have space-separated
-# values ("Deutschland Türkei"), so matching uses LIKE '%nationality%'.
-# ---------------------------------------------------------------------------
+
 NATIONALITY_CATEGORIES: list[NationalityCategory] = [
+    NationalityCategory("nat_eng", "Englisch",       "England",      difficulty=1),
+    NationalityCategory("nat_esp", "Spanisch",       "Spanien",      difficulty=1),
+    NationalityCategory("nat_ita", "Italienisch",    "Italien",      difficulty=1),
+    NationalityCategory("nat_fra", "Französisch",    "Frankreich",   difficulty=1),
+    NationalityCategory("nat_ger", "Deutsch",        "Deutschland",  difficulty=1),
     NationalityCategory("nat_bra", "Brasilianisch",  "Brasilien",    difficulty=1),
     NationalityCategory("nat_arg", "Argentinisch",   "Argentinien",  difficulty=1),
     NationalityCategory("nat_ned", "Niederländisch", "Niederlande",  difficulty=1),
@@ -67,32 +70,33 @@ NATIONALITY_CATEGORIES: list[NationalityCategory] = [
     NationalityCategory("nat_aut", "Österreichisch", "Österreich",   difficulty=3),
     NationalityCategory("nat_pol", "Polnisch",       "Polen",        difficulty=2),
     NationalityCategory("nat_sco", "Schottisch",     "Schottland",   difficulty=3),
+    NationalityCategory("nat_sui", "Schweizerisch",  "Schweiz",      difficulty=3),
     NationalityCategory("nat_wal", "Walisisch",      "Wales",        difficulty=3),
 ]
+#non europäer 
 
-# ---------------------------------------------------------------------------
-# Position categories
-# Positions are stored as "Group - Subposition" (e.g. "Abwehr - Innenverteidiger").
-# Broad categories use just the group prefix; specific ones use the full string.
-# ---------------------------------------------------------------------------
 POSITION_CATEGORIES: list[PositionCategory] = [
-    # Breite Gruppen (leicht)
     PositionCategory("pos_gk",  "Torwart",               "Torwart",                          difficulty=1),
     PositionCategory("pos_def", "Abwehrspieler",         "Abwehr",                           difficulty=1),
     PositionCategory("pos_mid", "Mittelfeldspieler",     "Mittelfeld",                       difficulty=1),
     PositionCategory("pos_fwd", "Stürmer",               "Sturm",                            difficulty=1),
-    # Spezifische Positionen (mittel)
     PositionCategory("pos_cb",  "Innenverteidiger",      "Abwehr - Innenverteidiger",        difficulty=2),
-    PositionCategory("pos_dm",  "Defensives Mittelfeld", "Mittelfeld - Defensives Mittelfeld", difficulty=2),
-    PositionCategory("pos_cm",  "Zentrales Mittelfeld",  "Mittelfeld - Zentrales Mittelfeld", difficulty=2),
-    PositionCategory("pos_am",  "Offensives Mittelfeld", "Mittelfeld - Offensives Mittelfeld", difficulty=2),
-    PositionCategory("pos_st",  "Mittelstürmer",         "Sturm - Mittelstürmer",            difficulty=2),
-    # Sehr spezifische Positionen (schwer)
     PositionCategory("pos_lb",  "Linker Verteidiger",    "Abwehr - Linker Verteidiger",      difficulty=3),
     PositionCategory("pos_rb",  "Rechter Verteidiger",   "Abwehr - Rechter Verteidiger",     difficulty=3),
     PositionCategory("pos_lw",  "Linksaußen",            "Sturm - Linksaußen",               difficulty=3),
     PositionCategory("pos_rw",  "Rechtsaußen",           "Sturm - Rechtsaußen",              difficulty=3),
 ]
+
+
+#anfangsbuchstabe
+#marktwert
+#alter
+
+
+
+
+
+
 
 # ---------------------------------------------------------------------------
 # Award categories
