@@ -4,7 +4,7 @@ import unicodedata
 import os
 import random
 
-from src.category_config import ALL_CATEGORIES, CATEGORY_BY_ID
+from src.category_config import ALL_CATEGORIES, CATEGORY_BY_ID, CLUB_CATEGORIES
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "tictactoe.db")
@@ -191,10 +191,21 @@ _CAT_ICONS: dict[str, str] = {
     "club_sev": "⚪", "club_val": "🟠", "club_juv": "⚫",
     "club_int": "🔵", "club_mil": "🔴", "club_psg": "🔵",
     "club_laz": "🔵",
-    "award_bdo": "🏅", "award_euro": "🏆", "award_ucl": "⭐",
     "league_buli": "🇩🇪", "league_pl": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "league_laliga": "🇪🇸",
     "league_seriea": "🇮🇹", "league_ligue1": "🇫🇷",
     "cont_eur": "🌍", "cont_sam": "🌎", "cont_afr": "🌍", "cont_asia": "🌏",
+    "cont_non_eu": "🗺️",
+    "nat_noneu": "🌍",
+    "init_a": "🔡", "init_b": "🔡", "init_c": "🔡", "init_d": "🔡",
+    "init_e": "🔡", "init_f": "🔡", "init_g": "🔡", "init_h": "🔡",
+    "init_j": "🔡", "init_k": "🔡", "init_l": "🔡", "init_m": "🔡",
+    "init_n": "🔡", "init_o": "🔡", "init_p": "🔡", "init_r": "🔡",
+    "init_s": "🔡", "init_t": "🔡", "init_w": "🔡",
+    "cont_letter_i": "🔠", "cont_letter_u": "🔠", "cont_letter_v": "🔠",
+    "cont_letter_x": "🔠", "cont_letter_y": "🔠", "cont_letter_z": "🔠",
+    "cont_letter_q": "🔠",
+    "age_u23": "🌱", "age_2430": "⚡", "age_30p": "🎖️",
+    "mv_high": "💰", "mv_mid": "💵", "mv_low": "💶",
     "pos_gk": "🧤", "pos_def": "🛡️", "pos_mid": "⚽",
     "pos_fwd": "⚡", "pos_cb": "🛡️", "pos_lb": "◀️",
     "pos_rb": "▶️", "pos_dm": "🧲", "pos_cm": "⚙️",
@@ -343,6 +354,85 @@ def api_game_validate():
     finally:
         db.close()
     return jsonify({"valid": valid, "player": dict(player) if player else None})
+
+
+@app.route("/combos")
+def combos():
+    return render_template("combos.html")
+
+
+@app.route("/api/clubs/combos")
+def api_clubs_combos():
+    club_filter = request.args.get("club", "").strip()
+    try:
+        max_players = int(request.args.get("max_players", 100))
+    except ValueError:
+        max_players = 100
+
+    game_club_names = [c.club_name for c in CLUB_CATEGORIES]
+
+    db = get_db()
+    try:
+        # Build club → player_id sets in one query
+        rows = db.execute(
+            f"SELECT club_name, player_id FROM career_stints "
+            f"WHERE club_name IN ({','.join('?' * len(game_club_names))})",
+            game_club_names,
+        ).fetchall()
+
+        club_players: dict[str, set[int]] = {}
+        for r in rows:
+            club_players.setdefault(r["club_name"], set()).add(r["player_id"])
+
+        # Compute all pair intersections
+        clubs = sorted(club_players.keys())
+        pairs = []
+        for i, c1 in enumerate(clubs):
+            for c2 in clubs[i + 1 :]:
+                shared = club_players[c1] & club_players[c2]
+                count = len(shared)
+                if count > max_players:
+                    continue
+                if club_filter and club_filter not in (c1, c2):
+                    continue
+                pairs.append((c1, c2, count, shared))
+
+        pairs.sort(key=lambda x: x[2])
+
+        # Fetch names for all relevant player IDs in one query
+        all_ids = {pid for _, _, _, ids in pairs for pid in ids}
+        if all_ids:
+            id_list = list(all_ids)
+            name_rows = db.execute(
+                f"SELECT id, name FROM players WHERE id IN ({','.join('?' * len(id_list))})",
+                id_list,
+            ).fetchall()
+            name_map = {
+                r["id"]: (
+                    r["name"].split(" ", 1)[1] if r["name"].startswith("#") and " " in r["name"]
+                    else r["name"]
+                )
+                for r in name_rows
+            }
+        else:
+            name_map = {}
+
+        result = [
+            {
+                "club1": c1,
+                "club2": c2,
+                "count": count,
+                "players": [
+                    {"id": pid, "name": name_map.get(pid, str(pid))}
+                    for pid in sorted(shared, key=lambda p: name_map.get(p, ""))
+                ],
+            }
+            for c1, c2, count, shared in pairs
+        ]
+    finally:
+        db.close()
+
+    return jsonify({"pairs": result, "total": len(result)})
 
 
 if __name__ == "__main__":

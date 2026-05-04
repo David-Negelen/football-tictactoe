@@ -3,12 +3,11 @@
 Club names must match career_stints.club_name exactly (Transfermarkt DE abbreviations).
 Nationality names are in German, as stored in players.nationality.
 Position prefixes match players.position using a LIKE prefix query.
-Award winner names must match players.name case-insensitively.
 """
 
 from __future__ import annotations
 
-from .categories import AwardCategory, Category, ClubCategory, ContinentCategory, LeagueCategory, NationalityCategory, PositionCategory
+from .categories import AgeCategory, Category, ClubCategory, ContainsLetterCategory, ContinentCategory, InitialCategory, LeagueCategory, MarketValueCategory, NationalityCategory, NonEuropeanNationalityCategory, PositionCategory
 
 
 CLUB_CATEGORIES: list[ClubCategory] = [
@@ -72,8 +71,8 @@ NATIONALITY_CATEGORIES: list[NationalityCategory] = [
     NationalityCategory("nat_sco", "Schottisch",     "Schottland",   difficulty=3),
     NationalityCategory("nat_sui", "Schweizerisch",  "Schweiz",      difficulty=3),
     NationalityCategory("nat_wal", "Walisisch",      "Wales",        difficulty=3),
+
 ]
-#non europäer 
 
 POSITION_CATEGORIES: list[PositionCategory] = [
     PositionCategory("pos_gk",  "Torwart",               "Torwart",                          difficulty=1),
@@ -87,151 +86,58 @@ POSITION_CATEGORIES: list[PositionCategory] = [
     PositionCategory("pos_rw",  "Rechtsaußen",           "Sturm - Rechtsaußen",              difficulty=3),
 ]
 
-
-#anfangsbuchstabe
-#marktwert
-#alter
-
-
-
-
-
-
-
-# ---------------------------------------------------------------------------
-# Award categories
-# Player names must match players.name exactly (case-insensitive).
-# These lists need manual maintenance as new winners are announced.
-# ---------------------------------------------------------------------------
-AWARD_CATEGORIES: list[AwardCategory] = [
-    AwardCategory(
-        "award_bdo",
-        "Ballon d'Or",
-        player_names=[
-            # 2024
-            "Rodri",
-            # 2023
-            "Lionel Messi",
-            # 2022
-            "Karim Benzema",
-            # 2021
-            # Messi (listed above)
-            # 2019
-            # Messi (listed above)
-            # 2018
-            "Luka Modric",
-            # 2017
-            "Cristiano Ronaldo",
-            # 2016
-            # Ronaldo (listed above)
-            # 2015
-            # Messi (listed above)
-            # 2014
-            # Ronaldo (listed above)
-            # 2013
-            # Ronaldo (listed above)
-            # 2012
-            # Messi (listed above)
-            # 2011
-            # Messi/Ronaldo (listed above)
-            # 2010
-            # Messi (listed above)
-            # 2009
-            # Messi (listed above)
-            # 2008
-            # Ronaldo (listed above)
-            # 2007
-            "Kaka",
-            # 2005
-            "Ronaldinho",
-            # 2004
-            "Andriy Shevchenko",
-            # 2003
-            "Pavel Nedved",
-            # 2001
-            "Michael Owen",
-            # 1999
-            "Rivaldo",
-            # 1998
-            "Zinedine Zidane",
-            # 1997
-            "Ronaldo",
-            # 1996
-            "Matthias Sammer",
-            # 1995
-            "George Weah",
-        ],
-        difficulty=1,
-    ),
-    AwardCategory(
-        "award_euro",
-        "Europameister",
-        player_names=[
-            # Euro 2024 – Spain
-            "Dani Carvajal", "Rodri", "Marc Cucurella", "Aymeric Laporte",
-            "Alejandro Grimaldo", "Fabián Ruiz", "Pedri", "Dani Olmo",
-            "Lamine Yamal", "Alvaro Morata", "Nico Williams",
-            "Robin Le Normand", "Nacho", "Mikel Merino", "Ferran Torres",
-            "Unai Simón", "David Raya", "Alex Remiro",
-            # Euro 2020 – Italy (played 2021)
-            "Gianluigi Donnarumma", "Giorgio Chiellini", "Leonardo Bonucci",
-            "Giovanni Di Lorenzo", "Emerson", "Marco Verratti",
-            "Jorginho", "Nicolo Barella", "Lorenzo Insigne",
-            "Federico Chiesa", "Ciro Immobile",
-            # Euro 2016 – Portugal
-            "Rui Patricio", "Pepe", "José Fonte", "Raphael Guerreiro",
-            "Cedric Soares", "Joao Moutinho", "Renato Sanches",
-            "Eder", "Nani", "Cristiano Ronaldo", "Ricardo Quaresma",
-            # Euro 2012 – Spain
-            "Iker Casillas", "Sergio Ramos", "Gerard Piqué",
-            "Jordi Alba", "Xabi Alonso", "Sergio Busquets",
-            "Xavi", "Andrés Iniesta", "David Silva",
-            "Fernando Torres", "Cesc Fàbregas",
-            # Euro 2008 – Spain (overlapping with 2012 squad, already listed)
-            "David Villa", "Santi Cazorla",
-        ],
-        difficulty=2,
-    ),
-    AwardCategory(
-        "award_ucl",
-        "Champions-League-Sieger",
-        player_names=[
-            # 2024 – Real Madrid
-            "Thibaut Courtois", "Dani Carvajal", "Antonio Rüdiger",
-            "Eder Militao", "Ferland Mendy", "Luka Modric",
-            "Toni Kroos", "Federico Valverde", "Vinicius Junior",
-            "Joselu", "Brahim Diaz", "Rodrygo", "Nacho",
-            # 2023 – Manchester City
-            "Ederson", "Kyle Walker", "Ruben Dias", "Manuel Akanji",
-            "Josko Gvardiol", "Rodri", "Ilkay Gündogan",
-            "Kevin De Bruyne", "Bernardo Silva", "Phil Foden",
-            "Erling Haaland", "Jeremy Doku",
-            # 2022 – Real Madrid (overlapping, already listed)
-            "Karim Benzema", "Casemiro",
-            # 2021 – Chelsea
-            "Edouard Mendy", "Cesar Azpilicueta", "Thiago Silva",
-            "Andreas Christensen", "Ben Chilwell", "N'Golo Kante",
-            "Jorginho", "Mason Mount", "Hakim Ziyech",
-            "Timo Werner", "Kai Havertz", "Christian Pulisic",
-            # 2020 – Bayern München
-            "Manuel Neuer", "David Alaba", "Jerome Boateng",
-            "Alphonso Davies", "Joshua Kimmich", "Leon Goretzka",
-            "Thomas Müller", "Serge Gnabry", "Kingsley Coman",
-            "Robert Lewandowski", "Philippe Coutinho",
-            # 2019 – Liverpool
-            "Alisson", "Trent Alexander-Arnold", "Virgil van Dijk",
-            "Joel Matip", "Andrew Robertson", "Fabinho",
-            "Jordan Henderson", "Gini Wijnaldum",
-            "Mohamed Salah", "Sadio Mane", "Roberto Firmino",
-        ],
-        difficulty=1,
-    ),
+INITIAL_CATEGORIES: list[InitialCategory] = [
+    # difficulty 1 — most common first+last combos in European football
+    InitialCategory("init_m", "Vor- oder Nachname beginnt mit M", "M", difficulty=1),
+    InitialCategory("init_s", "Vor- oder Nachname beginnt mit S", "S", difficulty=1),
+    # difficulty 2 — common
+    InitialCategory("init_b", "Vor- oder Nachname beginnt mit B", "B", difficulty=2),
+    InitialCategory("init_d", "Vor- oder Nachname beginnt mit D", "D", difficulty=2),
+    InitialCategory("init_h", "Vor- oder Nachname beginnt mit H", "H", difficulty=2),
+    InitialCategory("init_k", "Vor- oder Nachname beginnt mit K", "K", difficulty=2),
+    InitialCategory("init_l", "Vor- oder Nachname beginnt mit L", "L", difficulty=2),
+    InitialCategory("init_r", "Vor- oder Nachname beginnt mit R", "R", difficulty=2),
+    InitialCategory("init_t", "Vor- oder Nachname beginnt mit T", "T", difficulty=2),
+    # difficulty 3 — less common
+    InitialCategory("init_a", "Vor- oder Nachname beginnt mit A", "A", difficulty=3),
+    InitialCategory("init_c", "Vor- oder Nachname beginnt mit C", "C", difficulty=3),
+    InitialCategory("init_e", "Vor- oder Nachname beginnt mit E", "E", difficulty=3),
+    InitialCategory("init_f", "Vor- oder Nachname beginnt mit F", "F", difficulty=3),
+    InitialCategory("init_g", "Vor- oder Nachname beginnt mit G", "G", difficulty=3),
+    InitialCategory("init_j", "Vor- oder Nachname beginnt mit J", "J", difficulty=3),
+    InitialCategory("init_n", "Vor- oder Nachname beginnt mit N", "N", difficulty=3),
+    InitialCategory("init_o", "Vor- oder Nachname beginnt mit O", "O", difficulty=3),
+    InitialCategory("init_p", "Vor- oder Nachname beginnt mit P", "P", difficulty=3),
+    InitialCategory("init_w", "Vor- oder Nachname beginnt mit W", "W", difficulty=3),
 ]
 
-# ---------------------------------------------------------------------------
-# League categories
-# Club names match career_stints.club_name (Transfermarkt DE, first-team only).
-# ---------------------------------------------------------------------------
+CONTAINS_LETTER_CATEGORIES: list[ContainsLetterCategory] = [
+    ContainsLetterCategory("cont_letter_i", "Name enthält den Buchstaben I", "I", difficulty=2),
+    ContainsLetterCategory("cont_letter_u", "Name enthält den Buchstaben U", "U", difficulty=2),
+    ContainsLetterCategory("cont_letter_v", "Name enthält den Buchstaben V", "V", difficulty=3),
+    ContainsLetterCategory("cont_letter_x", "Name enthält den Buchstaben X", "X", difficulty=3),
+    ContainsLetterCategory("cont_letter_y", "Name enthält den Buchstaben Y", "Y", difficulty=3),
+    ContainsLetterCategory("cont_letter_z", "Name enthält den Buchstaben Z", "Z", difficulty=3),
+    ContainsLetterCategory("cont_letter_q", "Name enthält den Buchstaben Q", "Q", difficulty=3),
+]
+
+AGE_CATEGORIES: list[AgeCategory] = [
+    AgeCategory("age_u23",  "Unter 23 Jahre",  max_age=22,              difficulty=2),
+    AgeCategory("age_2430", "24–30 Jahre",     min_age=24, max_age=30,  difficulty=2),
+    AgeCategory("age_30p",  "Über 30 Jahre",   min_age=31,              difficulty=2),
+]
+
+MARKET_VALUE_CATEGORIES: list[MarketValueCategory] = [
+    MarketValueCategory("mv_high", "Marktwert ≥ 50 Mio. €", min_value=50_000_000,                            difficulty=2),
+    MarketValueCategory("mv_mid",  "Marktwert 10–50 Mio. €", min_value=10_000_000, max_value=50_000_000,     difficulty=2),
+    MarketValueCategory("mv_low",  "Marktwert < 10 Mio. €",                         max_value=10_000_000,    difficulty=3),
+]
+
+NON_EUROPEAN_CATEGORIES: list[NonEuropeanNationalityCategory] = [
+    NonEuropeanNationalityCategory("nat_noneu", "Nicht-Europäer", difficulty=2),
+]
+
+
 LEAGUE_CATEGORIES: list[LeagueCategory] = [
     LeagueCategory("league_buli", "Bundesliga", [
         "Bayern München", "Bor. Dortmund", "B. Leverkusen", "RB Leipzig",
@@ -260,64 +166,14 @@ LEAGUE_CATEGORIES: list[LeagueCategory] = [
         "Atalanta", "FC Bologna", "Sampdoria", "Genua CFC", "US Sassuolo",
         "Torino", "Hellas Verona", "Lecce", "AC Pisa", "Cremonese",
         "Udinese", "Como",
-    ], difficulty=1),
+    ], difficulty=2),
     LeagueCategory("league_ligue1", "Ligue 1", [
         "Paris SG", "Olympique Lyon", "Marseille", "AS Monaco",
         "LOSC Lille", "Stade Rennes",
-    ], difficulty=1),
+    ], difficulty=2),
 ]
 
-# ---------------------------------------------------------------------------
-# Continent categories
-# Club names match career_stints.club_name. A player qualifies if they have
-# at least one career stint at a club on that continent.
-# ---------------------------------------------------------------------------
 CONTINENT_CATEGORIES: list[ContinentCategory] = [
-    ContinentCategory("cont_eur", "In Europa gespielt", [
-        # Bundesliga
-        "Bayern München", "Bor. Dortmund", "B. Leverkusen", "RB Leipzig",
-        "E. Frankfurt", "FC Schalke 04", "Hamburger SV", "Werder Bremen",
-        "Bor. M'gladbach", "VfB Stuttgart", "Hertha BSC", "1.FC Köln",
-        "FC Augsburg", "VfL Wolfsburg", "Hannover 96", "F. Düsseldorf",
-        "Arm. Bielefeld", "Darmstadt 98", "SC Freiburg", "TSG Hoffenheim",
-        "VfL Bochum", "1.FSV Mainz 05",
-        # Premier League
-        "Arsenal", "Chelsea", "Liverpool", "Manchester Utd.", "Man City",
-        "Tottenham", "Newcastle", "FC Everton", "Aston Villa", "West Ham Utd.",
-        "Brighton", "FC Brentford", "FC Fulham", "Crystal Palace",
-        "Wolverhampton", "Nottingham", "Leeds United", "AFC Sunderland",
-        "Bournemouth", "Leicester City",
-        # La Liga
-        "Real Madrid", "FC Barcelona", "Atlético Madrid", "FC Sevilla",
-        "FC Valencia", "FC Villarreal", "Betis Sevilla", "Athletic Bilbao",
-        "Rayo Vallecano", "Esp. Barcelona", "UD Levante", "Alavés",
-        "RCD Mallorca", "Celta Vigo", "FC Getafe", "CA Osasuna",
-        "Real Sociedad", "Real Valladolid", "UD Almería", "Deportivo LC",
-        # Serie A
-        "Inter", "Milan", "Juventus", "AS Rom", "SSC Neapel", "Lazio Rom",
-        "Atalanta", "FC Bologna", "Sampdoria", "Genua CFC", "US Sassuolo",
-        "Torino", "Hellas Verona", "Lecce", "AC Pisa", "Cremonese",
-        "Udinese", "Como",
-        # Ligue 1
-        "Paris SG", "Olympique Lyon", "Marseille", "AS Monaco",
-        "LOSC Lille", "Stade Rennes",
-        # Portugal
-        "Benfica", "FC Porto", "Sporting",
-        # Netherlands
-        "Ajax", "PSV", "Feyenoord",
-        # Belgium
-        "RSC Anderlecht",
-        # Scotland
-        "Celtic Glasgow", "Glasgow Rangers",
-        # Turkey
-        "Galatasaray", "Fenerbahce",
-        # Russia / Ukraine
-        "Spartak Moskau", "Zenit S-Pb", "Dynamo Kyiv", "Shakhtar D.",
-        # Greece
-        "Olympiakos",
-        # Denmark
-        "FC Midtjylland", "Rosenborg BK",
-    ], difficulty=1),
     ContinentCategory("cont_sam", "In Südamerika gespielt", [
         # Brazil
         "Flamengo", "Palmeiras", "FC São Paulo", "FC Santos", "Grêmio",
@@ -349,7 +205,7 @@ CONTINENT_CATEGORIES: list[ContinentCategory] = [
         "JS Kabylie",
         # DR Congo
         "TP Mazembe",
-    ], difficulty=2),
+    ], difficulty=3),
     ContinentCategory("cont_asia", "In Asien gespielt", [
         # Saudi Arabia
         "Al-Hilal", "Al-Nassr", "Al-Ittihad", "Al-Ahli", "Al-Shabab",
@@ -374,16 +230,17 @@ CONTINENT_CATEGORIES: list[ContinentCategory] = [
     ], difficulty=2),
 ]
 
-# ---------------------------------------------------------------------------
-# Combined index – all categories available for puzzle generation
-# ---------------------------------------------------------------------------
 ALL_CATEGORIES: list[Category] = [
     *CLUB_CATEGORIES,
     *NATIONALITY_CATEGORIES,
+    *NON_EUROPEAN_CATEGORIES,
     *POSITION_CATEGORIES,
-    *AWARD_CATEGORIES,
     *LEAGUE_CATEGORIES,
     *CONTINENT_CATEGORIES,
+    *INITIAL_CATEGORIES,
+    *CONTAINS_LETTER_CATEGORIES,
+    *AGE_CATEGORIES,
+    *MARKET_VALUE_CATEGORIES,
 ]
 
 CATEGORY_BY_ID: dict[str, Category] = {cat.id: cat for cat in ALL_CATEGORIES}

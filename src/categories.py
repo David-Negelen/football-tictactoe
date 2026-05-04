@@ -12,6 +12,10 @@ class CategoryType(str, Enum):
     AWARD = "award"
     LEAGUE = "league"
     CONTINENT = "continent"
+    INITIAL = "initial"
+    CONTAINS_LETTER = "contains_letter"
+    AGE = "age"
+    MARKET_VALUE = "market_value"
 
 
 class Category:
@@ -236,3 +240,219 @@ class ContinentCategory(Category):
             f"EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name IN ({self._ph()}))",
             list(self.club_names),
         )
+
+
+# SQL expression to strip the "#<number> " jersey prefix and return the bare name.
+_STRIPPED_NAME = (
+    "CASE WHEN p.name LIKE '#% %' THEN SUBSTR(p.name, INSTR(p.name, ' ') + 1) ELSE p.name END"
+)
+
+# SQL expression that returns the last word of the stripped name (handles 1–3 word names).
+_sn = f"({_STRIPPED_NAME})"
+_LAST_WORD_EXPR = (
+    f"CASE "
+    f"WHEN {_sn} NOT LIKE '% %' THEN {_sn} "
+    f"WHEN SUBSTR({_sn}, INSTR({_sn}, ' ') + 1) NOT LIKE '% %' "
+    f"  THEN SUBSTR({_sn}, INSTR({_sn}, ' ') + 1) "
+    f"ELSE SUBSTR("
+    f"  SUBSTR({_sn}, INSTR({_sn}, ' ') + 1), "
+    f"  INSTR(SUBSTR({_sn}, INSTR({_sn}, ' ') + 1), ' ') + 1) "
+    f"END"
+)
+
+# SQL expression to convert players.market_value ("€5.00m" / "€500k") to a numeric float in euros.
+_MV_EXPR = (
+    "CASE "
+    "WHEN p.market_value LIKE '%m' THEN CAST(REPLACE(REPLACE(p.market_value, '€', ''), 'm', '') AS REAL) * 1000000 "
+    "WHEN p.market_value LIKE '%k' THEN CAST(REPLACE(REPLACE(p.market_value, '€', ''), 'k', '') AS REAL) * 1000 "
+    "ELSE NULL END"
+)
+
+
+class InitialCategory(Category):
+    """Player whose first name OR last name starts with the given letter."""
+
+    def __init__(self, id: str, label: str, letter: str, icon: Optional[str] = None, difficulty: int = 2) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.INITIAL, icon=icon, difficulty=difficulty)
+        self.letter = letter.upper()
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        row = conn.execute(
+            f"SELECT {_STRIPPED_NAME} FROM players p WHERE p.id = ?",
+            (player_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        words = row[0].split()
+        if not words:
+            return False
+        return words[0][0].upper() == self.letter or words[-1][0].upper() == self.letter
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        rows = conn.execute(
+            f"SELECT p.id FROM players p "
+            f"WHERE UPPER(SUBSTR({_STRIPPED_NAME}, 1, 1)) = ? "
+            f"OR UPPER(SUBSTR(({_LAST_WORD_EXPR}), 1, 1)) = ?",
+            (self.letter, self.letter),
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        return (
+            f"(UPPER(SUBSTR({_STRIPPED_NAME}, 1, 1)) = ? "
+            f"OR UPPER(SUBSTR(({_LAST_WORD_EXPR}), 1, 1)) = ?)",
+            [self.letter, self.letter],
+        )
+
+
+class ContainsLetterCategory(Category):
+    """Player whose name contains the given letter anywhere (case-insensitive)."""
+
+    def __init__(self, id: str, label: str, letter: str, icon: Optional[str] = None, difficulty: int = 3) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.CONTAINS_LETTER, icon=icon, difficulty=difficulty)
+        self.letter = letter.upper()
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        row = conn.execute(
+            f"SELECT {_STRIPPED_NAME} FROM players p WHERE p.id = ?",
+            (player_id,),
+        ).fetchone()
+        return row is not None and self.letter in row[0].upper()
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        rows = conn.execute(
+            f"SELECT p.id FROM players p WHERE UPPER({_STRIPPED_NAME}) LIKE ?",
+            (f"%{self.letter}%",),
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        return f"UPPER({_STRIPPED_NAME}) LIKE ?", [f"%{self.letter}%"]
+
+
+class AgeCategory(Category):
+    """Player whose age falls in [min_age, max_age] (inclusive, in years)."""
+
+    def __init__(self, id: str, label: str, min_age: Optional[int] = None, max_age: Optional[int] = None,
+                 icon: Optional[str] = None, difficulty: int = 2) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.AGE, icon=icon, difficulty=difficulty)
+        self.min_age = min_age
+        self.max_age = max_age
+
+    def _conditions(self) -> tuple[str, list]:
+        parts = ["p.age IS NOT NULL"]
+        params: list = []
+        if self.min_age is not None:
+            parts.append("p.age >= ?")
+            params.append(self.min_age)
+        if self.max_age is not None:
+            parts.append("p.age <= ?")
+            params.append(self.max_age)
+        return " AND ".join(parts), params
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        cond, params = self._conditions()
+        row = conn.execute(
+            f"SELECT 1 FROM players p WHERE p.id = ? AND {cond} LIMIT 1",
+            [player_id] + params,
+        ).fetchone()
+        return row is not None
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        cond, params = self._conditions()
+        rows = conn.execute(f"SELECT p.id FROM players p WHERE {cond}", params).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        cond, params = self._conditions()
+        return f"({cond})", params
+
+
+class MarketValueCategory(Category):
+    """Player whose current market value falls in [min_value, max_value] (inclusive, in euros).
+
+    Requires players.market_value to be populated in the format "€5.00m" / "€500k".
+    """
+
+    def __init__(self, id: str, label: str, min_value: Optional[float] = None, max_value: Optional[float] = None,
+                 icon: Optional[str] = None, difficulty: int = 2) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.MARKET_VALUE, icon=icon, difficulty=difficulty)
+        self.min_value = min_value
+        self.max_value = max_value
+
+    def _conditions(self) -> tuple[str, list]:
+        parts = [f"({_MV_EXPR}) IS NOT NULL"]
+        params: list = []
+        if self.min_value is not None:
+            parts.append(f"({_MV_EXPR}) >= ?")
+            params.append(self.min_value)
+        if self.max_value is not None:
+            parts.append(f"({_MV_EXPR}) <= ?")
+            params.append(self.max_value)
+        return " AND ".join(parts), params
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        cond, params = self._conditions()
+        row = conn.execute(
+            f"SELECT 1 FROM players p WHERE p.id = ? AND {cond} LIMIT 1",
+            [player_id] + params,
+        ).fetchone()
+        return row is not None
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        cond, params = self._conditions()
+        rows = conn.execute(f"SELECT p.id FROM players p WHERE {cond}", params).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        cond, params = self._conditions()
+        return f"({cond})", params
+
+
+# European nationality strings (German) used to exclude EU/European nationals.
+# Includes UEFA member associations plus geographically European states.
+_EUROPEAN_NATIONALITIES: list[str] = [
+    "Deutschland", "England", "Frankreich", "Spanien", "Italien",
+    "Portugal", "Niederlande", "Belgien", "Schweiz", "Österreich",
+    "Dänemark", "Schweden", "Norwegen", "Finnland", "Polen",
+    "Tschechien", "Slowakei", "Ungarn", "Rumänien", "Bulgarien",
+    "Kroatien", "Serbien", "Slowenien", "Bosnien-Herzegowina",
+    "Nordmazedonien", "Montenegro", "Kosovo", "Albanien", "Griechenland",
+    "Türkei", "Ukraine", "Russland", "Weißrussland", "Litauen",
+    "Lettland", "Estland", "Island", "Irland", "Schottland",
+    "Wales", "Nordirland", "Luxemburg", "Malta", "Zypern",
+    "Liechtenstein", "Andorra", "San Marino", "Georgien",
+    "Aserbaidschan", "Armenien",
+]
+
+
+class NonEuropeanNationalityCategory(Category):
+    """Player holds no European nationality (no UEFA/European national string appears in their nationality field)."""
+
+    def __init__(self, id: str, label: str, icon: Optional[str] = None, difficulty: int = 2) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.NATIONALITY, icon=icon, difficulty=difficulty)
+
+    @staticmethod
+    def _condition() -> tuple[str, list]:
+        parts = ["p.nationality IS NOT NULL"]
+        params: list = []
+        for nat in _EUROPEAN_NATIONALITIES:
+            parts.append("p.nationality NOT LIKE ?")
+            params.append(f"%{nat}%")
+        return " AND ".join(parts), params
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        cond, params = self._condition()
+        row = conn.execute(
+            f"SELECT 1 FROM players p WHERE p.id = ? AND {cond} LIMIT 1",
+            [player_id] + params,
+        ).fetchone()
+        return row is not None
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        cond, params = self._condition()
+        rows = conn.execute(f"SELECT p.id FROM players p WHERE {cond}", params).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        return self._condition()

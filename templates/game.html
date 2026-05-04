@@ -28,7 +28,10 @@
 
   <!-- Nav -->
   <div class="w-full max-w-xl mb-3 flex justify-between items-center px-1">
-    <a href="/" class="text-green-300 hover:text-white text-sm transition-colors">← DB Explorer</a>
+    <div class="flex items-center gap-3">
+      <a href="/" class="text-green-300 hover:text-white text-sm transition-colors">← DB Explorer</a>
+      <a href="/combos" class="text-green-300 hover:text-white text-sm transition-colors">🔗 Combos</a>
+    </div>
     <div class="flex items-center gap-2">
       <!-- Schwierigkeitsgrad -->
       <div class="flex rounded-full overflow-hidden border border-green-600 text-xs font-bold">
@@ -403,9 +406,13 @@ async function selectPlayer(pid, name, club) {
     placePlayer(r, c, pid, name, club);
   } else {
     const err = document.getElementById('search-error');
-    err.textContent = `${name} passt hier nicht!`;
+    err.textContent = `${name} passt hier nicht – nächster Spieler ist dran!`;
     err.classList.remove('hidden');
-    setTimeout(() => err.classList.add('hidden'), 2500);
+    setTimeout(() => {
+      closeModal();
+      g.current = g.current === 1 ? 2 : 1;
+      updateStatus();
+    }, 1500);
   }
 }
 
