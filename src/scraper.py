@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 from .config import BASE_URL
 from .http import HttpClient
-from .models import CareerStint, PlayerRecord, TransferRecord
+from .models import CareerStint, PlayerRecord, TrophyRecord, TransferRecord
 
 
 @dataclass
@@ -53,7 +53,15 @@ class TransfermarktScraper:
         if player_id:
             player.transfers = self._fetch_transfers_api(player_id, result.final_url)
             player.career_stints = self._compute_career_stints(player.transfers)
+            player.trophies = self._fetch_trophies(player_id, result.html, result.final_url)
         return player
+
+    def fetch_player_trophies(self, player_url: str) -> list[TrophyRecord]:
+        result = self._http.get_html(player_url)
+        player_id = self._player_id_from_url(result.final_url)
+        if not player_id:
+            return []
+        return self._fetch_trophies(player_id, result.html, result.final_url)
 
     def parse_club_page(self, html: str, fallback_url: str) -> ParsedClubPage:
         soup = BeautifulSoup(html, "html.parser")
@@ -198,6 +206,90 @@ class TransfermarktScraper:
                 source_url=f"{BASE_URL}{t['url']}" if t.get("url") else None,
             ))
         return transfers
+
+    def _fetch_trophies(self, player_id: str, profile_html: str, player_url: str) -> list[TrophyRecord]:
+        trophies = self._extract_profile_trophies(profile_html, player_url)
+        try:
+            result = self._http.get_html(f"{BASE_URL}/erfolge/spieler/{player_id}")
+        except Exception:
+            return self._dedupe_trophies(trophies)
+        trophies.extend(self._extract_achievement_trophies(result.html, result.final_url))
+        return self._dedupe_trophies(trophies)
+
+    def _extract_profile_trophies(self, html: str, player_url: str) -> list[TrophyRecord]:
+        soup = BeautifulSoup(html, "html.parser")
+        trophies: list[TrophyRecord] = []
+        for link in soup.select('a[href*="/erfolge/spieler/"]'):
+            title, count = self._parse_trophy_text(link.get_text(" ", strip=True))
+            if not title or count is None:
+                continue
+            trophies.append(TrophyRecord(title=title, count=count, source_url=player_url))
+        return trophies
+
+    def _extract_achievement_trophies(self, html: str, source_url: str) -> list[TrophyRecord]:
+        soup = BeautifulSoup(html, "html.parser")
+        trophies: list[TrophyRecord] = []
+        for heading in soup.find_all("h2"):
+            title, count = self._parse_trophy_text(heading.get_text(" ", strip=True))
+            if not title or count is None:
+                continue
+            trophies.append(TrophyRecord(title=title, count=count, source_url=source_url))
+        return trophies
+
+    def _dedupe_trophies(self, trophies: list[TrophyRecord]) -> list[TrophyRecord]:
+        merged: dict[str, TrophyRecord] = {}
+        for trophy in trophies:
+            existing = merged.get(trophy.title)
+            if existing is None or (existing.count is None and trophy.count is not None):
+                merged[trophy.title] = trophy
+        return list(merged.values())
+
+    def _parse_trophy_text(self, text: str) -> tuple[Optional[str], Optional[int]]:
+        raw = " ".join(text.split()).strip()
+        if not raw:
+            return None, None
+
+        match = re.match(r"^(?:(\d+)\s*X\s+)?(.+?)(?:\s+(\d+))?$", raw, re.IGNORECASE)
+        if not match:
+            return None, None
+
+        count = match.group(1) or match.group(3)
+        title = self._canonicalize_trophy_title(match.group(2))
+        if not title:
+            return None, None
+        return title, int(count) if count else None
+
+    def _canonicalize_trophy_title(self, title: str) -> str:
+        normalized = " ".join(title.split()).strip()
+        lookup = {
+            "WELTFUSSBALLER": "Weltfußballer",
+            "GEWINNER BALLON D'OR": "Gewinner Ballon d'Or",
+            "UEFA EUROPAS FUSSBALLER DES JAHRES": "UEFA Europas Fußballer des Jahres",
+            "GOLDEN BOY": "Golden Boy",
+            "GEWINNER DES GOLDENEN SCHUHS (EUROPA)": "Gewinner des Goldenen Schuhs (Europa)",
+            "FUSSBALLER DES JAHRES": "Fußballer des Jahres",
+            "MLS MVP": "MLS MVP",
+            "TORSCHÜTZENKÖNIG": "Torschützenkönig",
+            "SPIELER DER SAISON": "Spieler der Saison",
+            "TM-SPIELER DER SAISON": "TM-Spieler der Saison",
+            "WELTMEISTER": "Weltmeister",
+            "COPA AMÉRICA-SIEGER": "Copa América-Sieger",
+            "UEFA CHAMPIONS LEAGUE-SIEGER": "UEFA Champions League-Sieger",
+            "SPANISCHER MEISTER": "Spanischer Meister",
+            "FRANZÖSISCHER MEISTER": "Französischer Meister",
+            "UEFA-SUPERCUP-SIEGER": "UEFA-Supercup-Sieger",
+            "FIFA-KLUB-WELTMEISTER": "FIFA-Klub-Weltmeister",
+            "SPANISCHER POKALSIEGER": "Spanischer Pokalsieger",
+            "SPANISCHER SUPERPOKALSIEGER": "Spanischer Superpokalsieger",
+            "MLS CUP CHAMPION": "MLS Cup Champion",
+            "SUPPORTERS' SHIELD WINNER": "Supporters' Shield Winner",
+            "LEAGUES-CUP-SIEGER": "Leagues-Cup-Sieger",
+            "U20-WELTMEISTER": "U20-Weltmeister",
+            "CONMEBOL-UEFA CUP OF CHAMPIONS-SIEGER": "CONMEBOL-UEFA Cup of Champions-Sieger",
+            "FRANZÖSISCHER SUPERPOKALSIEGER": "Französischer Superpokalsieger",
+            "OLYMPIASIEGER": "Olympiasieger",
+        }
+        return lookup.get(normalized.upper(), normalized.title() if normalized.isupper() else normalized)
 
     def _compute_career_stints(self, transfers: list[TransferRecord]) -> list[CareerStint]:
         arrivals: dict[str, tuple[Optional[str], Optional[str]]] = {}

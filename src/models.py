@@ -25,6 +25,13 @@ class TransferRecord:
 
 
 @dataclass
+class TrophyRecord:
+    title: str
+    count: Optional[int]
+    source_url: Optional[str] = None
+
+
+@dataclass
 class CareerStint:
     club_name: str
     start_season: Optional[str]
@@ -45,6 +52,7 @@ class PlayerRecord:
     contract_expires: Optional[str]
     scraped_at: datetime
     transfers: list[TransferRecord] = field(default_factory=list)
+    trophies: list[TrophyRecord] = field(default_factory=list)
     career_stints: list[CareerStint] = field(default_factory=list)
 
 

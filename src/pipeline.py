@@ -99,6 +99,7 @@ class ImportService:
                     player_id = self.database.upsert_player(player)
                     self.database.upsert_player_club(player_id, club_id, player.scraped_at)
                     self.database.replace_transfers(player_id, player.transfers, player.scraped_at)
+                    self.database.replace_trophies(player_id, player.trophies, player.scraped_at)
                     self.database.replace_career_stints(player_id, player.career_stints)
                     imported += 1
 

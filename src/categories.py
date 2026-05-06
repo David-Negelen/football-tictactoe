@@ -180,6 +180,34 @@ class AwardCategory(Category):
         return sql, list(self._lower_names)
 
 
+class TrophyCategory(Category):
+    """Player must have won a specific trophy title at least once."""
+
+    def __init__(self, id: str, label: str, trophy_title: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.AWARD, icon=icon, difficulty=difficulty)
+        self.trophy_title = trophy_title
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM player_trophies WHERE player_id = ? AND title = ? LIMIT 1",
+            (player_id, self.trophy_title),
+        ).fetchone()
+        return row is not None
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        rows = conn.execute(
+            "SELECT DISTINCT player_id FROM player_trophies WHERE title = ?",
+            (self.trophy_title,),
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        return (
+            "EXISTS (SELECT 1 FROM player_trophies pt WHERE pt.player_id = p.id AND pt.title = ?)",
+            [self.trophy_title],
+        )
+
+
 class LeagueCategory(Category):
     """Player must have a career stint at any first-team club in the league."""
 

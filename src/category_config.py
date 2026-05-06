@@ -7,7 +7,7 @@ Position prefixes match players.position using a LIKE prefix query.
 
 from __future__ import annotations
 
-from .categories import AgeCategory, Category, ClubCategory, ContainsLetterCategory, ContinentCategory, InitialCategory, LeagueCategory, MarketValueCategory, NationalityCategory, NonEuropeanNationalityCategory, PositionCategory
+from .categories import AgeCategory, Category, ClubCategory, ContainsLetterCategory, ContinentCategory, InitialCategory, LeagueCategory, MarketValueCategory, NationalityCategory, NonEuropeanNationalityCategory, PositionCategory, TrophyCategory
 
 
 CLUB_CATEGORIES: list[ClubCategory] = [
@@ -133,6 +133,20 @@ MARKET_VALUE_CATEGORIES: list[MarketValueCategory] = [
     MarketValueCategory("mv_low",  "Marktwert < 10 Mio. €",                         max_value=10_000_000,    difficulty=3),
 ]
 
+TROPHY_CATEGORIES: list[TrophyCategory] = [
+    TrophyCategory("trophy_ballon", "Gewinner Ballon d'Or", "Gewinner Ballon d'Or", difficulty=2),
+    TrophyCategory("trophy_world_cup", "Weltmeister", "Weltmeister", difficulty=1),
+    TrophyCategory("trophy_cl", "UEFA Champions League-Sieger", "UEFA Champions League-Sieger", difficulty=1),
+    TrophyCategory("trophy_liga", "Spanischer Meister", "Spanischer Meister", difficulty=1),
+    TrophyCategory("trophy_ligue1", "Französischer Meister", "Französischer Meister", difficulty=2),
+    TrophyCategory("trophy_copa", "Copa América-Sieger", "Copa América-Sieger", difficulty=2),
+    TrophyCategory("trophy_fifa_cwc", "FIFA-Klub-Weltmeister", "FIFA-Klub-Weltmeister", difficulty=2),
+    TrophyCategory("trophy_mls_cup", "MLS Cup Champion", "MLS Cup Champion", difficulty=3),
+    TrophyCategory("trophy_u20", "U20-Weltmeister", "U20-Weltmeister", difficulty=3),
+    TrophyCategory("trophy_olympic", "Olympiasieger", "Olympiasieger", difficulty=3),
+    TrophyCategory("trophy_leagues_cup", "Leagues-Cup-Sieger", "Leagues-Cup-Sieger", difficulty=3),
+]
+
 NON_EUROPEAN_CATEGORIES: list[NonEuropeanNationalityCategory] = [
     NonEuropeanNationalityCategory("nat_noneu", "Nicht-Europäer", difficulty=2),
 ]
@@ -241,6 +255,7 @@ ALL_CATEGORIES: list[Category] = [
     *CONTAINS_LETTER_CATEGORIES,
     *AGE_CATEGORIES,
     *MARKET_VALUE_CATEGORIES,
+    *TROPHY_CATEGORIES,
 ]
 
 CATEGORY_BY_ID: dict[str, Category] = {cat.id: cat for cat in ALL_CATEGORIES}

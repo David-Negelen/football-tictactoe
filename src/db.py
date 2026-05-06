@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional, Union
 
-from .models import CareerStint, ClubRecord, PlayerRecord, TransferRecord
+from .models import CareerStint, ClubRecord, PlayerRecord, TrophyRecord, TransferRecord
 
 
 class Database:
@@ -69,6 +69,17 @@ class Database:
                     market_value TEXT,
                     created_at TEXT NOT NULL,
                     UNIQUE(player_id, season, from_club, to_club),
+                    FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS player_trophies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    player_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    trophy_count INTEGER,
+                    source_url TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(player_id, title),
                     FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
                 );
 
@@ -219,6 +230,26 @@ class Database:
                         transfer.date_iso,
                         transfer.fee,
                         transfer.market_value,
+                        timestamp,
+                    ),
+                )
+
+    def replace_trophies(self, player_id: int, trophies: Iterable[TrophyRecord], created_at: datetime) -> None:
+        timestamp = created_at.astimezone(timezone.utc).isoformat()
+        with self.connect() as connection:
+            connection.execute("DELETE FROM player_trophies WHERE player_id = ?", (player_id,))
+            for trophy in trophies:
+                connection.execute(
+                    """
+                    INSERT INTO player_trophies (
+                        player_id, title, trophy_count, source_url, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        player_id,
+                        trophy.title,
+                        trophy.count,
+                        trophy.source_url,
                         timestamp,
                     ),
                 )

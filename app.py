@@ -5,11 +5,14 @@ import os
 import random
 
 from src.category_config import ALL_CATEGORIES, CATEGORY_BY_ID, CLUB_CATEGORIES
+from src.db import Database
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "tictactoe.db")
 
 app = Flask(__name__)
+
+Database(DB_PATH).initialize()
 
 VALID_COLS = {
     "name", "current_club_name", "nationality", "position",
@@ -206,6 +209,10 @@ _CAT_ICONS: dict[str, str] = {
     "cont_letter_q": "🔠",
     "age_u23": "🌱", "age_2430": "⚡", "age_30p": "🎖️",
     "mv_high": "💰", "mv_mid": "💵", "mv_low": "💶",
+    "trophy_ballon": "🏅", "trophy_world_cup": "🏆", "trophy_cl": "🏆",
+    "trophy_liga": "🥇", "trophy_ligue1": "🥇", "trophy_copa": "🏆",
+    "trophy_fifa_cwc": "🏆", "trophy_mls_cup": "🏆", "trophy_u20": "🥇",
+    "trophy_olympic": "🥇", "trophy_leagues_cup": "🏆",
     "pos_gk": "🧤", "pos_def": "🛡️", "pos_mid": "⚽",
     "pos_fwd": "⚡", "pos_cb": "🛡️", "pos_lb": "◀️",
     "pos_rb": "▶️", "pos_dm": "🧲", "pos_cm": "⚙️",
