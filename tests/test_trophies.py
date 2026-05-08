@@ -14,8 +14,8 @@ def test_scraper_parses_trophies_from_profile_and_achievements() -> None:
     profile_html = """
     <html>
       <body>
-        <a href="/lionel-messi/erfolge/spieler/28003">Weltfußballer 4</a>
-        <a href="/lionel-messi/erfolge/spieler/28003">Gewinner Ballon d'Or 8</a>
+        <a href="/lionel-messi/erfolge/spieler/28003"><img alt="Weltfußballer" />4</a>
+        <a href="/lionel-messi/erfolge/spieler/28003"><img alt="Gewinner Ballon d'Or" />8</a>
         <a href="/lionel-messi/erfolge/spieler/28003">Alle Titel & Erfolge</a>
       </body>
     </html>

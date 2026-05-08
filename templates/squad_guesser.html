@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Squad Guesser</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --green:  #4ade80;
+      --yellow: #fbbf24;
+      --gray:   #475569;
+      --bg:     #0f172a;
+      --card:   #1e293b;
+      --border: #334155;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      background-image: radial-gradient(ellipse at 50% 0%, #1e3a5f44 0%, transparent 70%);
+      min-height: 100vh; color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    /* ══════════════ PITCH ══════════════ */
+    .pitch {
+      background: linear-gradient(180deg, #1a6b2a 0%, #1f7d31 50%, #1a6b2a 100%);
+      background-image:
+        linear-gradient(180deg, #1a6b2a 0%, #1f7d31 50%, #1a6b2a 100%),
+        repeating-linear-gradient(0deg, transparent, transparent 60px, rgba(0,0,0,.06) 60px, rgba(0,0,0,.06) 120px);
+      background-blend-mode: normal;
+      border: 2px solid #15532d;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.07);
+      position: relative; overflow: hidden;
+    }
+    .pitch::before {
+      content:''; position:absolute; left:8%; right:8%; top:50%;
+      height:1px; background:rgba(255,255,255,.12);
+    }
+    .pitch::after {
+      content:''; position:absolute; left:50%; top:50%;
+      transform:translate(-50%,-50%);
+      width:80px; height:80px; border-radius:50%;
+      border:1px solid rgba(255,255,255,.12);
+    }
+
+    /* ══════════════ JERSEY ══════════════ */
+    .jersey-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      cursor: pointer; user-select: none;
+      padding: 4px;
+      border-radius: 12px;
+      transition: background .15s, transform .15s;
+    }
+    .jersey-wrap:hover { background: rgba(255,255,255,.08); transform: translateY(-2px); }
+    .jersey-wrap.active { background: rgba(99,179,237,.15); }
+    .jersey-wrap.correct { cursor: default; }
+    .jersey-wrap.correct:hover { transform: none; background: rgba(74,222,128,.08); }
+    .jersey-wrap.missed  { cursor: default; opacity: .75; }
+    .jersey-wrap.missed:hover { transform: none; }
+
+    .shirt { position:relative; transition: filter .15s, transform .15s; }
+    .jersey-wrap:hover .shirt    { filter: brightness(1.15); }
+    .jersey-wrap.active .shirt   { filter: brightness(1.25) drop-shadow(0 0 8px rgba(99,179,237,.6)); }
+    .jersey-wrap.correct .shirt  { filter: drop-shadow(0 0 6px rgba(74,222,128,.7)); }
+    .jersey-wrap.missed .shirt   { filter: grayscale(.7) brightness(.6); }
+
+    .player-label { margin-top:4px; text-align:center; }
+    .player-dots  { font-family:monospace; letter-spacing:2px; color:rgba(255,255,255,.7); }
+    .player-name-text { font-weight:700; line-height:1.2; max-width:80px; word-break:break-word; }
+    .try-pips { display:flex; gap:2px; justify-content:center; margin-top:3px; }
+    .pip { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.2); transition:background .2s; }
+    .pip.used { background:#f87171; }
+
+    /* ══════════════ TEAM TABS ══════════════ */
+    .team-tab {
+      flex: 1; padding: 10px 8px; border-radius: 12px; cursor: pointer;
+      border: 2px solid transparent; transition: border-color .2s, background .2s;
+      text-align: center; user-select: none;
+    }
+    .team-tab.active { border-color: rgba(99,179,237,.6); background: rgba(99,179,237,.08); }
+    .team-tab:not(.active):hover { background: rgba(255,255,255,.05); }
+
+    /* ══════════════ WORDLE ══════════════ */
+    .wordle-cell {
+      width: var(--cs, 52px); height: var(--cs, 52px);
+      border: 2px solid var(--border);
+      display:flex; align-items:center; justify-content:center;
+      font-size: calc(var(--cs, 52px) * 0.48);
+      font-weight:900; color:#fff; text-transform:uppercase;
+      border-radius: 8px;
+      transition: border-color .1s, background .3s;
+      background: var(--card);
+    }
+    .wordle-cell.filled { border-color: #64748b; }
+    .wordle-cell.green  { background:#15803d; border-color:#15803d; }
+    .wordle-cell.yellow { background:#a16207; border-color:#a16207; }
+    .wordle-cell.gray   { background:#1e293b; border-color:#334155; }
+
+    @keyframes pop {
+      0%  { transform:scale(.85); } 40%{ transform:scale(1.12); } 100%{ transform:scale(1); }
+    }
+    .wordle-cell.pop { animation: pop .18s ease forwards; }
+
+    @keyframes flip {
+      0%  { transform:rotateX(0); }
+      49% { transform:rotateX(-90deg); }
+      50% { transform:rotateX(-90deg); }
+      100%{ transform:rotateX(0); }
+    }
+    .wordle-cell.flip-0 { animation: flip .5s ease .00s both; }
+    .wordle-cell.flip-1 { animation: flip .5s ease .08s both; }
+    .wordle-cell.flip-2 { animation: flip .5s ease .16s both; }
+    .wordle-cell.flip-3 { animation: flip .5s ease .24s both; }
+    .wordle-cell.flip-4 { animation: flip .5s ease .32s both; }
+    .wordle-cell.flip-5 { animation: flip .5s ease .40s both; }
+    .wordle-cell.flip-6 { animation: flip .5s ease .48s both; }
+    .wordle-cell.flip-7 { animation: flip .5s ease .56s both; }
+
+    @keyframes shake {
+      0%,100%{transform:translateX(0)} 15%{transform:translateX(-7px)}
+      30%{transform:translateX(7px)}   45%{transform:translateX(-5px)}
+      60%{transform:translateX(5px)}   75%{transform:translateX(-3px)} 90%{transform:translateX(3px)}
+    }
+    .shake { animation: shake .4s ease; }
+
+    .key {
+      background: #334155;
+      color: #fff; border: none; border-radius: 8px;
+      font-weight: 700; font-size: 14px;
+      cursor: pointer; user-select: none;
+      display: flex; align-items: center; justify-content: center;
+      height: 58px; min-width: 38px; flex: 1;
+      box-shadow: 0 2px 0 #1e293b;
+      transition: background .15s, transform .08s, box-shadow .08s;
+    }
+    .key:active { transform:translateY(2px); box-shadow: none; }
+    .key.wide   { min-width: 64px; font-size: 12px; flex: 1.6; }
+    .key.k-green  { background: #15803d; box-shadow: 0 2px 0 #0f5929; }
+    .key.k-yellow { background: #a16207; box-shadow: 0 2px 0 #71430a; }
+    .key.k-gray   { background: #1e293b; box-shadow: 0 2px 0 #0f172a; color:#64748b; }
+
+    .nav-btn {
+      background: rgba(255,255,255,.06); border: 1px solid var(--border);
+      color: #94a3b8; border-radius: 999px; font-size:13px; font-weight:600;
+      padding: 6px 14px; cursor:pointer; transition: background .15s, color .15s;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,.12); color:#fff; }
+
+    .action-btn {
+      font-weight: 700; border-radius: 999px; border: none; cursor: pointer;
+      padding: 8px 20px; font-size: 13px; transition: filter .15s, transform .1s;
+    }
+    .action-btn:hover  { filter: brightness(1.12); }
+    .action-btn:active { transform: scale(.96); }
+
+    @keyframes jersey-pop {
+      0%{transform:scale(.7);opacity:0} 60%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1}
+    }
+    .jersey-appear { animation: jersey-pop .3s ease forwards; }
+
+    .progress-bar-track { background: #1e293b; border-radius: 999px; height: 4px; overflow: hidden; }
+    .progress-bar-fill  { height: 100%; border-radius: 999px; transition: width .4s ease; }
+  </style>
+</head>
+<body class="flex flex-col items-center py-5 px-3">
+
+<!-- ══════════════════════════ PITCH VIEW ════════════════════════════════════ -->
+<div id="view-pitch" class="w-full max-w-lg flex flex-col items-center gap-3">
+
+  <!-- Top nav -->
+  <div class="w-full flex justify-between items-center">
+    <div class="flex gap-2">
+      <a href="/" class="nav-btn">← DB</a>
+      <a href="/game" class="nav-btn">Tiki-Taka-Toe</a>
+    </div>
+    <button id="btn-new" class="action-btn" style="background:#3b82f6">New Game</button>
+  </div>
+
+  <!-- Match header -->
+  <div id="match-header" class="hidden w-full bg-slate-800/60 backdrop-blur rounded-2xl border border-slate-700 px-4 py-3 text-center">
+    <div id="header-competition" class="text-blue-400 font-semibold text-xs uppercase tracking-widest mb-0.5"></div>
+    <div id="header-date" class="text-slate-400 text-xs"></div>
+  </div>
+
+  <!-- Team tabs -->
+  <div id="team-tabs" class="hidden w-full flex gap-2">
+    <div id="tab-home" class="team-tab active" onclick="switchTeam('home')">
+      <div id="tab-home-name" class="font-black text-sm leading-tight"></div>
+      <div id="tab-home-score" class="text-slate-400 text-xs mt-1">0/11</div>
+      <div class="progress-bar-track mt-2">
+        <div id="tab-home-bar" class="progress-bar-fill bg-blue-500" style="width:0%"></div>
+      </div>
+    </div>
+    <div id="tab-away" class="team-tab" onclick="switchTeam('away')">
+      <div id="tab-away-name" class="font-black text-sm leading-tight"></div>
+      <div id="tab-away-score" class="text-slate-400 text-xs mt-1">0/11</div>
+      <div class="progress-bar-track mt-2">
+        <div id="tab-away-bar" class="progress-bar-fill bg-blue-500" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="text-slate-500 text-sm mt-24 animate-pulse">Loading match…</div>
+
+  <!-- Pitch -->
+  <div id="pitch" class="hidden pitch w-full py-5 px-3">
+    <div id="row-fwd" class="flex justify-center gap-2 mb-4 min-h-[96px] items-end"></div>
+    <div id="row-mid" class="flex justify-center gap-2 mb-4 min-h-[96px] items-end"></div>
+    <div id="row-def" class="flex justify-center gap-2 mb-4 min-h-[96px] items-end"></div>
+    <div id="row-gk"  class="flex justify-center gap-2 mb-1 min-h-[96px] items-end"></div>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls" class="hidden w-full flex gap-2 justify-end">
+    <button id="btn-solve" class="action-btn" style="background:#475569">Solve All</button>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════ WORDLE VIEW ═══════════════════════════════════ -->
+<div id="view-wordle" class="hidden w-full max-w-lg flex flex-col items-center gap-4">
+
+  <div class="w-full flex items-center justify-between">
+    <button id="btn-back" class="nav-btn flex items-center gap-1.5">← Back</button>
+    <div id="w-info" class="text-slate-400 font-semibold text-sm"></div>
+    <div id="w-tries" class="text-slate-500 text-sm font-bold"></div>
+  </div>
+
+  <div id="wordle-grid" class="flex flex-col gap-2 items-center"></div>
+  <div id="w-msg" class="text-center font-bold text-base h-6"></div>
+
+  <div class="w-full flex flex-col gap-1.5 max-w-md px-1">
+    <div class="flex gap-1" id="kb-row-1"></div>
+    <div class="flex gap-1" id="kb-row-2"></div>
+    <div class="flex gap-1" id="kb-row-3"></div>
+  </div>
+
+</div>
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const MAX_TRIES = 6;
+const KB_ROWS = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['DELETE','Z','X','C','V','B','N','M','ENTER'],
+];
+const GK_COLOUR = ['#ca8a04','#78350f'];
+
+// ─── Game state ───────────────────────────────────────────────────────────────
+const g = {
+  match: {},
+  teams: {
+    home: { name:'', colourPrimary:'', colourSecondary:'', players:[], states:[] },
+    away: { name:'', colourPrimary:'', colourSecondary:'', players:[], states:[] },
+  },
+  active: 'home',
+};
+const w = { team: null, idx: null, target:'', current:'', keyStates:{} };
+
+// ─── Load ─────────────────────────────────────────────────────────────────────
+async function loadGame() {
+  showPitch();
+  document.getElementById('loading').classList.remove('hidden');
+  ['pitch','controls','match-header','team-tabs'].forEach(id => document.getElementById(id).classList.add('hidden'));
+
+  const resp = await fetch('/api/squad-guesser/game');
+  const data = await resp.json();
+  if (!resp.ok || data.error) {
+    document.getElementById('loading').textContent = data.error || 'Error – try again.';
+    return;
+  }
+
+  g.match = data.match;
+  for (const side of ['home','away']) {
+    g.teams[side].name            = data[side].name;
+    g.teams[side].colourPrimary   = data[side].colour_primary;
+    g.teams[side].colourSecondary = data[side].colour_secondary;
+    g.teams[side].players         = data[side].players;
+    g.teams[side].states          = data[side].players.map(() => ({ tries:0, status:'pending', guesses:[], colors:[] }));
+  }
+  g.active = 'home';
+  document.getElementById('tab-home').classList.add('active');
+  document.getElementById('tab-away').classList.remove('active');
+
+  document.getElementById('loading').classList.add('hidden');
+
+  document.getElementById('header-competition').textContent = g.match.competition;
+  document.getElementById('header-date').textContent        = g.match.date + (g.match.venue ? ' · ' + g.match.venue : '');
+  document.getElementById('match-header').classList.remove('hidden');
+
+  document.getElementById('tab-home-name').textContent = g.teams.home.name;
+  document.getElementById('tab-away-name').textContent = g.teams.away.name;
+  document.getElementById('team-tabs').classList.remove('hidden');
+
+  renderPitch();
+  document.getElementById('pitch').classList.remove('hidden');
+  document.getElementById('controls').classList.remove('hidden');
+  updateTabScores();
+}
+
+// ─── Jersey SVG ───────────────────────────────────────────────────────────────
+function shirtSvg(primary, secondary, num, isGk, sw=64, sh=56) {
+  const [fill, sleeve] = isGk ? GK_COLOUR : [primary, secondary];
+  return `<div style="position:relative;width:${sw}px;height:${sh}px;flex-shrink:0">
+    <svg viewBox="0 0 80 72" style="width:100%;height:100%" fill="${fill}">
+      <path d="M22 4 L10 14 L2 36 L18 42 L18 68 L62 68 L62 42 L78 36 L70 14 L58 4
+               C54 14 46 18 40 18 C34 18 26 14 22 4 Z"/>
+      <path fill="${sleeve}" opacity=".45"
+        d="M22 4 L10 14 L18 18 L18 42 L26 42 L26 18 C30 20 35 22 40 22
+           C45 22 50 20 54 18 L54 42 L62 42 L62 18 L70 14 L58 4
+           C54 14 46 18 40 18 C34 18 26 14 22 4 Z"/>
+    </svg>
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+                font-weight:900;font-size:${Math.round(sh*0.3)}px;color:#fff;
+                text-shadow:0 1px 4px rgba(0,0,0,.8);padding-top:${Math.round(sh*0.08)}px">
+      ${num != null && num !== '' ? num : '?'}
+    </div>
+  </div>`;
+}
+
+// ─── Pitch render ─────────────────────────────────────────────────────────────
+function renderPitch() {
+  const team = g.teams[g.active];
+  const rows = {
+    fwd: document.getElementById('row-fwd'),
+    mid: document.getElementById('row-mid'),
+    def: document.getElementById('row-def'),
+    gk:  document.getElementById('row-gk'),
+  };
+  Object.values(rows).forEach(el => el.innerHTML = '');
+  team.players.forEach((p, i) => {
+    const el = makeJersey(p, i, team.colourPrimary, team.colourSecondary, team.states[i]);
+    if (rows[p.row]) rows[p.row].appendChild(el);
+  });
+}
+
+function makeJersey(p, i, primary, secondary, s) {
+  const isGk = p.row === 'gk';
+  const done  = s.status !== 'pending';
+
+  let nameHtml;
+  if (s.status === 'correct') {
+    nameHtml = `<div class="player-name-text text-green-400 text-xs">${esc(p.name)}</div>`;
+  } else if (s.status === 'missed') {
+    nameHtml = `<div class="player-name-text text-red-400 text-xs">${esc(p.name)}</div>`;
+  } else {
+    const dots = p.name.split(' ').map(word => '·'.repeat(word.replace(/-/g,'').length)).join(' ');
+    nameHtml = `<div class="player-dots text-xs">${esc(dots)}</div>`;
+  }
+  const pips = Array.from({length:MAX_TRIES}, (_,k) =>
+    `<span class="pip${k < s.tries ? ' used' : ''}"></span>`).join('');
+
+  const el = document.createElement('div');
+  el.className = `jersey-wrap ${done ? s.status : ''}`;
+  el.dataset.idx  = i;
+  el.dataset.team = g.active;
+  el.innerHTML = shirtSvg(primary, secondary, p.jersey, isGk) +
+    `<div class="player-label"><div class="try-pips">${pips}</div>${nameHtml}</div>`;
+  if (!done) el.addEventListener('click', () => openWordle(g.active, i));
+  return el;
+}
+
+function refreshJersey(team, idx) {
+  const el = document.querySelector(`.jersey-wrap[data-team="${team}"][data-idx="${idx}"]`);
+  if (!el) return;
+  const t = g.teams[team];
+  el.replaceWith(makeJersey(t.players[idx], idx, t.colourPrimary, t.colourSecondary, t.states[idx]));
+}
+
+function updateTabScores() {
+  for (const side of ['home','away']) {
+    const states  = g.teams[side].states;
+    const correct = states.filter(s => s.status === 'correct').length;
+    const done    = states.filter(s => s.status !== 'pending').length;
+    const total   = states.length;
+    const el      = document.getElementById(`tab-${side}-score`);
+    const bar     = document.getElementById(`tab-${side}-bar`);
+    if (el)  el.textContent = `${correct}/${total}`;
+    if (bar) bar.style.width = `${Math.round(done / total * 100)}%`;
+  }
+}
+
+function switchTeam(side) {
+  if (g.active === side) return;
+  g.active = side;
+  document.getElementById('tab-home').classList.toggle('active', side === 'home');
+  document.getElementById('tab-away').classList.toggle('active', side === 'away');
+  renderPitch();
+}
+
+function showPitch() {
+  document.getElementById('view-pitch').classList.remove('hidden');
+  document.getElementById('view-wordle').classList.add('hidden');
+}
+function showWordle() {
+  document.getElementById('view-pitch').classList.add('hidden');
+  document.getElementById('view-wordle').classList.remove('hidden');
+}
+
+// ─── Wordle open / close ──────────────────────────────────────────────────────
+function openWordle(team, idx) {
+  w.team    = team;
+  w.idx     = idx;
+  w.current = '';
+  w.target  = targetFor(g.teams[team].players[idx]);
+  rebuildKeyStates(g.teams[team].states[idx]);
+  updateWordleHeader();
+  renderGrid();
+  renderKeyboard();
+  setMsg('');
+  showWordle();
+}
+
+function closeWordle(skipRefresh) {
+  const prevTeam = w.team;
+  const prevIdx  = w.idx;
+  w.team = null; w.idx = null;
+  showPitch();
+  if (prevIdx !== null && !skipRefresh) refreshJersey(prevTeam, prevIdx);
+}
+
+function updateWordleHeader() {
+  const p = g.teams[w.team].players[w.idx];
+  const s = g.teams[w.team].states[w.idx];
+  document.getElementById('w-info').textContent  = posGroup(p.position);
+  document.getElementById('w-tries').textContent = `${MAX_TRIES - s.tries} tries left`;
+}
+
+// ─── Wordle logic ─────────────────────────────────────────────────────────────
+function targetFor(player) {
+  if (player.guess_name) {
+    return player.guess_name.normalize('NFD').replace(/[̀-ͯ]/g,'')
+      .toUpperCase().replace(/[^A-Z]/g,'');
+  }
+  return normalizeWord(player.name);
+}
+
+function normalizeWord(name) {
+  return name.trim().split(' ').pop()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .toUpperCase().replace(/[^A-Z]/g,'');
+}
+
+function getColors(guess, target) {
+  const result = Array(target.length).fill('gray');
+  const pool   = {};
+  for (let i = 0; i < target.length; i++) {
+    if (guess[i] === target[i]) result[i] = 'green';
+    else pool[target[i]] = (pool[target[i]] || 0) + 1;
+  }
+  for (let i = 0; i < target.length; i++) {
+    if (result[i] !== 'green' && pool[guess[i]] > 0) { result[i] = 'yellow'; pool[guess[i]]--; }
+  }
+  return result;
+}
+
+function rebuildKeyStates(s) {
+  w.keyStates = {};
+  s.guesses.forEach((guess,r) => {
+    const colors = s.colors[r];
+    guess.split('').forEach((letter,c) => {
+      const prev = w.keyStates[letter], color = colors[c];
+      if (!prev || (prev === 'yellow' && color === 'green')) w.keyStates[letter] = color;
+    });
+  });
+}
+
+function addLetter(letter) {
+  if (w.current.length < w.target.length) {
+    w.current += letter;
+    const s   = g.teams[w.team].states[w.idx];
+    const col  = w.current.length - 1;
+    const cell = document.querySelector(`#wrow-${s.guesses.length} .wordle-cell:nth-child(${col+1})`);
+    if (cell) { cell.textContent = letter; cell.classList.add('filled'); cell.classList.remove('pop'); void cell.offsetWidth; cell.classList.add('pop'); }
+  }
+}
+function deleteLetter() {
+  if (w.current.length > 0) {
+    const s   = g.teams[w.team].states[w.idx];
+    const col  = w.current.length - 1;
+    const cell = document.querySelector(`#wrow-${s.guesses.length} .wordle-cell:nth-child(${col+1})`);
+    if (cell) { cell.textContent = ''; cell.classList.remove('filled','pop'); }
+    w.current = w.current.slice(0,-1);
+  }
+}
+function submitGuess() {
+  const s = g.teams[w.team].states[w.idx];
+  if (s.status !== 'pending') return;
+  if (w.current.length < w.target.length) { shakeRow(s.guesses.length); setMsg('Not enough letters'); return; }
+
+  const guess  = w.current;
+  const colors = getColors(guess, w.target);
+  s.guesses.push(guess); s.colors.push(colors);
+  s.tries = s.guesses.length;
+  w.current = '';
+  rebuildKeyStates(s);
+
+  flipRow(s.guesses.length - 1, colors);
+  renderKeyboard();
+  updateWordleHeader();
+
+  const delay = w.target.length * 80 + 200;
+
+  if (guess === w.target) {
+    s.status = 'correct';
+    setMsg('✓ Correct!', '#4ade80');
+    updateTabScores();
+    setTimeout(closeWordle, delay + 800);
+  } else if (s.tries >= MAX_TRIES) {
+    s.status = 'missed';
+    setMsg(`Answer: ${w.target}`, '#f87171');
+    updateTabScores();
+    setTimeout(closeWordle, delay + 1200);
+  } else {
+    setTimeout(() => setMsg(''), delay + 200);
+  }
+}
+
+// ─── Grid render ──────────────────────────────────────────────────────────────
+function renderGrid() {
+  const s   = g.teams[w.team].states[w.idx];
+  const n   = w.target.length;
+  const maxW = Math.min(window.innerWidth - 32, 512);
+  const cs   = Math.min(56, Math.max(28, Math.floor((maxW - (n-1)*8) / n)));
+
+  const grid = document.getElementById('wordle-grid');
+  grid.innerHTML = '';
+  grid.style.setProperty('--cs', cs + 'px');
+
+  for (let row = 0; row < MAX_TRIES; row++) {
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'flex gap-2'; rowDiv.id = `wrow-${row}`;
+    for (let col = 0; col < n; col++) {
+      const cell = document.createElement('div');
+      cell.className = 'wordle-cell';
+      if (row < s.guesses.length) {
+        cell.textContent = s.guesses[row][col];
+        cell.classList.add(s.colors[row][col]);
+      }
+      rowDiv.appendChild(cell);
+    }
+    grid.appendChild(rowDiv);
+  }
+}
+
+function flipRow(rowIdx, colors) {
+  const rowEl = document.getElementById(`wrow-${rowIdx}`);
+  if (!rowEl) return;
+  rowEl.querySelectorAll('.wordle-cell').forEach((cell, col) => {
+    cell.classList.add(`flip-${col}`);
+    setTimeout(() => {
+      cell.classList.remove('filled');
+      cell.classList.add(colors[col]);
+    }, col * 80 + 250);
+  });
+}
+
+function shakeRow(rowIdx) {
+  const rowEl = document.getElementById(`wrow-${rowIdx}`);
+  if (!rowEl) return;
+  rowEl.classList.remove('shake'); void rowEl.offsetWidth; rowEl.classList.add('shake');
+}
+
+function setMsg(msg, color) {
+  const el = document.getElementById('w-msg');
+  el.textContent = msg;
+  el.style.color = color || '#94a3b8';
+}
+
+// ─── Keyboard ─────────────────────────────────────────────────────────────────
+function renderKeyboard() {
+  KB_ROWS.forEach((row, ri) => {
+    const el = document.getElementById(`kb-row-${ri+1}`);
+    el.innerHTML = '';
+    row.forEach(letter => {
+      const btn = document.createElement('button');
+      btn.className = 'key' + (letter.length > 1 ? ' wide' : '');
+      btn.textContent = letter === 'DELETE' ? '⌫' : letter;
+      const st = w.keyStates[letter];
+      if (st === 'green')        btn.classList.add('k-green');
+      else if (st === 'yellow')  btn.classList.add('k-yellow');
+      else if (st === 'gray')    btn.classList.add('k-gray');
+      btn.addEventListener('pointerdown', e => { e.preventDefault(); handleKey(letter); });
+      el.appendChild(btn);
+    });
+  });
+}
+function handleKey(key) {
+  if (key === 'DELETE') deleteLetter();
+  else if (key === 'ENTER') submitGuess();
+  else addLetter(key);
+}
+document.addEventListener('keydown', e => {
+  if (document.getElementById('view-wordle').classList.contains('hidden')) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Enter')     { submitGuess(); return; }
+  if (e.key === 'Backspace') { deleteLetter(); return; }
+  const l = e.key.toUpperCase();
+  if (/^[A-Z]$/.test(l)) addLetter(l);
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function posGroup(pos) {
+  if (!pos) return 'Player';
+  const l = pos.toLowerCase();
+  if (l.includes('goalkeeper')) return 'Goalkeeper';
+  if (l.includes('defender'))   return 'Defender';
+  if (l.includes('midfielder')) return 'Midfielder';
+  if (l.includes('forward'))    return 'Forward';
+  return 'Player';
+}
+function esc(v) {
+  if (v == null) return '';
+  const d = document.createElement('div');
+  d.textContent = String(v);
+  return d.innerHTML;
+}
+
+// ─── Solve ────────────────────────────────────────────────────────────────────
+document.getElementById('btn-solve').addEventListener('click', () => {
+  if (w.idx !== null) { closeWordle(true); }
+  for (const side of ['home','away']) {
+    g.teams[side].states.forEach(s => {
+      if (s.status === 'pending') { s.status = 'missed'; s.tries = MAX_TRIES; }
+    });
+  }
+  renderPitch();
+  updateTabScores();
+});
+
+// ─── Buttons ──────────────────────────────────────────────────────────────────
+document.getElementById('btn-back').addEventListener('click', closeWordle);
+document.getElementById('btn-new').addEventListener('click', loadGame);
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+loadGame();
+</script>
+</body>
+</html>

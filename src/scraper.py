@@ -209,18 +209,33 @@ class TransfermarktScraper:
 
     def _fetch_trophies(self, player_id: str, profile_html: str, player_url: str) -> list[TrophyRecord]:
         trophies = self._extract_profile_trophies(profile_html, player_url)
-        try:
-            result = self._http.get_html(f"{BASE_URL}/erfolge/spieler/{player_id}")
-        except Exception:
-            return self._dedupe_trophies(trophies)
-        trophies.extend(self._extract_achievement_trophies(result.html, result.final_url))
+
+        # The dedicated /erfolge/ page has the complete trophy list; /profil/ only shows a few
+        trophy_url = re.sub(r'/profil/spieler/', '/erfolge/spieler/', player_url)
+        if trophy_url == player_url:
+            # Already on the trophy page (e.g. called with an /erfolge/ URL directly)
+            trophies.extend(self._extract_achievement_trophies(profile_html, player_url))
+        else:
+            try:
+                result = self._http.get_html(trophy_url)
+                trophies.extend(self._extract_achievement_trophies(result.html, trophy_url))
+            except Exception:
+                pass
+
         return self._dedupe_trophies(trophies)
 
     def _extract_profile_trophies(self, html: str, player_url: str) -> list[TrophyRecord]:
         soup = BeautifulSoup(html, "html.parser")
         trophies: list[TrophyRecord] = []
         for link in soup.select('a[href*="/erfolge/spieler/"]'):
-            title, count = self._parse_trophy_text(link.get_text(" ", strip=True))
+            title = None
+            img = link.find("img")
+            if img is not None:
+                title = img.get("alt") or img.get("title") or None
+            if not title:
+                title, _ = self._parse_trophy_text(link.get_text(" ", strip=True))
+            count_text = link.get_text(" ", strip=True)
+            count = self._parse_int(count_text)
             if not title or count is None:
                 continue
             trophies.append(TrophyRecord(title=title, count=count, source_url=player_url))

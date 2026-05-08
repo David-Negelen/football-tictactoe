@@ -94,6 +94,24 @@ class Database:
                     FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS match_lineups (
+                    espn_id            TEXT PRIMARY KEY,
+                    league_id          TEXT NOT NULL,
+                    competition        TEXT NOT NULL,
+                    date               TEXT NOT NULL,
+                    date_display       TEXT NOT NULL,
+                    venue              TEXT,
+                    home_name          TEXT NOT NULL,
+                    home_colour_primary   TEXT NOT NULL,
+                    home_colour_secondary TEXT NOT NULL,
+                    home_xi            TEXT NOT NULL,
+                    away_name          TEXT NOT NULL,
+                    away_colour_primary   TEXT NOT NULL,
+                    away_colour_secondary TEXT NOT NULL,
+                    away_xi            TEXT NOT NULL,
+                    imported_at        TEXT DEFAULT (datetime('now'))
+                );
+
                 CREATE TABLE IF NOT EXISTS scrape_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     club_url TEXT NOT NULL,

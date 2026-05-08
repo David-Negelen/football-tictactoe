@@ -4,8 +4,11 @@ import unicodedata
 import os
 import random
 
+import json as _json
+
 from src.category_config import ALL_CATEGORIES, CATEGORY_BY_ID, CLUB_CATEGORIES
 from src.db import Database
+from src.famous_matches import get_random_match
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "tictactoe.db")
@@ -361,6 +364,68 @@ def api_game_validate():
     finally:
         db.close()
     return jsonify({"valid": valid, "player": dict(player) if player else None})
+
+
+
+@app.route("/squad-guesser")
+def squad_guesser():
+    return render_template("squad_guesser.html")
+
+
+@app.route("/api/squad-guesser/game")
+def api_squad_guesser_game():
+    db = get_db()
+    try:
+        row = db.execute(
+            "SELECT * FROM match_lineups ORDER BY RANDOM() LIMIT 1"
+        ).fetchone()
+    except Exception:
+        row = None
+    finally:
+        db.close()
+
+    if row:
+        return jsonify({
+            "match": {
+                "competition": row["competition"],
+                "date": row["date_display"],
+                "venue": row["venue"] or "",
+            },
+            "home": {
+                "name": row["home_name"],
+                "colour_primary": row["home_colour_primary"],
+                "colour_secondary": row["home_colour_secondary"],
+                "players": _json.loads(row["home_xi"]),
+            },
+            "away": {
+                "name": row["away_name"],
+                "colour_primary": row["away_colour_primary"],
+                "colour_secondary": row["away_colour_secondary"],
+                "players": _json.loads(row["away_xi"]),
+            },
+        })
+
+    # Fallback to hardcoded famous matches if DB is empty
+    m = get_random_match()
+    return jsonify({
+        "match": {
+            "competition": m["competition"],
+            "date": m["date"],
+            "venue": m["venue"],
+        },
+        "home": {
+            "name": m["home"]["name"],
+            "colour_primary": m["home"]["colour_primary"],
+            "colour_secondary": m["home"]["colour_secondary"],
+            "players": m["home"]["xi"],
+        },
+        "away": {
+            "name": m["away"]["name"],
+            "colour_primary": m["away"]["colour_primary"],
+            "colour_secondary": m["away"]["colour_secondary"],
+            "players": m["away"]["xi"],
+        },
+    })
 
 
 @app.route("/combos")

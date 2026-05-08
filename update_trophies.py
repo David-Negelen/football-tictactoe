@@ -8,8 +8,15 @@ into SQLite.
 Usage:
     python3 update_trophies.py [--db data/tictactoe.db] [--delay 1.5] [--limit N]
 """
-
 from __future__ import annotations
+
+# Bootstrap venv site-packages so the script works regardless of how it's invoked.
+import sys as _sys
+from pathlib import Path as _Path
+_site = next(iter(sorted(_Path(__file__).parent.glob(".venv/lib/python*/site-packages"))), None)
+if _site and str(_site) not in _sys.path:
+    _sys.path.insert(0, str(_site))
+del _sys, _Path, _site
 
 import argparse
 from datetime import datetime, timezone
@@ -26,6 +33,7 @@ def main() -> int:
     parser.add_argument("--db", default="data/tictactoe.db")
     parser.add_argument("--delay", type=float, default=1.5, help="Seconds between requests")
     parser.add_argument("--limit", type=int, default=None, help="Max players to update (for testing)")
+    parser.add_argument("--start-id", type=int, default=None, help="Resume from this player ID (inclusive)")
     args = parser.parse_args()
 
     db_path = Path(args.db)
@@ -38,9 +46,15 @@ def main() -> int:
     scraper = TransfermarktScraper()
 
     with database.connect() as conn:
-        rows = conn.execute(
-            "SELECT id, name, source_url FROM players WHERE source_url IS NOT NULL ORDER BY id"
-        ).fetchall()
+        if args.start_id:
+            rows = conn.execute(
+                "SELECT id, name, source_url FROM players WHERE source_url IS NOT NULL AND id >= ? ORDER BY id",
+                (args.start_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, name, source_url FROM players WHERE source_url IS NOT NULL ORDER BY id"
+            ).fetchall()
 
     if args.limit:
         rows = rows[: args.limit]
