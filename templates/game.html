@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tiki-Taka-Toe</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    body { background: #14532d; min-height: 100vh; }
+    body { background: #14532d; min-height: 100vh; font-family: 'Inter', system-ui, sans-serif; }
     .cell-btn { transition: transform .12s, filter .12s; }
     .cell-btn:not(:disabled):hover { transform: scale(1.04); filter: brightness(1.15); }
     .cell-btn:disabled { cursor: default; }
@@ -24,31 +26,29 @@
     .diff-btn { transition: background .15s, color .15s; }
   </style>
 </head>
-<body class="flex flex-col items-center min-h-screen py-5 px-2">
+<body class="flex flex-col min-h-screen">
 
-  <!-- Nav -->
-  <div class="w-full max-w-xl mb-3 flex justify-between items-center px-1">
+  <header class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between shadow-lg flex-shrink-0">
     <div class="flex items-center gap-3">
-      <a href="/" class="text-green-300 hover:text-white text-sm transition-colors">← DB Explorer</a>
-      <a href="/combos" class="text-green-300 hover:text-white text-sm transition-colors">🔗 Combos</a>
-      <a href="/squad-guesser" class="text-green-300 hover:text-white text-sm transition-colors">👕 Squad Guesser</a>
+      <a href="/" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">← DB Explorer</a>
+      <span class="text-slate-700 select-none">|</span>
+      <a href="/combos" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">Club Combos</a>
+      <span class="text-slate-700 select-none">|</span>
+      <a href="/squad-guesser" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">Squad Guesser</a>
     </div>
     <div class="flex items-center gap-2">
-      <!-- Schwierigkeitsgrad -->
-      <div class="flex rounded-full overflow-hidden border border-green-600 text-xs font-bold">
-        <button data-diff="1"
-          class="diff-btn px-3 py-1.5 bg-green-900 text-green-300 hover:text-white">Leicht</button>
-        <button data-diff="2"
-          class="diff-btn px-3 py-1.5 bg-green-900 text-green-300 hover:text-white border-x border-green-600">Mittel</button>
-        <button data-diff="3"
-          class="diff-btn px-3 py-1.5 bg-yellow-500 text-green-900">Schwer</button>
+      <div class="flex rounded-lg overflow-hidden border border-slate-600">
+        <button data-diff="1" class="diff-btn px-2.5 py-1 text-xs font-semibold bg-slate-700 text-slate-300 hover:text-white transition-colors">Leicht</button>
+        <button data-diff="2" class="diff-btn px-2.5 py-1 text-xs font-semibold bg-slate-700 text-slate-300 hover:text-white border-x border-slate-600 transition-colors">Mittel</button>
+        <button data-diff="3" class="diff-btn px-2.5 py-1 text-xs font-semibold bg-yellow-400 text-slate-900 transition-colors">Schwer</button>
       </div>
-      <button id="btn-new-game"
-        class="bg-yellow-400 hover:bg-yellow-300 text-green-900 font-bold text-sm px-4 py-1.5 rounded-full transition-colors">
+      <button id="btn-new-game" class="bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors">
         Neues Spiel
       </button>
     </div>
-  </div>
+  </header>
+
+  <div class="flex flex-col items-center py-5 px-2 flex-1">
 
   <!-- Statusleiste -->
   <div id="status-bar"
@@ -75,6 +75,8 @@
       Lösung
     </button>
   </div>
+
+  </div><!-- /content -->
 
   <!-- Spieler-Suche Modal -->
   <div id="modal"
@@ -192,9 +194,10 @@ function renderBoard() {
 
   // Oben-links: Titel
   cells.push(`
-    <div class="rounded-xl bg-indigo-900 flex flex-col items-center justify-center p-2 h-24">
-      <div class="text-2xl mb-0.5">⚽</div>
-      <div class="text-white font-black text-center leading-tight text-[10px] tracking-tight">TIKI<br>TAKA<br>TOE</div>
+    <div class="rounded-xl flex flex-col items-center justify-center p-2 h-24"
+         style="background:linear-gradient(135deg,#312e81 0%,#1e1b4b 100%);border:1px solid rgba(99,102,241,.25)">
+      <div class="text-2xl mb-1">⚽</div>
+      <div class="text-white font-black text-center leading-tight text-[9px] tracking-widest opacity-90">TIKI<br>TAKA<br>TOE</div>
     </div>`);
 
   // Spalten-Header
@@ -219,11 +222,12 @@ function renderBoard() {
 
 function headerCellHtml(cat) {
   return `
-    <div class="rounded-xl bg-green-900/80 border border-green-700 flex flex-col items-center justify-center p-1.5 h-24 overflow-hidden"
+    <div class="rounded-xl flex flex-col items-center justify-center p-2 h-24 overflow-hidden gap-1.5"
+         style="background:rgba(20,83,45,.9);border:1px solid rgba(74,222,128,.15);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)"
          title="${esc(cat.label)}">
-      <div class="text-xl leading-none flex-shrink-0">${cat.icon}</div>
-      <div class="text-white font-bold text-center leading-tight mt-1 px-1 overflow-hidden"
-           style="font-size:10px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">
+      <div class="text-2xl leading-none flex-shrink-0">${cat.icon}</div>
+      <div class="text-white/90 font-semibold text-center leading-snug px-1"
+           style="font-size:10px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
         ${esc(cat.label)}
       </div>
     </div>`;
@@ -457,8 +461,13 @@ async function showSolve() {
 
 function updateStatus() {
   if (g.winner) return;
-  const sym = g.current === 1 ? '🔴 X' : '🔵 O';
-  setStatus(`${sym} – Spieler ${g.current} ist dran`);
+  const bar = document.getElementById('status-bar');
+  const color = g.current === 1 ? '#ef4444' : '#3b82f6';
+  const sym   = g.current === 1 ? 'X' : 'O';
+  bar.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
+    <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block"></span>
+    ${sym} – Spieler ${g.current} ist dran
+  </span>`;
 }
 
 function setStatus(msg) {
@@ -485,13 +494,10 @@ function setDifficulty(d) {
   difficulty = d;
   document.querySelectorAll('.diff-btn').forEach(btn => {
     const active = parseInt(btn.dataset.diff) === d;
-    btn.className = `diff-btn px-3 py-1.5 text-xs font-bold ${
-      active
-        ? 'bg-yellow-500 text-green-900'
-        : 'bg-green-900 text-green-300 hover:text-white'
+    btn.className = `diff-btn px-2.5 py-1 text-xs font-semibold transition-colors ${
+      active ? 'bg-yellow-400 text-slate-900' : 'bg-slate-700 text-slate-300 hover:text-white'
     }`;
-    // restore borders for middle button
-    if (btn.dataset.diff === '2') btn.classList.add('border-x', 'border-green-600');
+    if (btn.dataset.diff === '2') btn.classList.add('border-x', 'border-slate-600');
   });
 }
 

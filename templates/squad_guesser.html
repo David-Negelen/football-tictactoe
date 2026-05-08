@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Squad Guesser</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     :root {
       --green:  #4ade80;
@@ -19,7 +21,7 @@
       background: var(--bg);
       background-image: radial-gradient(ellipse at 50% 0%, #1e3a5f44 0%, transparent 70%);
       min-height: 100vh; color: #fff;
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
     }
 
     /* ══════════════ PITCH ══════════════ */
@@ -164,19 +166,25 @@
     .progress-bar-fill  { height: 100%; border-radius: 999px; transition: width .4s ease; }
   </style>
 </head>
-<body class="flex flex-col items-center py-5 px-3">
+<body class="flex flex-col min-h-screen">
+
+<header class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between shadow-lg flex-shrink-0 sticky top-0 z-20">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">← DB Explorer</a>
+    <span class="text-slate-700 select-none">|</span>
+    <a href="/game" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">Tiki-Taka-Toe</a>
+    <span class="text-slate-700 select-none">|</span>
+    <a href="/combos" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">Club Combos</a>
+  </div>
+  <div class="flex items-center gap-2">
+    <button id="btn-new" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">New Game</button>
+  </div>
+</header>
+
+<main class="flex flex-col items-center py-5 px-3 flex-1" style="background:var(--bg)">
 
 <!-- ══════════════════════════ PITCH VIEW ════════════════════════════════════ -->
 <div id="view-pitch" class="w-full max-w-lg flex flex-col items-center gap-3">
-
-  <!-- Top nav -->
-  <div class="w-full flex justify-between items-center">
-    <div class="flex gap-2">
-      <a href="/" class="nav-btn">← DB</a>
-      <a href="/game" class="nav-btn">Tiki-Taka-Toe</a>
-    </div>
-    <button id="btn-new" class="action-btn" style="background:#3b82f6">New Game</button>
-  </div>
 
   <!-- Match header -->
   <div id="match-header" class="hidden w-full bg-slate-800/60 backdrop-blur rounded-2xl border border-slate-700 px-4 py-3 text-center">
@@ -206,11 +214,11 @@
   <div id="loading" class="text-slate-500 text-sm mt-24 animate-pulse">Loading match…</div>
 
   <!-- Pitch -->
-  <div id="pitch" class="hidden pitch w-full py-5 px-3">
-    <div id="row-fwd" class="flex justify-center gap-2 mb-4 min-h-[96px] items-end"></div>
-    <div id="row-mid" class="flex justify-center gap-2 mb-4 min-h-[96px] items-end"></div>
-    <div id="row-def" class="flex justify-center gap-2 mb-4 min-h-[96px] items-end"></div>
-    <div id="row-gk"  class="flex justify-center gap-2 mb-1 min-h-[96px] items-end"></div>
+  <div id="pitch" class="hidden pitch w-full py-4 px-3">
+    <div id="row-fwd" class="flex justify-center gap-1.5 mb-3 items-end"></div>
+    <div id="row-mid" class="flex justify-center gap-1.5 mb-3 items-end"></div>
+    <div id="row-def" class="flex justify-center gap-1.5 mb-3 items-end"></div>
+    <div id="row-gk"  class="flex justify-center gap-1.5 items-end"></div>
   </div>
 
   <!-- Controls -->
@@ -239,6 +247,8 @@
   </div>
 
 </div>
+
+</main>
 
 <script>
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -323,33 +333,48 @@ function shirtSvg(primary, secondary, num, isGk, sw=64, sh=56) {
 }
 
 // ─── Pitch render ─────────────────────────────────────────────────────────────
+function jerseySize(n) {
+  const pitchW = Math.min(window.innerWidth - 48, 456);
+  const sw = Math.min(54, Math.max(34, Math.floor((pitchW - (n - 1) * 6) / n)));
+  return { sw, sh: Math.round(sw * 7 / 8) };
+}
+
 function renderPitch() {
   const team = g.teams[g.active];
-  const rows = {
+  const rowEls = {
     fwd: document.getElementById('row-fwd'),
     mid: document.getElementById('row-mid'),
     def: document.getElementById('row-def'),
     gk:  document.getElementById('row-gk'),
   };
-  Object.values(rows).forEach(el => el.innerHTML = '');
-  team.players.forEach((p, i) => {
-    const el = makeJersey(p, i, team.colourPrimary, team.colourSecondary, team.states[i]);
-    if (rows[p.row]) rows[p.row].appendChild(el);
-  });
+  Object.values(rowEls).forEach(el => el.innerHTML = '');
+
+  const rowBuckets = { fwd: [], mid: [], def: [], gk: [] };
+  team.players.forEach((p, i) => { if (rowBuckets[p.row]) rowBuckets[p.row].push(i); });
+
+  for (const [row, indices] of Object.entries(rowBuckets)) {
+    if (!indices.length) continue;
+    const { sw, sh } = jerseySize(indices.length);
+    indices.forEach(i => {
+      const el = makeJersey(team.players[i], i, team.colourPrimary, team.colourSecondary, team.states[i], sw, sh);
+      rowEls[row].appendChild(el);
+    });
+  }
 }
 
-function makeJersey(p, i, primary, secondary, s) {
+function makeJersey(p, i, primary, secondary, s, sw=50, sh=44) {
   const isGk = p.row === 'gk';
   const done  = s.status !== 'pending';
+  const fs    = Math.max(9, Math.round(sw * 0.19)) + 'px';
 
   let nameHtml;
   if (s.status === 'correct') {
-    nameHtml = `<div class="player-name-text text-green-400 text-xs">${esc(p.name)}</div>`;
+    nameHtml = `<div class="player-name-text text-green-400" style="font-size:${fs};max-width:${sw + 10}px">${esc(p.name)}</div>`;
   } else if (s.status === 'missed') {
-    nameHtml = `<div class="player-name-text text-red-400 text-xs">${esc(p.name)}</div>`;
+    nameHtml = `<div class="player-name-text text-red-400" style="font-size:${fs};max-width:${sw + 10}px">${esc(p.name)}</div>`;
   } else {
     const dots = p.name.split(' ').map(word => '·'.repeat(word.replace(/-/g,'').length)).join(' ');
-    nameHtml = `<div class="player-dots text-xs">${esc(dots)}</div>`;
+    nameHtml = `<div class="player-dots" style="font-size:${fs};letter-spacing:1px">${esc(dots)}</div>`;
   }
   const pips = Array.from({length:MAX_TRIES}, (_,k) =>
     `<span class="pip${k < s.tries ? ' used' : ''}"></span>`).join('');
@@ -358,7 +383,7 @@ function makeJersey(p, i, primary, secondary, s) {
   el.className = `jersey-wrap ${done ? s.status : ''}`;
   el.dataset.idx  = i;
   el.dataset.team = g.active;
-  el.innerHTML = shirtSvg(primary, secondary, p.jersey, isGk) +
+  el.innerHTML = shirtSvg(primary, secondary, p.jersey, isGk, sw, sh) +
     `<div class="player-label"><div class="try-pips">${pips}</div>${nameHtml}</div>`;
   if (!done) el.addEventListener('click', () => openWordle(g.active, i));
   return el;
@@ -367,8 +392,11 @@ function makeJersey(p, i, primary, secondary, s) {
 function refreshJersey(team, idx) {
   const el = document.querySelector(`.jersey-wrap[data-team="${team}"][data-idx="${idx}"]`);
   if (!el) return;
-  const t = g.teams[team];
-  el.replaceWith(makeJersey(t.players[idx], idx, t.colourPrimary, t.colourSecondary, t.states[idx]));
+  const t   = g.teams[team];
+  const row = t.players[idx].row;
+  const n   = t.players.filter(p => p.row === row).length;
+  const { sw, sh } = jerseySize(n);
+  el.replaceWith(makeJersey(t.players[idx], idx, t.colourPrimary, t.colourSecondary, t.states[idx], sw, sh));
 }
 
 function updateTabScores() {
