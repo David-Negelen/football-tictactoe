@@ -20,7 +20,7 @@
     body {
       background: var(--bg);
       background-image: radial-gradient(ellipse at 50% 0%, #1e3a5f44 0%, transparent 70%);
-      min-height: 100vh; color: #fff;
+      color: #fff;
       font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
     }
 
@@ -70,7 +70,7 @@
 
     .player-label { margin-top:4px; text-align:center; }
     .player-dots  { font-family:monospace; letter-spacing:2px; color:rgba(255,255,255,.7); }
-    .player-name-text { font-weight:700; line-height:1.2; max-width:80px; word-break:break-word; }
+    .player-name-text { font-weight:700; line-height:1.2; max-width:90px; word-break:break-word; }
     .try-pips { display:flex; gap:2px; justify-content:center; margin-top:3px; }
     .pip { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.2); transition:background .2s; }
     .pip.used { background:#f87171; }
@@ -168,23 +168,23 @@
 </head>
 <body class="flex flex-col min-h-screen">
 
-<header class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between shadow-lg flex-shrink-0 sticky top-0 z-20">
-  <div class="flex items-center gap-3">
-    <a href="/" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">← DB Explorer</a>
-    <span class="text-slate-700 select-none">|</span>
-    <a href="/game" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">Tiki-Taka-Toe</a>
-    <span class="text-slate-700 select-none">|</span>
-    <a href="/combos" class="text-slate-400 hover:text-white text-xs font-medium transition-colors">Club Combos</a>
-  </div>
+<header class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between sticky top-0 z-20 shadow-md flex-shrink-0">
+  <h1 class="text-base font-bold tracking-tight flex items-center gap-2">
+    <span class="text-lg">👕</span>
+    <span>Squad Guesser</span>
+  </h1>
   <div class="flex items-center gap-2">
     <button id="btn-new" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">New Game</button>
+    <a href="/" class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">⚽ DB Explorer</a>
+    <a href="/game" class="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">🎮 Tiki-Taka-Toe</a>
+    <a href="/combos" class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">🔗 Club Combos</a>
   </div>
 </header>
 
-<main class="flex flex-col items-center py-5 px-3 flex-1" style="background:var(--bg)">
+<main class="flex flex-col items-center py-5 px-4 flex-1">
 
 <!-- ══════════════════════════ PITCH VIEW ════════════════════════════════════ -->
-<div id="view-pitch" class="w-full max-w-lg flex flex-col items-center gap-3">
+<div id="view-pitch" class="w-full max-w-3xl flex flex-col items-center gap-3">
 
   <!-- Match header -->
   <div id="match-header" class="hidden w-full bg-slate-800/60 backdrop-blur rounded-2xl border border-slate-700 px-4 py-3 text-center">
@@ -229,7 +229,7 @@
 </div>
 
 <!-- ══════════════════════════ WORDLE VIEW ═══════════════════════════════════ -->
-<div id="view-wordle" class="hidden w-full max-w-lg flex flex-col items-center gap-4">
+<div id="view-wordle" class="hidden w-full max-w-3xl flex flex-col items-center gap-4">
 
   <div class="w-full flex items-center justify-between">
     <button id="btn-back" class="nav-btn flex items-center gap-1.5">← Back</button>
@@ -334,8 +334,8 @@ function shirtSvg(primary, secondary, num, isGk, sw=64, sh=56) {
 
 // ─── Pitch render ─────────────────────────────────────────────────────────────
 function jerseySize(n) {
-  const pitchW = Math.min(window.innerWidth - 48, 456);
-  const sw = Math.min(54, Math.max(34, Math.floor((pitchW - (n - 1) * 6) / n)));
+  const pitchW = Math.min(window.innerWidth - 64, 720);
+  const sw = Math.min(72, Math.max(40, Math.floor((pitchW - (n - 1) * 6) / n)));
   return { sw, sh: Math.round(sw * 7 / 8) };
 }
 
@@ -552,8 +552,8 @@ function submitGuess() {
 function renderGrid() {
   const s   = g.teams[w.team].states[w.idx];
   const n   = w.target.length;
-  const maxW = Math.min(window.innerWidth - 32, 512);
-  const cs   = Math.min(56, Math.max(28, Math.floor((maxW - (n-1)*8) / n)));
+  const maxW = Math.min(window.innerWidth - 32, 720);
+  const cs   = Math.min(68, Math.max(28, Math.floor((maxW - (n-1)*8) / n)));
 
   const grid = document.getElementById('wordle-grid');
   grid.innerHTML = '';
