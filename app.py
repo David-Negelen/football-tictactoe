@@ -322,7 +322,7 @@ def api_game_solve():
                 col_sql, col_params = col_cat.sql_filter()
                 params = row_params + col_params
                 rows_db = db.execute(
-                    f"""SELECT COUNT(*) OVER() AS total, p.id, p.name, p.current_club_name
+                    f"""SELECT p.id, p.name, p.current_club_name
                         FROM players p
                         WHERE {row_sql} AND {col_sql}
                         ORDER BY (
@@ -334,10 +334,10 @@ def api_game_solve():
                                 ELSE 0
                             END
                         ) DESC
-                        LIMIT 6""",
+                        """,
                     params,
                 ).fetchall()
-                count = rows_db[0]["total"] if rows_db else 0
+                count = len(rows_db)
                 row_cells.append({"count": count, "players": [dict(r) for r in rows_db]})
             grid.append(row_cells)
     finally:
