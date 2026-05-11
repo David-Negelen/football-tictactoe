@@ -233,7 +233,7 @@ def _cat_display(cat) -> dict:
     }
 
 
-def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_attempts: int = 300):
+def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300):
     pool = [cat for cat in ALL_CATEGORIES if cat.difficulty <= max_difficulty]
     eligible: dict[str, set[int]] = {cat.id: cat.eligible_player_ids(db) for cat in pool}
     for _ in range(max_attempts):
@@ -243,10 +243,8 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
         rows, cols = sample[:3], sample[3:]
         if {c.id for c in rows} & {c.id for c in cols}:
             continue
-        if all(
-            len(eligible[r.id] & eligible[c.id]) >= min_players
-            for r in rows for c in cols
-        ):
+        counts = [len(eligible[r.id] & eligible[c.id]) for r in rows for c in cols]
+        if all(min_players <= n <= max_players for n in counts):
             return rows, cols
     return None, None
 
@@ -259,9 +257,19 @@ def game():
 @app.route("/api/game/new")
 def api_game_new():
     difficulty = min(3, max(1, int(request.args.get("difficulty", 3))))
+    # min/max players per cell and attempt budget per difficulty level
+    diff_cfg = {
+        1: dict(min_players=15, max_players=9999, max_attempts=500),  # easy: generous
+        2: dict(min_players=6,  max_players=60,   max_attempts=400),  # medium: moderate
+        3: dict(min_players=1,  max_players=20,   max_attempts=300),  # hard: single-digit cells
+    }
     db = get_db()
     try:
-        rows, cols = _generate_puzzle(db, max_difficulty=difficulty)
+        rows, cols = _generate_puzzle(
+            db,
+            max_difficulty=difficulty,
+            **diff_cfg[difficulty],
+        )
     finally:
         db.close()
     if rows is None:
