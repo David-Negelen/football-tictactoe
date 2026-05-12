@@ -257,19 +257,33 @@ def game():
 @app.route("/api/game/new")
 def api_game_new():
     difficulty = min(3, max(1, int(request.args.get("difficulty", 3))))
-    # min/max players per cell and attempt budget per difficulty level
-    diff_cfg = {
-        1: dict(min_players=15, max_players=9999, max_attempts=500),  # easy: generous
-        2: dict(min_players=6,  max_players=60,   max_attempts=400),  # medium: moderate
-        3: dict(min_players=1,  max_players=20,   max_attempts=300),  # hard: single-digit cells
+    # Each entry is tried in order; constraints are relaxed until a puzzle is found.
+    # The final fallback for each level has no upper bound and a high attempt count,
+    # making it virtually guaranteed to succeed.
+    fallbacks = {
+        1: [
+            dict(min_players=15, max_players=9999, max_attempts=500),
+            dict(min_players=10, max_players=9999, max_attempts=400),
+            dict(min_players=5,  max_players=9999, max_attempts=600),
+        ],
+        2: [
+            dict(min_players=6,  max_players=60,   max_attempts=400),
+            dict(min_players=4,  max_players=80,   max_attempts=400),
+            dict(min_players=3,  max_players=9999, max_attempts=600),
+        ],
+        3: [
+            dict(min_players=1,  max_players=20,   max_attempts=300),
+            dict(min_players=1,  max_players=40,   max_attempts=300),
+            dict(min_players=1,  max_players=9999, max_attempts=600),
+        ],
     }
     db = get_db()
     try:
-        rows, cols = _generate_puzzle(
-            db,
-            max_difficulty=difficulty,
-            **diff_cfg[difficulty],
-        )
+        rows = cols = None
+        for cfg in fallbacks[difficulty]:
+            rows, cols = _generate_puzzle(db, max_difficulty=difficulty, **cfg)
+            if rows is not None:
+                break
     finally:
         db.close()
     if rows is None:
