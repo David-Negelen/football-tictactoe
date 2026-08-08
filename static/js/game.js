@@ -134,7 +134,20 @@ function showScreen(name) {
 function updateModeChrome() {
   document.getElementById('diff-picker').classList.toggle('hidden', g.mode === 'online');
   document.getElementById('league-picker').classList.toggle('hidden', g.mode === 'online');
-  document.getElementById('btn-give-up').textContent = g.mode === 'solo' ? 'Abbrechen' : 'Aufgeben';
+  resetGiveUpConfirm();
+}
+
+// Solo give-up uses an inline two-step confirm (click once to arm, click
+// again to confirm) instead of a browser confirm() popup; clicking anywhere
+// else cancels it.
+let giveUpConfirming = false;
+
+function resetGiveUpConfirm() {
+  const btn = document.getElementById('btn-give-up');
+  giveUpConfirming = false;
+  btn.textContent = 'Aufgeben';
+  btn.classList.remove('bg-red-600', 'hover:bg-red-500');
+  btn.classList.add('bg-orange-500', 'hover:bg-orange-400');
 }
 
 document.getElementById('league-picker').addEventListener('change', e => {
@@ -758,11 +771,10 @@ async function soloSelectPlayer(pid, name, club, r, c) {
 }
 
 function giveUpSolo() {
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      if (!g.board[r][c]) g.board[r][c] = { status: 'missed' };
-    }
-  }
+  // Leave untouched cells empty (not 'missed') so endGameSolo's
+  // revealSolutions() renders the actual answer in them, per cellHtml's
+  // `gone && g.solution` branch — "Verpasst" is reserved for cells the
+  // player actually got wrong.
   g.soloAttempted = 9;
   g.winner = 'complete';
   endGameSolo();
@@ -770,6 +782,7 @@ function giveUpSolo() {
 
 async function endGameSolo() {
   stopTimer();
+  resetGiveUpConfirm();
   document.getElementById('btn-give-up').disabled = true;
   g.rows.forEach((_, r) => g.cols.forEach((__, c) => refreshCell(r, c)));
 
@@ -980,10 +993,17 @@ async function finishOnline() {
   await revealSolutions();
 }
 
-document.getElementById('btn-give-up').addEventListener('click', async () => {
+document.getElementById('btn-give-up').addEventListener('click', async (e) => {
   if (g.winner) return;
   if (g.mode === 'solo') {
-    if (!confirm('Runde abbrechen? Verbleibende Felder zählen als verpasst.')) return;
+    if (!giveUpConfirming) {
+      giveUpConfirming = true;
+      e.currentTarget.textContent = 'Wirklich aufgeben?';
+      e.currentTarget.classList.remove('bg-orange-500', 'hover:bg-orange-400');
+      e.currentTarget.classList.add('bg-red-600', 'hover:bg-red-500');
+      return;
+    }
+    resetGiveUpConfirm();
     giveUpSolo();
     return;
   }
@@ -999,6 +1019,10 @@ document.getElementById('btn-give-up').addEventListener('click', async () => {
     g.winCells = [];
     endGameLocal();
   }
+});
+
+document.addEventListener('click', e => {
+  if (giveUpConfirming && e.target.id !== 'btn-give-up') resetGiveUpConfirm();
 });
 
 // ─── Statistik-Anzeige ─────────────────────────────────────────────────────────
