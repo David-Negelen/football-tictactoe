@@ -1,78 +1,19 @@
-"""Whitelist of categories available for puzzle generation.
+"""Whitelist of hand-curated categories available for puzzle generation —
+everything EXCEPT clubs, nationalities, and trophies, which are generated
+dynamically from the real dataset at app startup instead (see
+src/dynamic_categories.py). Those three used to be small hand-picked lists
+here; they were retired in favor of dynamic generation because they were
+confirmed to be nothing more than a hand-picked subset of what the dynamic
+generator produces anyway, and keeping both would mean maintaining two
+divergent id schemes for the same clubs/nationalities/trophies.
 
-Club names must match career_stints.club_name exactly (Transfermarkt DE abbreviations).
-Nationality names are in German, as stored in players.nationality.
 Position prefixes match players.position using a LIKE prefix query.
 """
 
 from __future__ import annotations
 
-from .categories import AgeCategory, Category, ClubCategory, ContainsLetterCategory, ContinentCategory, InitialCategory, LeagueCategory, MarketValueCategory, NationalityCategory, NonEuropeanNationalityCategory, PositionCategory, TrophyCategory
+from .categories import AgeCategory, Category, ContainsLetterCategory, ContinentCategory, InitialCategory, LeagueCategory, MarketValueCategory, NonEuropeanNationalityCategory, PositionCategory
 
-
-CLUB_CATEGORIES: list[ClubCategory] = [
-    # Bundesliga
-    ClubCategory("club_bay", "Bayern München",           "Bayern München",   difficulty=1),
-    ClubCategory("club_bvb", "Borussia Dortmund",        "Bor. Dortmund",    difficulty=1),
-    ClubCategory("club_b04", "Bayer Leverkusen",         "B. Leverkusen",    difficulty=2),
-    ClubCategory("club_rbl", "RB Leipzig",               "RB Leipzig",       difficulty=2),
-    ClubCategory("club_sge", "Eintracht Frankfurt",      "E. Frankfurt",     difficulty=2),
-    ClubCategory("club_s04", "Schalke 04",               "FC Schalke 04",    difficulty=3),
-    ClubCategory("club_hsv", "Hamburger SV",             "Hamburger SV",     difficulty=3),
-    ClubCategory("club_svw", "Werder Bremen",            "Werder Bremen",    difficulty=3),
-    ClubCategory("club_aug", "FC Augsburg",              "FC Augsburg",      difficulty=3),
-    ClubCategory("club_wob", "VfL Wolfsburg",            "VfL Wolfsburg",    difficulty=3),
-    ClubCategory("club_stu", "VfB Stuttgart",            "VfB Stuttgart",    difficulty=3),
-    ClubCategory("club_frb", "1.FC Freiburg",            "SC Freiburg",      difficulty=3),
-    ClubCategory("club_bmg", "Borussia Mönchengladbach", "Bor. M'gladbach",  difficulty=3),
-    ClubCategory("club_koe", "1.FC Köln",                "1.FC Köln",        difficulty=3),
-    # Premier League
-    ClubCategory("club_mnu", "Manchester United",        "Manchester Utd.",  difficulty=2),
-    ClubCategory("club_mci", "Manchester City",          "Manchester City",  difficulty=2),
-    ClubCategory("club_lfc", "Liverpool",                "Liverpool",        difficulty=2),
-    ClubCategory("club_ars", "Arsenal",                  "Arsenal",          difficulty=2),
-    ClubCategory("club_che", "Chelsea",                  "Chelsea",          difficulty=2),
-    ClubCategory("club_tot", "Tottenham Hotspur",        "Tottenham",        difficulty=3),
-    # La Liga
-    ClubCategory("club_rma", "Real Madrid",              "Real Madrid",      difficulty=1),
-    ClubCategory("club_fcb", "FC Barcelona",             "FC Barcelona",     difficulty=1),
-    ClubCategory("club_atm", "Atlético Madrid",          "Atlético Madrid",  difficulty=2),
-    ClubCategory("club_sev", "FC Sevilla",               "FC Sevilla",       difficulty=3),
-    # Serie A
-    ClubCategory("club_juv", "Juventus",                 "Juventus",         difficulty=3),
-    ClubCategory("club_int", "Inter Mailand",            "Inter",            difficulty=3),
-    ClubCategory("club_mil", "AC Milan",                 "Milan",            difficulty=3),
-    # Sonstiges
-    ClubCategory("club_psg", "Paris Saint-Germain",      "Paris SG",         difficulty=2),
-    ClubCategory("club_ajx", "Ajax Amsterdam",           "Ajax",             difficulty=3),
-    ClubCategory("club_psv", "PSV Eindhoven",            "PSV",              difficulty=3),
-
-    ClubCategory("club_sve", "SV Eintracht Trier",       "SV Eintracht Trier", difficulty=3),
-]
-
-
-NATIONALITY_CATEGORIES: list[NationalityCategory] = [
-    NationalityCategory("nat_eng", "Englisch",       "England",      difficulty=1),
-    NationalityCategory("nat_esp", "Spanisch",       "Spanien",      difficulty=1),
-    NationalityCategory("nat_ita", "Italienisch",    "Italien",      difficulty=1),
-    NationalityCategory("nat_fra", "Französisch",    "Frankreich",   difficulty=1),
-    NationalityCategory("nat_ger", "Deutsch",        "Deutschland",  difficulty=1),
-    NationalityCategory("nat_bra", "Brasilianisch",  "Brasilien",    difficulty=1),
-    NationalityCategory("nat_arg", "Argentinisch",   "Argentinien",  difficulty=1),
-    NationalityCategory("nat_ned", "Niederländisch", "Niederlande",  difficulty=1),
-    NationalityCategory("nat_por", "Portugiesisch",  "Portugal",     difficulty=1),
-    NationalityCategory("nat_hrv", "Kroatisch",      "Kroatien",     difficulty=2),
-    NationalityCategory("nat_bel", "Belgisch",       "Belgien",      difficulty=2),
-    NationalityCategory("nat_dnk", "Dänisch",        "Dänemark",     difficulty=3),
-    NationalityCategory("nat_swe", "Schwedisch",     "Schweden",     difficulty=3),
-    NationalityCategory("nat_tur", "Türkisch",       "Türkei",       difficulty=2),
-    NationalityCategory("nat_aut", "Österreichisch", "Österreich",   difficulty=3),
-    NationalityCategory("nat_pol", "Polnisch",       "Polen",        difficulty=2),
-    NationalityCategory("nat_sco", "Schottisch",     "Schottland",   difficulty=3),
-    NationalityCategory("nat_sui", "Schweizerisch",  "Schweiz",      difficulty=3),
-    NationalityCategory("nat_wal", "Walisisch",      "Wales",        difficulty=3),
-
-]
 
 POSITION_CATEGORIES: list[PositionCategory] = [
     PositionCategory("pos_gk",  "Torwart",               "Torwart",                          difficulty=1),
@@ -84,6 +25,16 @@ POSITION_CATEGORIES: list[PositionCategory] = [
     PositionCategory("pos_rb",  "Rechter Verteidiger",   "Abwehr - Rechter Verteidiger",     difficulty=3),
     PositionCategory("pos_lw",  "Linksaußen",            "Sturm - Linksaußen",               difficulty=3),
     PositionCategory("pos_rw",  "Rechtsaußen",           "Sturm - Rechtsaußen",              difficulty=3),
+    # Sub-positions covering the rest of the 18 distinct values players.position
+    # actually takes — the 9 above only covered half of the real data.
+    PositionCategory("pos_st",  "Mittelstürmer",         "Sturm - Mittelstürmer",            difficulty=1),
+    PositionCategory("pos_cm",  "Zentrales Mittelfeld",  "Mittelfeld - Zentrales Mittelfeld", difficulty=2),
+    PositionCategory("pos_dm",  "Defensives Mittelfeld", "Mittelfeld - Defensives Mittelfeld", difficulty=2),
+    PositionCategory("pos_am",  "Offensives Mittelfeld", "Mittelfeld - Offensives Mittelfeld", difficulty=2),
+    PositionCategory("pos_rm",  "Rechtes Mittelfeld",    "Mittelfeld - Rechtes Mittelfeld",   difficulty=3),
+    PositionCategory("pos_lm",  "Linkes Mittelfeld",     "Mittelfeld - Linkes Mittelfeld",    difficulty=3),
+    PositionCategory("pos_ss",  "Hängende Spitze",       "Sturm - Hängende Spitze",           difficulty=3),
+    PositionCategory("pos_sw",  "Libero",                "Abwehr - Libero",                   difficulty=3),
 ]
 
 INITIAL_CATEGORIES: list[InitialCategory] = [
@@ -131,20 +82,6 @@ MARKET_VALUE_CATEGORIES: list[MarketValueCategory] = [
     MarketValueCategory("mv_high", "Marktwert ≥ 50 Mio. €", min_value=50_000_000,                            difficulty=2),
     MarketValueCategory("mv_mid",  "Marktwert 10–50 Mio. €", min_value=10_000_000, max_value=50_000_000,     difficulty=2),
     MarketValueCategory("mv_low",  "Marktwert < 10 Mio. €",                         max_value=10_000_000,    difficulty=3),
-]
-
-TROPHY_CATEGORIES: list[TrophyCategory] = [
-    TrophyCategory("trophy_ballon", "Gewinner Ballon d'Or", "Gewinner Ballon d'Or", difficulty=2),
-    TrophyCategory("trophy_world_cup", "Weltmeister", "Weltmeister", difficulty=1),
-    TrophyCategory("trophy_cl", "UEFA Champions League-Sieger", "UEFA Champions League-Sieger", difficulty=1),
-    TrophyCategory("trophy_liga", "Spanischer Meister", "Spanischer Meister", difficulty=1),
-    TrophyCategory("trophy_ligue1", "Französischer Meister", "Französischer Meister", difficulty=2),
-    TrophyCategory("trophy_copa", "Copa América-Sieger", "Copa América-Sieger", difficulty=2),
-    TrophyCategory("trophy_fifa_cwc", "FIFA-Klub-Weltmeister", "FIFA-Klub-Weltmeister", difficulty=2),
-    TrophyCategory("trophy_mls_cup", "MLS Cup Champion", "MLS Cup Champion", difficulty=3),
-    TrophyCategory("trophy_u20", "U20-Weltmeister", "U20-Weltmeister", difficulty=3),
-    TrophyCategory("trophy_olympic", "Olympiasieger", "Olympiasieger", difficulty=3),
-    TrophyCategory("trophy_leagues_cup", "Leagues-Cup-Sieger", "Leagues-Cup-Sieger", difficulty=3),
 ]
 
 NON_EUROPEAN_CATEGORIES: list[NonEuropeanNationalityCategory] = [
@@ -245,8 +182,6 @@ CONTINENT_CATEGORIES: list[ContinentCategory] = [
 ]
 
 ALL_CATEGORIES: list[Category] = [
-    *CLUB_CATEGORIES,
-    *NATIONALITY_CATEGORIES,
     *NON_EUROPEAN_CATEGORIES,
     *POSITION_CATEGORIES,
     *LEAGUE_CATEGORIES,
@@ -255,7 +190,6 @@ ALL_CATEGORIES: list[Category] = [
     *CONTAINS_LETTER_CATEGORIES,
     *AGE_CATEGORIES,
     *MARKET_VALUE_CATEGORIES,
-    *TROPHY_CATEGORIES,
 ]
 
 CATEGORY_BY_ID: dict[str, Category] = {cat.id: cat for cat in ALL_CATEGORIES}
