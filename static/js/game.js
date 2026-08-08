@@ -134,7 +134,7 @@ function showScreen(name) {
 function updateModeChrome() {
   document.getElementById('diff-picker').classList.toggle('hidden', g.mode === 'online');
   document.getElementById('league-picker').classList.toggle('hidden', g.mode === 'online');
-  document.getElementById('btn-give-up').classList.toggle('hidden', g.mode === 'solo');
+  document.getElementById('btn-give-up').textContent = g.mode === 'solo' ? 'Abbrechen' : 'Aufgeben';
 }
 
 document.getElementById('league-picker').addEventListener('change', e => {
@@ -709,6 +709,7 @@ async function newSoloRound() {
   setStatus('Rätsel wird geladen…');
   stopTimer();
   document.getElementById('board').innerHTML = '';
+  document.getElementById('btn-give-up').disabled = false;
 
   Object.assign(g, {
     rows: [], cols: [],
@@ -756,8 +757,20 @@ async function soloSelectPlayer(pid, name, club, r, c) {
   }
 }
 
+function giveUpSolo() {
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      if (!g.board[r][c]) g.board[r][c] = { status: 'missed' };
+    }
+  }
+  g.soloAttempted = 9;
+  g.winner = 'complete';
+  endGameSolo();
+}
+
 async function endGameSolo() {
   stopTimer();
+  document.getElementById('btn-give-up').disabled = true;
   g.rows.forEach((_, r) => g.cols.forEach((__, c) => refreshCell(r, c)));
 
   stats.solo.rounds++;
@@ -969,6 +982,11 @@ async function finishOnline() {
 
 document.getElementById('btn-give-up').addEventListener('click', async () => {
   if (g.winner) return;
+  if (g.mode === 'solo') {
+    if (!confirm('Runde abbrechen? Verbleibende Felder zählen als verpasst.')) return;
+    giveUpSolo();
+    return;
+  }
   if (!confirm('Aufgeben? Der Gegner gewinnt automatisch.')) return;
   if (g.mode === 'online') {
     await fetch(`/api/multiplayer/rooms/${g.onlineCode}/forfeit`, {
