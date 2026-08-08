@@ -374,25 +374,32 @@ def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | 
 
 
 def _sample_league_puzzle_categories(league_clubs: list, broad_no_award: list, min_clubs: int) -> tuple[list, list] | None:
-    """League mode: exactly `min_clubs` real clubs from the selected league
-    on one side (that's the whole point of picking a league), non-club/
-    non-trophy categories scoped to it on the other. Trophies are excluded
-    here even though they're not clubs — a trophy wrapped down to "won by a
-    player who also played in this one league" is often too narrow to be
-    reliable, the same reasoning _SPARSE_TYPES already applies elsewhere.
+    """League mode: at least `min_clubs` real clubs from the selected league
+    among the 6 categories — but, unlike the general sparse-type cap, mixed
+    freely across rows/cols rather than confined to one whole side. Within a
+    single league, two clubs are far more likely to share a transferred
+    player than two random clubs from the entire catalog (moves within the
+    same league are common), so club x club cells are safe to allow here —
+    keeping clubs pinned to one solid side every time made every league
+    puzzle the same rigid shape ("league's clubs" vs "everything else").
+    Non-club/non-trophy categories fill the rest; trophies are excluded even
+    though they're not clubs — a trophy narrowed to "won by a player who
+    also played in this one league" is often too thin to be reliable, same
+    reasoning _SPARSE_TYPES applies elsewhere.
     """
-    if min_clubs > 3 or len(league_clubs) < min_clubs or len(broad_no_award) < (6 - min_clubs):
+    max_clubs = min(6, len(league_clubs))
+    if max_clubs < min_clubs:
         return None
-    club_side = random.sample(league_clubs, min_clubs)
-    if min_clubs < 3:
-        extra = random.sample(broad_no_award, 3 - min_clubs)
-        other_side = random.sample([c for c in broad_no_award if c not in extra], 3)
-        club_side = club_side + extra
-    else:
-        other_side = random.sample(broad_no_award, 3)
-    random.shuffle(club_side)
-    random.shuffle(other_side)
-    return (club_side, other_side) if random.random() < 0.5 else (other_side, club_side)
+    n_clubs = random.randint(min_clubs, max_clubs)
+    n_broad = 6 - n_clubs
+    if len(broad_no_award) < n_broad:
+        n_broad = len(broad_no_award)
+        n_clubs = min(max_clubs, 6 - n_broad)
+        if n_clubs < min_clubs:
+            return None
+    combined = random.sample(league_clubs, n_clubs) + random.sample(broad_no_award, n_broad)
+    random.shuffle(combined)
+    return combined[:3], combined[3:]
 
 
 def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300, pool: list | None = None, min_league_clubs: int = 0):
