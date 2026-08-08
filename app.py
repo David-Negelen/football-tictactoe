@@ -1,4 +1,5 @@
 from flask import Flask, Response, jsonify, render_template, request
+import hashlib
 import sqlite3
 import time
 import unicodedata
@@ -7,7 +8,9 @@ import random
 
 import json as _json
 
-from src.category_config import ALL_CATEGORIES, CATEGORY_BY_ID, CLUB_CATEGORIES
+from src import category_config
+from src import dynamic_categories
+from src.categories import CategoryType
 from src.db import Database
 from src.famous_matches import get_random_match
 from src import multiplayer as mp
@@ -48,6 +51,37 @@ def get_db() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.create_function("normalize", 1, _normalize)
     return conn
+
+
+# Club/nationality/trophy categories are generated from the real dataset once
+# at startup (see src/dynamic_categories.py) rather than hand-curated, so the
+# puzzle pool covers ~6,000 clubs / ~100 nationalities / ~500 trophies instead
+# of the ~60 that used to be typed out by hand. Built eagerly (not lazily on
+# first request) since the deployment already runs a single worker process
+# for the multiplayer room store (see Dockerfile) — there's no cache-coherency
+# concern either way, and eager building keeps startup latency predictable
+# instead of moving it onto whichever request happens to be first.
+_startup_conn = get_db()
+try:
+    _dynamic_catalog = dynamic_categories.build_all(_startup_conn)
+finally:
+    _startup_conn.close()
+
+ALL_CATEGORIES: list = category_config.ALL_CATEGORIES + _dynamic_catalog.all()
+CATEGORY_BY_ID: dict = {cat.id: cat for cat in ALL_CATEGORIES}
+
+# League id -> category pool scoped to that league, for the 5 league-only
+# game modes (Bundesliga/Premier League/La Liga/Serie A/Ligue 1 — the only
+# leagues with a hand-curated club list, see category_config.LEAGUE_CATEGORIES).
+LEAGUE_POOLS: dict = dynamic_categories.build_league_pools(
+    category_config.LEAGUE_CATEGORIES, ALL_CATEGORIES, _dynamic_catalog
+)
+# /api/game/validate and /api/game/solve look categories up by id from
+# whatever the client submits — for a league-mode puzzle that includes the
+# wrapped LeagueScopedCategory ids, not just the underlying base ids.
+for _league_pool in LEAGUE_POOLS.values():
+    for _cat in _league_pool:
+        CATEGORY_BY_ID.setdefault(_cat.id, _cat)
 
 
 @app.route("/")
@@ -235,27 +269,132 @@ _CAT_ICONS: dict[str, str] = {
 }
 
 
+def _club_badge_color(cat_id: str) -> str:
+    """A deterministic color for a club's fallback badge, derived from its id
+    so the same club always gets the same color across requests/sessions."""
+    digest = hashlib.sha1(cat_id.encode("utf-8")).hexdigest()
+    hue = int(digest[:4], 16) % 360
+    return f"hsl({hue}, 55%, 38%)"
+
+
 def _cat_display(cat) -> dict:
-    return {
+    # Resolution order: a hand-picked icon (the ~60 legacy ids this dict was
+    # originally built for) wins if present; otherwise fall back to the
+    # category's own icon (set for dynamic nationalities — a real flag emoji,
+    # see src/countries.py); otherwise a programmatic fallback by type. This
+    # is what lets ~7,000 dynamically generated categories all get a
+    # reasonable icon without hand-maintaining an ever-growing dict — the
+    # old approach was already 9 entries short and 8 stale at just 111
+    # categories, which cannot scale to thousands.
+    icon = _CAT_ICONS.get(cat.id) or getattr(cat, "icon", None)
+    display = {
         "id": cat.id,
         "label": cat.label,
         "type": cat.type.value,
-        "icon": _CAT_ICONS.get(cat.id, "⚽"),
         "difficulty": cat.difficulty,
     }
+    if icon:
+        display["icon"] = icon
+    elif cat.type == CategoryType.CLUB:
+        # No generic "colored circle with a letter" emoji exists, so the
+        # client renders this itself — a small colored badge with the
+        # club's first letter — when icon is absent but icon_letter is set.
+        display["icon"] = None
+        display["icon_letter"] = (cat.label[:1] or "?").upper()
+        display["icon_color"] = _club_badge_color(cat.id)
+    elif cat.type == CategoryType.AWARD:
+        display["icon"] = "🏆"
+    else:
+        display["icon"] = "⚽"
+    return display
 
 
-def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300):
-    pool = [cat for cat in ALL_CATEGORIES if cat.difficulty <= max_difficulty]
-    eligible: dict[str, set[int]] = {cat.id: cat.eligible_player_ids(db) for cat in pool}
+# Two categories only intersect well when they're either broad (cover a
+# large, structural slice of players — nationality, position, age, league...)
+# or specifically, individually chosen to relate to each other. Clubs and
+# trophies are both "narrow-and-numerous": with ~6,500 dynamic clubs and
+# ~490 dynamic trophies (together 97% of the full pool), two *random* clubs
+# rarely share a transferred player and two *random* trophies rarely share a
+# winner — reliable overlap there was a property of the old, small,
+# hand-picked lists, not something that holds at this scale. Uniformly
+# sampling 6 categories from a pool this lopsided overwhelmingly picks
+# "mostly/all club+trophy rows x mostly/all club+trophy cols", which then
+# fails the eligible-count bounds check on nearly every cell. Capping how
+# many sparse (club/trophy) categories can appear keeps most cells paired
+# against a broad category instead, which reliably has *some* overlap (e.g.
+# "German" x "an obscure club" almost always has an answer).
+_SPARSE_TYPES = {CategoryType.CLUB, CategoryType.AWARD}
+MAX_SPARSE_PER_PUZZLE = 2
+
+
+def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | None:
+    """Returns (rows, cols), keeping all sparse (club/trophy) categories on
+    one side. That guarantees no cell ever pairs two sparse categories
+    against each other — by far the least likely pairing to have any
+    overlap at all, since it relies on two specific narrow categories
+    coinciding rather than either of them being broad enough to reliably
+    intersect with anything.
+    """
+    if len(sparse) + len(broad) < 6:
+        return None
+    if not broad:
+        if len(sparse) < 6:
+            return None
+        six = random.sample(sparse, 6)
+        return six[:3], six[3:]
+
+    # At least 1 sparse category (when available) rather than 0-2: an all-broad
+    # sample (nationality x position x age x ...) tends to have *too much*
+    # overlap per cell for tighter difficulty bounds to accept, since every
+    # side covers a large structural slice of players. Mixing in a sparse
+    # category keeps most cells at a moderate, bounds-friendly size instead.
+    min_sparse = 1 if sparse else 0
+    n_sparse = min(MAX_SPARSE_PER_PUZZLE, len(sparse), random.randint(min_sparse, MAX_SPARSE_PER_PUZZLE))
+    n_broad = 6 - n_sparse
+    if len(broad) < n_broad:
+        n_broad = len(broad)
+        n_sparse = min(len(sparse), 6 - n_broad)
+
+    chosen_sparse = random.sample(sparse, n_sparse)
+    chosen_broad = random.sample(broad, n_broad)
+    fill = 3 - n_sparse
+    sparse_side = chosen_sparse + chosen_broad[:fill]
+    other_side = chosen_broad[fill:]
+    random.shuffle(sparse_side)
+    random.shuffle(other_side)
+    return (sparse_side, other_side) if random.random() < 0.5 else (other_side, sparse_side)
+
+
+def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300, pool: list | None = None):
+    if pool is None:
+        pool = ALL_CATEGORIES
+    pool = [cat for cat in pool if cat.difficulty <= max_difficulty]
+    if len(pool) < 6:
+        return None, None
+    sparse = [c for c in pool if c.type in _SPARSE_TYPES]
+    broad = [c for c in pool if c.type not in _SPARSE_TYPES]
+
+    # Eligible-player-id sets are computed lazily and cached per category id,
+    # not eagerly for the whole pool up front. With ~7,000 dynamically
+    # generated categories in play, eagerly computing eligible_player_ids()
+    # for every one of them (most of which never get sampled) made a single
+    # /api/game/new request take several seconds — this only ever queries
+    # the categories that actually get drawn.
+    eligible_cache: dict[str, set[int]] = {}
+
+    def eligible_ids(cat) -> set[int]:
+        cached = eligible_cache.get(cat.id)
+        if cached is None:
+            cached = cat.eligible_player_ids(db)
+            eligible_cache[cat.id] = cached
+        return cached
+
     for _ in range(max_attempts):
-        if len(pool) < 6:
+        sampled = _sample_puzzle_categories(sparse, broad)
+        if sampled is None:
             return None, None
-        sample = random.sample(pool, 6)
-        rows, cols = sample[:3], sample[3:]
-        if {c.id for c in rows} & {c.id for c in cols}:
-            continue
-        counts = [len(eligible[r.id] & eligible[c.id]) for r in rows for c in cols]
+        rows, cols = sampled
+        counts = [len(eligible_ids(r) & eligible_ids(c)) for r in rows for c in cols]
         if all(min_players <= n <= max_players for n in counts):
             return rows, cols
     return None, None
@@ -264,37 +403,91 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
 # Each entry is tried in order; constraints are relaxed until a puzzle is found.
 # The final fallback for each level has no upper bound and a high attempt count,
 # making it virtually guaranteed to succeed.
+# Retuned for the dynamic (~7,000-category) pool: with this much variety,
+# requiring every one of the 9 cells to simultaneously clear a strict bound
+# is a much harder combinatorial ask than it was against the old ~111
+# hand-picked categories (empirically, even min_players=15 on the easiest
+# difficulty now succeeds well under half the time no matter how many
+# attempts you throw at it). The tight tiers are kept — they still give the
+# best puzzles on the occasions they succeed — but with small attempt
+# budgets so they fail fast instead of grinding; the final, loosest tier
+# per difficulty (empirically ~90%+ reliable within a few hundred attempts)
+# carries the actual "virtually guaranteed to succeed" guarantee.
 _DIFFICULTY_FALLBACKS = {
     1: [
-        dict(min_players=15, max_players=9999, max_attempts=500),
-        dict(min_players=10, max_players=9999, max_attempts=400),
-        dict(min_players=5,  max_players=9999, max_attempts=600),
+        dict(min_players=15, max_players=9999, max_attempts=30),
+        dict(min_players=5,  max_players=9999, max_attempts=30),
+        dict(min_players=1,  max_players=9999, max_attempts=500),
     ],
     2: [
-        dict(min_players=6,  max_players=60,   max_attempts=400),
-        dict(min_players=4,  max_players=80,   max_attempts=400),
-        dict(min_players=3,  max_players=9999, max_attempts=600),
+        dict(min_players=6,  max_players=60,   max_attempts=30),
+        dict(min_players=2,  max_players=100,  max_attempts=30),
+        dict(min_players=1,  max_players=9999, max_attempts=500),
     ],
     3: [
-        dict(min_players=1,  max_players=20,   max_attempts=300),
-        dict(min_players=1,  max_players=40,   max_attempts=300),
-        dict(min_players=1,  max_players=9999, max_attempts=600),
+        dict(min_players=1,  max_players=20,   max_attempts=30),
+        dict(min_players=1,  max_players=40,   max_attempts=30),
+        dict(min_players=1,  max_players=9999, max_attempts=500),
     ],
 }
 
 
-def _generate_puzzle_for_difficulty(db: sqlite3.Connection, difficulty: int):
+def _generate_puzzle_for_difficulty(db: sqlite3.Connection, difficulty: int, pool: list | None = None):
     """Generate a puzzle for a clamped 1-3 difficulty, walking the fallback ladder.
 
     Shared by /api/game/new (solo + local) and multiplayer room creation so
-    both draw puzzles with identical quality guarantees.
+    both draw puzzles with identical quality guarantees. `pool` defaults to
+    the full category catalog; callers pass a narrower one to respect a
+    player's excluded-categories settings or a league-scoped game mode
+    (see _resolve_pool()).
     """
     difficulty = min(3, max(1, difficulty))
     for cfg in _DIFFICULTY_FALLBACKS[difficulty]:
-        rows, cols = _generate_puzzle(db, max_difficulty=difficulty, **cfg)
+        rows, cols = _generate_puzzle(db, max_difficulty=difficulty, pool=pool, **cfg)
         if rows is not None:
             return rows, cols
     return None, None
+
+
+def _resolve_pool(excluded_types: set[str] | None = None, excluded_ids: set[str] | None = None, league: str | None = None) -> list:
+    """Build the category pool /api/game/new and room creation both generate
+    puzzles from — the single seam settings-filtering and league-scoping both
+    plug into, so solo/local and online rooms apply them identically (the
+    same way `difficulty` already does today).
+    """
+    pool = LEAGUE_POOLS.get(league, ALL_CATEGORIES) if league else ALL_CATEGORIES
+    if excluded_types:
+        pool = [cat for cat in pool if cat.type.value not in excluded_types]
+    if excluded_ids:
+        pool = [cat for cat in pool if cat.id not in excluded_ids]
+    return pool
+
+
+def _parse_csv_param(raw: str | None) -> set[str]:
+    if not raw:
+        return set()
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+@app.route("/api/categories")
+def api_categories():
+    """Server-side search over the category catalog, backing the settings
+    page's individual-exclude checklist — with ~6,500 clubs and ~490
+    trophies, shipping the full catalog to the browser up front isn't
+    practical, so this mirrors the debounced-search pattern /api/game/search
+    already uses for players."""
+    cat_type = request.args.get("type", "").strip()
+    query = _normalize(request.args.get("q", "").strip())
+    try:
+        limit = min(100, max(1, int(request.args.get("limit", 50))))
+    except ValueError:
+        limit = 50
+
+    results = [c for c in ALL_CATEGORIES if c.type.value == cat_type]
+    if query:
+        results = [c for c in results if query in _normalize(c.label)]
+    results.sort(key=lambda c: (c.difficulty, c.label))
+    return jsonify({"categories": [_cat_display(c) for c in results[:limit]]})
 
 
 @app.route("/game")
@@ -305,9 +498,14 @@ def game():
 @app.route("/api/game/new")
 def api_game_new():
     difficulty = min(3, max(1, int(request.args.get("difficulty", 3))))
+    league = request.args.get("league") or None
+    excluded_types = _parse_csv_param(request.args.get("excluded_types"))
+    excluded_ids = _parse_csv_param(request.args.get("excluded"))
+    pool = _resolve_pool(excluded_types=excluded_types, excluded_ids=excluded_ids, league=league)
+
     db = get_db()
     try:
-        rows, cols = _generate_puzzle_for_difficulty(db, difficulty)
+        rows, cols = _generate_puzzle_for_difficulty(db, difficulty, pool=pool)
     finally:
         db.close()
     if rows is None:
@@ -421,9 +619,16 @@ def api_game_validate():
 def api_mp_create_room():
     data = request.get_json(silent=True) or {}
     difficulty = min(3, max(1, int(data.get("difficulty", 3))))
+    # The room creator's settings govern the whole room, exactly mirroring how
+    # difficulty already works — the joiner never supplies their own.
+    league = data.get("league") or None
+    excluded_types = set(data.get("excludedTypes") or [])
+    excluded_ids = set(data.get("excludedCategoryIds") or [])
+    pool = _resolve_pool(excluded_types=excluded_types, excluded_ids=excluded_ids, league=league)
+
     db = get_db()
     try:
-        rows, cols = _generate_puzzle_for_difficulty(db, difficulty)
+        rows, cols = _generate_puzzle_for_difficulty(db, difficulty, pool=pool)
     finally:
         db.close()
     if rows is None:
@@ -581,7 +786,10 @@ def api_clubs_combos():
     except ValueError:
         max_players = 100
 
-    game_club_names = [c.club_name for c in CLUB_CATEGORIES]
+    # This page kept its original ~31-club scope (now via the legacy id map
+    # in dynamic_categories.py, which also happens to fix a long-standing bug
+    # where "Manchester City" never matched anything — see that module).
+    game_club_names = list(dynamic_categories.LEGACY_CLUB_IDS.keys())
 
     db = get_db()
     try:
