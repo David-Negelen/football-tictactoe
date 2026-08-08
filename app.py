@@ -326,6 +326,14 @@ def _cat_display(cat) -> dict:
 _SPARSE_TYPES = {CategoryType.CLUB, CategoryType.AWARD}
 MAX_SPARSE_PER_PUZZLE = 2
 
+# League-scoped puzzles (see _resolve_pool/LEAGUE_POOLS): the whole point of
+# picking a league is to see that league's own clubs, but the general sparse
+# cap above only allows up to 2 of them — most cells would end up being
+# other categories merely *scoped* to the league rather than the league's
+# clubs themselves. League mode uses a dedicated sampler guaranteeing this
+# many real clubs from the league (one full side of the grid).
+LEAGUE_MIN_CLUBS = 3
+
 
 def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | None:
     """Returns (rows, cols), keeping all sparse (club/trophy) categories on
@@ -365,14 +373,34 @@ def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | 
     return (sparse_side, other_side) if random.random() < 0.5 else (other_side, sparse_side)
 
 
-def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300, pool: list | None = None):
+def _sample_league_puzzle_categories(league_clubs: list, broad_no_award: list, min_clubs: int) -> tuple[list, list] | None:
+    """League mode: exactly `min_clubs` real clubs from the selected league
+    on one side (that's the whole point of picking a league), non-club/
+    non-trophy categories scoped to it on the other. Trophies are excluded
+    here even though they're not clubs — a trophy wrapped down to "won by a
+    player who also played in this one league" is often too narrow to be
+    reliable, the same reasoning _SPARSE_TYPES already applies elsewhere.
+    """
+    if min_clubs > 3 or len(league_clubs) < min_clubs or len(broad_no_award) < (6 - min_clubs):
+        return None
+    club_side = random.sample(league_clubs, min_clubs)
+    if min_clubs < 3:
+        extra = random.sample(broad_no_award, 3 - min_clubs)
+        other_side = random.sample([c for c in broad_no_award if c not in extra], 3)
+        club_side = club_side + extra
+    else:
+        other_side = random.sample(broad_no_award, 3)
+    random.shuffle(club_side)
+    random.shuffle(other_side)
+    return (club_side, other_side) if random.random() < 0.5 else (other_side, club_side)
+
+
+def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300, pool: list | None = None, min_league_clubs: int = 0):
     if pool is None:
         pool = ALL_CATEGORIES
     pool = [cat for cat in pool if cat.difficulty <= max_difficulty]
     if len(pool) < 6:
         return None, None
-    sparse = [c for c in pool if c.type in _SPARSE_TYPES]
-    broad = [c for c in pool if c.type not in _SPARSE_TYPES]
 
     # Eligible-player-id sets are computed lazily and cached per category id,
     # not eagerly for the whole pool up front. With ~7,000 dynamically
@@ -389,6 +417,21 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
             eligible_cache[cat.id] = cached
         return cached
 
+    if min_league_clubs > 0:
+        league_clubs = [c for c in pool if c.type == CategoryType.CLUB]
+        broad_no_award = [c for c in pool if c.type not in (CategoryType.CLUB, CategoryType.AWARD, CategoryType.LEAGUE, CategoryType.CONTINENT)]
+        for _ in range(max_attempts):
+            sampled = _sample_league_puzzle_categories(league_clubs, broad_no_award, min_league_clubs)
+            if sampled is None:
+                return None, None
+            rows, cols = sampled
+            counts = [len(eligible_ids(r) & eligible_ids(c)) for r in rows for c in cols]
+            if all(min_players <= n <= max_players for n in counts):
+                return rows, cols
+        return None, None
+
+    sparse = [c for c in pool if c.type in _SPARSE_TYPES]
+    broad = [c for c in pool if c.type not in _SPARSE_TYPES]
     for _ in range(max_attempts):
         sampled = _sample_puzzle_categories(sparse, broad)
         if sampled is None:
@@ -432,18 +475,19 @@ _DIFFICULTY_FALLBACKS = {
 }
 
 
-def _generate_puzzle_for_difficulty(db: sqlite3.Connection, difficulty: int, pool: list | None = None):
+def _generate_puzzle_for_difficulty(db: sqlite3.Connection, difficulty: int, pool: list | None = None, min_league_clubs: int = 0):
     """Generate a puzzle for a clamped 1-3 difficulty, walking the fallback ladder.
 
     Shared by /api/game/new (solo + local) and multiplayer room creation so
     both draw puzzles with identical quality guarantees. `pool` defaults to
     the full category catalog; callers pass a narrower one to respect a
     player's excluded-categories settings or a league-scoped game mode
-    (see _resolve_pool()).
+    (see _resolve_pool()). `min_league_clubs` > 0 switches to the
+    league-priority sampler (see _sample_league_puzzle_categories).
     """
     difficulty = min(3, max(1, difficulty))
     for cfg in _DIFFICULTY_FALLBACKS[difficulty]:
-        rows, cols = _generate_puzzle(db, max_difficulty=difficulty, pool=pool, **cfg)
+        rows, cols = _generate_puzzle(db, max_difficulty=difficulty, pool=pool, min_league_clubs=min_league_clubs, **cfg)
         if rows is not None:
             return rows, cols
     return None, None
@@ -505,7 +549,9 @@ def api_game_new():
 
     db = get_db()
     try:
-        rows, cols = _generate_puzzle_for_difficulty(db, difficulty, pool=pool)
+        rows, cols = _generate_puzzle_for_difficulty(
+            db, difficulty, pool=pool, min_league_clubs=LEAGUE_MIN_CLUBS if league else 0
+        )
     finally:
         db.close()
     if rows is None:
@@ -628,7 +674,9 @@ def api_mp_create_room():
 
     db = get_db()
     try:
-        rows, cols = _generate_puzzle_for_difficulty(db, difficulty, pool=pool)
+        rows, cols = _generate_puzzle_for_difficulty(
+            db, difficulty, pool=pool, min_league_clubs=LEAGUE_MIN_CLUBS if league else 0
+        )
     finally:
         db.close()
     if rows is None:
