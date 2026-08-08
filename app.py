@@ -53,6 +53,16 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/sw.js")
+def service_worker():
+    # Served from the root path (not /static/sw.js) so it can be registered
+    # with scope "/game" — a service worker's max allowed scope is its own
+    # directory, and only the game page should ever be controlled by it.
+    response = app.send_static_file("sw.js")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.route("/api/players")
 def api_players():
     search = request.args.get("search", "").strip()
