@@ -70,8 +70,8 @@ finally:
 ALL_CATEGORIES: list = category_config.ALL_CATEGORIES + _dynamic_catalog.all()
 CATEGORY_BY_ID: dict = {cat.id: cat for cat in ALL_CATEGORIES}
 
-# League id -> category pool scoped to that league, for the 5 league-only
-# game modes (Bundesliga/Premier League/La Liga/Serie A/Ligue 1 — the only
+# League id -> category pool scoped to that league, for the 4 league-only
+# game modes (Bundesliga/Premier League/La Liga/Serie A — the only
 # leagues with a hand-curated club list, see category_config.LEAGUE_CATEGORIES).
 LEAGUE_POOLS: dict = dynamic_categories.build_league_pools(
     category_config.LEAGUE_CATEGORIES, ALL_CATEGORIES, _dynamic_catalog
@@ -244,7 +244,7 @@ _CAT_ICONS: dict[str, str] = {
     "club_int": "🔵", "club_mil": "🔴", "club_psg": "🔵",
     "club_laz": "🔵",
     "league_buli": "🇩🇪", "league_pl": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "league_laliga": "🇪🇸",
-    "league_seriea": "🇮🇹", "league_ligue1": "🇫🇷",
+    "league_seriea": "🇮🇹",
     "cont_eur": "🌍", "cont_sam": "🌎", "cont_afr": "🌍", "cont_asia": "🌏",
     "cont_non_eu": "🗺️",
     "nat_noneu": "🌍",
@@ -332,7 +332,7 @@ MAX_SPARSE_PER_PUZZLE = 2
 # other categories merely *scoped* to the league rather than the league's
 # clubs themselves. League mode uses a dedicated sampler guaranteeing this
 # many real clubs from the league (one full side of the grid).
-LEAGUE_MIN_CLUBS = 3
+LEAGUE_MIN_CLUBS = 4
 
 
 def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | None:
