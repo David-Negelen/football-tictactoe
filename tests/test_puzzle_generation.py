@@ -68,3 +68,30 @@ def test_generate_puzzle_filters_by_difficulty(monkeypatch, fixture_db_path, fix
         assert all(c.id != "t_hard" for c in rows + cols)
     finally:
         conn.close()
+
+
+def test_sample_puzzle_categories_never_exceeds_the_sparse_cap() -> None:
+    """Regression test for the "random.sample() from a club/trophy-dominated
+    pool picks almost-all-sparse grids, which then almost never has any
+    overlapping players" bug found while building the dynamic catalog (see
+    app.py's MAX_SPARSE_PER_PUZZLE / _SPARSE_TYPES comments)."""
+    sparse = [ClubCategory(f"club_{i}", f"Club {i}", f"Club {i}", difficulty=1) for i in range(20)]
+    broad = list(app_module.category_config.AGE_CATEGORIES) + list(app_module.category_config.POSITION_CATEGORIES)
+
+    for _ in range(50):
+        rows, cols = app_module._sample_puzzle_categories(sparse, broad)
+        sample = rows + cols
+        assert len(sample) == 6
+        assert len({c.id for c in sample}) == 6  # no duplicates
+        n_sparse = sum(1 for c in sample if c.type in app_module._SPARSE_TYPES)
+        assert 1 <= n_sparse <= app_module.MAX_SPARSE_PER_PUZZLE
+        # No two sparse categories ever land on opposite sides (that would
+        # create a sparse-x-sparse cell, the least likely to have any answer).
+        row_sparse = sum(1 for c in rows if c.type in app_module._SPARSE_TYPES)
+        col_sparse = sum(1 for c in cols if c.type in app_module._SPARSE_TYPES)
+        assert row_sparse == 0 or col_sparse == 0
+
+
+def test_sample_puzzle_categories_returns_none_when_not_enough_categories() -> None:
+    assert app_module._sample_puzzle_categories([], []) is None
+    assert app_module._sample_puzzle_categories([ClubCategory("a", "A", "A")], []) is None
