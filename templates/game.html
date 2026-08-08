@@ -185,7 +185,9 @@
   <div id="end-modal"
     class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
     style="backdrop-filter:blur(4px)">
-    <div class="bg-white rounded-3xl shadow-2xl p-8 text-center max-w-xs w-full">
+    <div class="relative bg-white rounded-3xl shadow-2xl p-8 text-center max-w-xs w-full">
+      <button id="end-close" title="Rätsel ansehen"
+        class="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">✕</button>
       <div id="end-icon" class="text-6xl mb-3"></div>
       <h2 id="end-title" class="text-2xl font-black mb-1"></h2>
       <p id="end-sub" class="text-slate-500 text-sm mb-1"></p>

@@ -534,6 +534,18 @@ document.getElementById('end-menu').addEventListener('click', () => {
   document.getElementById('end-modal').classList.add('hidden');
   document.getElementById('btn-menu').click();
 });
+// Dismiss without leaving the round, so the revealed-solution board underneath
+// is actually visible (close button, backdrop click, or Escape).
+function closeEndModal() {
+  document.getElementById('end-modal').classList.add('hidden');
+}
+document.getElementById('end-close').addEventListener('click', closeEndModal);
+document.getElementById('end-modal').addEventListener('click', e => {
+  if (e.target.id === 'end-modal') closeEndModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeEndModal();
+});
 
 let timerInterval = null;
 
