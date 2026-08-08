@@ -268,6 +268,31 @@ def country_flag(name: str) -> str | None:
     return country.flag_override or flag_emoji(country.iso_code)
 
 
+# flagcdn.com's image code per country — usually just the lowercased ISO
+# code, except for a handful matching the flag_override entries above (UK
+# constituent countries use flagcdn's "gb-<subdivision>" convention; Kosovo
+# uses "xk"). Countries with no real current flag (flag_override is the
+# white flag "🏳️" — dissolved states/historical entities) have no image;
+# see fetch_flags.py, which downloads a static/flags/<code>.png per code.
+_FLAG_IMAGE_CODE_OVERRIDES = {
+    "England": "gb-eng",
+    "Schottland": "gb-sct",
+    "Wales": "gb-wls",
+    "Nordirland": "gb-nir",
+    "Kosovo": "xk",
+}
+_NO_REAL_FLAG_IMAGE = {"DDR", "Tahiti", "Jugoslawien (SFR)", "Jugoslawien (Bundesrepublik)", "Niederländische Antillen"}
+
+
+def country_flag_image_code(name: str) -> str | None:
+    """The flagcdn.com code for this country's flag image, or None if it has
+    no real current flag (see _NO_REAL_FLAG_IMAGE) or isn't a known country."""
+    country = COUNTRY_BY_NAME.get(name)
+    if country is None or name in _NO_REAL_FLAG_IMAGE:
+        return None
+    return _FLAG_IMAGE_CODE_OVERRIDES.get(name, country.iso_code.lower())
+
+
 def parse_nationality_tokens(raw: str) -> list[str]:
     """Split a possibly-compound nationality string ("Deutschland Türkei")
     into the individual country names it's built from.

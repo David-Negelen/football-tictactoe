@@ -5,12 +5,14 @@ import time
 import unicodedata
 import os
 import random
+from pathlib import Path
 
 import json as _json
 
 from src import category_config
 from src import dynamic_categories
 from src.categories import CategoryType
+from src.countries import country_flag_image_code
 from src.db import Database
 from src.famous_matches import get_random_match
 from src import multiplayer as mp
@@ -21,6 +23,17 @@ DB_PATH = os.path.join(BASE_DIR, "data", "tictactoe.db")
 app = Flask(__name__)
 
 Database(DB_PATH).initialize()
+
+# Real flag/crest images (see fetch_flags.py, fetch_club_logos.py) — loaded
+# once at startup so _cat_display() can do an O(1) lookup instead of hitting
+# the filesystem/a dict per request.
+_FLAG_CODES_AVAILABLE: set[str] = {
+    p.stem for p in (Path(BASE_DIR) / "static" / "flags").glob("*.png")
+}
+_club_logos_path = Path(BASE_DIR) / "data" / "club_logos.json"
+CLUB_LOGO_MAP: dict[str, str] = (
+    _json.loads(_club_logos_path.read_text()) if _club_logos_path.exists() else {}
+)
 
 VALID_COLS = {
     "name", "current_club_name", "nationality", "position",
@@ -278,14 +291,16 @@ def _club_badge_color(cat_id: str) -> str:
 
 
 def _cat_display(cat) -> dict:
-    # Resolution order: a hand-picked icon (the ~60 legacy ids this dict was
-    # originally built for) wins if present; otherwise fall back to the
-    # category's own icon (set for dynamic nationalities — a real flag emoji,
-    # see src/countries.py); otherwise a programmatic fallback by type. This
-    # is what lets ~7,000 dynamically generated categories all get a
-    # reasonable icon without hand-maintaining an ever-growing dict — the
-    # old approach was already 9 entries short and 8 stale at just 111
-    # categories, which cannot scale to thousands.
+    # Resolution order: a real image (icon_image — a downloaded flag or club
+    # crest, see fetch_flags.py/fetch_club_logos.py) wins whenever available
+    # and the client renders it as-is; otherwise a hand-picked icon (the ~60
+    # legacy ids this dict was originally built for); otherwise the
+    # category's own icon (set for dynamic nationalities — a flag emoji, see
+    # src/countries.py); otherwise a programmatic fallback by type. This is
+    # what lets ~7,000 dynamically generated categories all get a reasonable
+    # icon without hand-maintaining an ever-growing dict — the old approach
+    # was already 9 entries short and 8 stale at just 111 categories, which
+    # cannot scale to thousands.
     icon = _CAT_ICONS.get(cat.id) or getattr(cat, "icon", None)
     display = {
         "id": cat.id,
@@ -293,12 +308,24 @@ def _cat_display(cat) -> dict:
         "type": cat.type.value,
         "difficulty": cat.difficulty,
     }
+
+    if cat.type == CategoryType.CLUB:
+        logo_file = CLUB_LOGO_MAP.get(getattr(cat, "club_name", None))
+        if logo_file:
+            display["icon_image"] = f"/static/club_logos/{logo_file}"
+    elif cat.type == CategoryType.NATIONALITY:
+        nationality = getattr(cat, "nationality", None)
+        flag_code = country_flag_image_code(nationality) if nationality else None
+        if flag_code and flag_code in _FLAG_CODES_AVAILABLE:
+            display["icon_image"] = f"/static/flags/{flag_code}.png"
+
     if icon:
         display["icon"] = icon
     elif cat.type == CategoryType.CLUB:
         # No generic "colored circle with a letter" emoji exists, so the
         # client renders this itself — a small colored badge with the
-        # club's first letter — when icon is absent but icon_letter is set.
+        # club's first letter — when icon/icon_image are both absent but
+        # icon_letter is set.
         display["icon"] = None
         display["icon_letter"] = (cat.label[:1] or "?").upper()
         display["icon_color"] = _club_badge_color(cat.id)

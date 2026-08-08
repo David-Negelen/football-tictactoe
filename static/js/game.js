@@ -295,6 +295,12 @@ function renderBoard() {
 }
 
 function categoryIconHtml(cat) {
+  // Real downloaded flag/crest image (see fetch_flags.py, fetch_club_logos.py)
+  // wins whenever available — looks far better than the emoji font or the
+  // generic colored-initial badge.
+  if (cat.icon_image) {
+    return `<img src="${esc(cat.icon_image)}" alt="" class="w-9 h-9 object-contain flex-shrink-0">`;
+  }
   // Dynamically generated clubs without a hand-picked emoji (the vast
   // majority of ~6,500 clubs) carry icon_letter/icon_color instead of an
   // icon string — render a small colored initial badge for those.

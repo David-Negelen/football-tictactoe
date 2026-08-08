@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.countries import COUNTRY_BY_NAME, country_flag, parse_nationality_tokens
+from src.countries import COUNTRY_BY_NAME, country_flag, country_flag_image_code, parse_nationality_tokens
 
 
 def test_single_nationality_parses_to_one_token() -> None:
@@ -50,3 +50,31 @@ def test_uk_nations_use_distinct_subdivision_flags_not_the_uk_flag() -> None:
     # and "Wales" side by side would be visually indistinguishable.
     flags = {country_flag("England"), country_flag("Schottland"), country_flag("Wales")}
     assert len(flags) == 3
+
+
+def test_flag_image_code_uses_lowercase_iso_code_by_default() -> None:
+    assert country_flag_image_code("Deutschland") == "de"
+
+
+def test_flag_image_code_uses_flagcdn_subdivision_codes_for_uk_nations() -> None:
+    # flagcdn.com (see fetch_flags.py) has no single "gb" image that could
+    # distinguish these — it needs the "gb-<subdivision>" codes specifically.
+    assert country_flag_image_code("England") == "gb-eng"
+    assert country_flag_image_code("Schottland") == "gb-sct"
+    assert country_flag_image_code("Wales") == "gb-wls"
+    assert country_flag_image_code("Nordirland") == "gb-nir"
+
+
+def test_flag_image_code_uses_xk_for_kosovo() -> None:
+    assert country_flag_image_code("Kosovo") == "xk"
+
+
+def test_flag_image_code_is_none_for_countries_with_no_real_flag() -> None:
+    # Dissolved/historical entities (flag_override is the white flag) have
+    # no current flag image to download.
+    assert country_flag_image_code("DDR") is None
+    assert country_flag_image_code("Jugoslawien (SFR)") is None
+
+
+def test_flag_image_code_is_none_for_an_unknown_country() -> None:
+    assert country_flag_image_code("Nichtexistiertland") is None

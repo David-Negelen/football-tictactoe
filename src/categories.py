@@ -501,9 +501,14 @@ class LeagueScopedCategory(Category):
     """
 
     def __init__(self, base: Category, league_club_names: list[str], id: str, label: str, icon: Optional[str] = None) -> None:
-        super().__init__(id=id, label=label, type=base.type, icon=icon, difficulty=base.difficulty)
+        super().__init__(id=id, label=label, type=base.type, icon=icon or base.icon, difficulty=base.difficulty)
         self.base = base
         self.league_club_names = league_club_names
+        # Forwarded so app.py's _cat_display() can resolve a real flag/crest
+        # image for a wrapped category the same way it does for the
+        # unwrapped one (e.g. a nationality category scoped to a league).
+        self.nationality = getattr(base, "nationality", None)
+        self.club_name = getattr(base, "club_name", None)
 
     def _league_ph(self) -> str:
         return ",".join("?" * len(self.league_club_names))
