@@ -88,19 +88,58 @@ function saveStats() {
 const deviceId = getDeviceId();
 let stats = loadStats();
 
+// ─── Einstellungen (welche Kategorien dürfen im Raster vorkommen) ─────────────
+
+const DEFAULT_SETTINGS = { excludedTypes: [], excludedCategoryIds: [] };
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem('ttt_settings');
+    if (!raw) return structuredClone(DEFAULT_SETTINGS);
+    const parsed = JSON.parse(raw);
+    return {
+      excludedTypes: Array.isArray(parsed.excludedTypes) ? parsed.excludedTypes : [],
+      excludedCategoryIds: Array.isArray(parsed.excludedCategoryIds) ? parsed.excludedCategoryIds : [],
+    };
+  } catch {
+    return structuredClone(DEFAULT_SETTINGS);
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem('ttt_settings', JSON.stringify(settings));
+}
+
+let settings = loadSettings();
+let selectedLeague = '';
+
+function genParams() {
+  const p = new URLSearchParams({ difficulty: String(difficulty) });
+  if (selectedLeague) p.set('league', selectedLeague);
+  if (settings.excludedTypes.length) p.set('excluded_types', settings.excludedTypes.join(','));
+  if (settings.excludedCategoryIds.length) p.set('excluded', settings.excludedCategoryIds.join(','));
+  return p;
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 function showScreen(name) {
   document.getElementById('screen-mode-select').classList.toggle('hidden', name !== 'mode-select');
   document.getElementById('screen-online-lobby').classList.toggle('hidden', name !== 'online-lobby');
   document.getElementById('screen-board').classList.toggle('hidden', name !== 'board');
-  document.getElementById('btn-menu').classList.toggle('hidden', name === 'mode-select');
+  document.getElementById('screen-settings').classList.toggle('hidden', name !== 'settings');
+  document.getElementById('btn-menu').classList.toggle('hidden', name === 'mode-select' || name === 'settings');
 }
 
 function updateModeChrome() {
   document.getElementById('diff-picker').classList.toggle('hidden', g.mode === 'online');
+  document.getElementById('league-picker').classList.toggle('hidden', g.mode === 'online');
   document.getElementById('btn-give-up').classList.toggle('hidden', g.mode === 'solo');
 }
+
+document.getElementById('league-picker').addEventListener('change', e => {
+  selectedLeague = e.target.value;
+});
 
 document.querySelectorAll('[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => selectMode(btn.dataset.mode));
@@ -128,6 +167,98 @@ document.getElementById('btn-menu').addEventListener('click', () => {
   showScreen('mode-select');
 });
 
+// ─── Einstellungen-Screen ───────────────────────────────────────────────────────
+
+const CATEGORY_TYPE_LABELS = {
+  club: 'Vereine', nationality: 'Nationalitäten', position: 'Positionen',
+  award: 'Trophäen', league: 'Ligen', continent: 'Kontinente',
+  initial: 'Anfangsbuchstabe', contains_letter: 'Enthält Buchstabe',
+  age: 'Alter', market_value: 'Marktwert',
+};
+
+document.getElementById('btn-settings').addEventListener('click', () => {
+  renderSettingsScreen();
+  showScreen('settings');
+});
+document.getElementById('btn-settings-back').addEventListener('click', () => showScreen('mode-select'));
+
+function renderSettingsScreen() {
+  const toggles = document.getElementById('settings-type-toggles');
+  toggles.innerHTML = Object.entries(CATEGORY_TYPE_LABELS).map(([type, label]) => `
+    <label class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 cursor-pointer text-white">
+      <input type="checkbox" data-type-toggle="${type}" ${settings.excludedTypes.includes(type) ? '' : 'checked'}>
+      ${esc(label)}
+    </label>`).join('');
+  toggles.querySelectorAll('[data-type-toggle]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const type = cb.dataset.typeToggle;
+      settings.excludedTypes = cb.checked
+        ? settings.excludedTypes.filter(t => t !== type)
+        : [...new Set([...settings.excludedTypes, type])];
+      saveSettings();
+    });
+  });
+
+  renderExcludedList();
+
+  const typeSelect = document.getElementById('settings-exclude-type');
+  const searchInput = document.getElementById('settings-exclude-search');
+  let searchTimer = null;
+  const runSearch = () => searchCategoriesForExclusion(typeSelect.value, searchInput.value.trim());
+  typeSelect.onchange = runSearch;
+  searchInput.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 250); };
+  runSearch();
+}
+
+async function searchCategoriesForExclusion(type, query) {
+  const container = document.getElementById('settings-exclude-results');
+  const resp = await fetch(`/api/categories?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}&limit=40`);
+  const data = await resp.json();
+  if (!data.categories?.length) {
+    container.innerHTML = '<p class="text-slate-400 text-xs text-center py-2">Keine Treffer</p>';
+    return;
+  }
+  container.innerHTML = data.categories.map(c => {
+    const excluded = settings.excludedCategoryIds.includes(c.id);
+    return `<label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 text-sm cursor-pointer">
+      <input type="checkbox" data-exclude-id="${esc(c.id)}" ${excluded ? 'checked' : ''}>
+      <span>${esc(c.label)}</span>
+    </label>`;
+  }).join('');
+  container.querySelectorAll('[data-exclude-id]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = cb.dataset.excludeId;
+      settings.excludedCategoryIds = cb.checked
+        ? [...new Set([...settings.excludedCategoryIds, id])]
+        : settings.excludedCategoryIds.filter(x => x !== id);
+      saveSettings();
+      renderExcludedList();
+    });
+  });
+}
+
+function renderExcludedList() {
+  document.getElementById('settings-excluded-count').textContent = settings.excludedCategoryIds.length;
+  const list = document.getElementById('settings-excluded-list');
+  if (!settings.excludedCategoryIds.length) {
+    list.innerHTML = '<span class="text-green-200/50 text-xs">Keine</span>';
+    return;
+  }
+  list.innerHTML = settings.excludedCategoryIds.map(id => `
+    <button data-remove-excluded="${esc(id)}" class="bg-red-900/40 hover:bg-red-900/60 text-red-200 text-xs px-2 py-1 rounded-full transition-colors">
+      ${esc(id)} ×
+    </button>`).join('');
+  list.querySelectorAll('[data-remove-excluded]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.removeExcluded;
+      settings.excludedCategoryIds = settings.excludedCategoryIds.filter(x => x !== id);
+      saveSettings();
+      renderExcludedList();
+      searchCategoriesForExclusion(document.getElementById('settings-exclude-type').value, document.getElementById('settings-exclude-search').value.trim());
+    });
+  });
+}
+
 // ─── Spielfeld rendern (gemeinsam für alle Modi) ───────────────────────────────
 
 function renderBoard() {
@@ -150,12 +281,23 @@ function renderBoard() {
   });
 }
 
+function categoryIconHtml(cat) {
+  // Dynamically generated clubs without a hand-picked emoji (the vast
+  // majority of ~6,500 clubs) carry icon_letter/icon_color instead of an
+  // icon string — render a small colored initial badge for those.
+  if (!cat.icon && cat.icon_letter) {
+    return `<div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0"
+      style="background:${esc(cat.icon_color || '#14532d')}">${esc(cat.icon_letter)}</div>`;
+  }
+  return `<div class="text-3xl leading-none flex-shrink-0">${cat.icon || '⚽'}</div>`;
+}
+
 function headerCellHtml(cat) {
   return `
     <div class="rounded-xl flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2"
          style="background:rgba(20,83,45,.9);border:1px solid rgba(74,222,128,.15);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)"
          title="${esc(cat.label)}">
-      <div class="text-3xl leading-none flex-shrink-0">${cat.icon}</div>
+      ${categoryIconHtml(cat)}
       <div class="text-white/90 font-semibold text-center leading-snug px-1"
            style="font-size:11px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
         ${esc(cat.label)}
@@ -455,7 +597,7 @@ async function newLocalRound() {
   updateStreakDisplay();
   updateTimerDisplay();
 
-  const resp = await fetch(`/api/game/new?difficulty=${difficulty}`);
+  const resp = await fetch(`/api/game/new?${genParams().toString()}`);
   if (!resp.ok) {
     setStatus('Kein Rätsel gefunden – bitte erneut versuchen.');
     return;
@@ -576,7 +718,7 @@ async function newSoloRound() {
   });
   updateTimerDisplay();
 
-  const resp = await fetch(`/api/game/new?difficulty=${difficulty}`);
+  const resp = await fetch(`/api/game/new?${genParams().toString()}`);
   if (!resp.ok) {
     setStatus('Kein Rätsel gefunden – bitte erneut versuchen.');
     return;
@@ -692,7 +834,10 @@ async function createOnlineRoom() {
   Object.assign(g, { onlineBoardEntered: false, onlineFinished: false });
   const resp = await fetch('/api/multiplayer/rooms', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ difficulty }),
+    body: JSON.stringify({
+      difficulty, league: selectedLeague || undefined,
+      excludedTypes: settings.excludedTypes, excludedCategoryIds: settings.excludedCategoryIds,
+    }),
   });
   if (!resp.ok) { showLobbyError('Raum konnte nicht erstellt werden.'); return; }
   const data = await resp.json();
