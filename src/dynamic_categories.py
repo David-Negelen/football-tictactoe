@@ -39,6 +39,15 @@ _YOUTH_CLUB_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Reserve/B-teams use the senior club's own name plus a trailing "II"/"B"/"C"
+# marker (e.g. "FC Augsburg II", "Barcelona B", "Real Madrid C") or a small
+# set of other conventions ("Amateure", the new "Milan Futuro"). A player who
+# only ever played for the reserve side shouldn't count for the senior club's
+# category. "Willem II" is a real Dutch club — the "II" is part of its actual
+# name, not a reserve marker — so it's the one explicit exception.
+_RESERVE_CLUB_PATTERN = re.compile(r"\s(?:II|B|C)$|Amateure|Futuro", re.IGNORECASE)
+_RESERVE_CLUB_ALLOWLIST = {"Willem II"}
+
 # (minimum distinct players, difficulty) — checked in order, first match wins.
 # Below the lowest threshold, a club/nationality is dropped entirely rather
 # than forced into difficulty 3 (an answer pool of 1-4 players is too thin
@@ -50,7 +59,11 @@ TROPHY_TIER_THRESHOLDS = [(100, 1), (20, 2), (1, 3)]
 
 
 def _is_junk_club(name: str) -> bool:
-    return name in CLUB_STATUS_DENYLIST or bool(_YOUTH_CLUB_PATTERN.search(name))
+    if name in CLUB_STATUS_DENYLIST or bool(_YOUTH_CLUB_PATTERN.search(name)):
+        return True
+    if name in _RESERVE_CLUB_ALLOWLIST:
+        return False
+    return bool(_RESERVE_CLUB_PATTERN.search(name))
 
 
 def _tier_difficulty(count: int, thresholds: list[tuple[int, int]]) -> int | None:

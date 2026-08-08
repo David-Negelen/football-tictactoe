@@ -48,6 +48,12 @@ def dynamic_db_conn(fixture_db_path: Path):
         _add_career_stint(conn, name, "Small Rare FC")  # exactly 3 players -> below the difficulty-3 floor (5)
     for name in players[:5]:
         _add_career_stint(conn, name, "Just Enough FC")  # exactly 5 players -> difficulty 3 floor
+    for name in players[:5]:
+        _add_career_stint(conn, name, "Testville FC II")  # reserve team, above the floor
+    for name in players[:5]:
+        _add_career_stint(conn, name, "Testville FC B")  # reserve team, above the floor
+    for name in players[:5]:
+        _add_career_stint(conn, name, "Willem II")  # real club name, not a reserve marker
     conn.commit()
     yield conn
     conn.close()
@@ -61,6 +67,19 @@ def test_status_placeholder_club_names_are_excluded(dynamic_db_conn) -> None:
 def test_youth_team_club_names_are_excluded(dynamic_db_conn) -> None:
     clubs = build_dynamic_clubs(dynamic_db_conn)
     assert "Testville FC U19" not in {c.club_name for c in clubs}
+
+
+def test_reserve_team_club_names_are_excluded(dynamic_db_conn) -> None:
+    names = {c.club_name for c in build_dynamic_clubs(dynamic_db_conn)}
+    assert "Testville FC II" not in names
+    assert "Testville FC B" not in names
+
+
+def test_willem_ii_is_not_treated_as_a_reserve_team(dynamic_db_conn) -> None:
+    # "Willem II" is a real club whose actual name ends in "II" — not a
+    # reserve-team marker like "Testville FC II" above.
+    names = {c.club_name for c in build_dynamic_clubs(dynamic_db_conn)}
+    assert "Willem II" in names
 
 
 def test_clubs_below_the_lowest_tier_threshold_are_dropped(dynamic_db_conn) -> None:
