@@ -122,6 +122,18 @@ class Database:
                     message TEXT
                 );
 
+                -- Indexes for the category engine's eligible_player_ids()/sql_filter()
+                -- queries. idx_career_stints_club and idx_career_stints_player already
+                -- existed by hand on the live deployed DB but were never actually created
+                -- here, so a fresh DB (CI, new deploy) silently lost them; documenting
+                -- them here makes that reproducible. The trophy/nationality indexes are
+                -- new — they matter once the dynamic category catalog is querying every
+                -- distinct trophy title and nationality at startup.
+                CREATE INDEX IF NOT EXISTS idx_career_stints_club ON career_stints(club_name);
+                CREATE INDEX IF NOT EXISTS idx_career_stints_player ON career_stints(player_id);
+                CREATE INDEX IF NOT EXISTS idx_player_trophies_title ON player_trophies(title);
+                CREATE INDEX IF NOT EXISTS idx_players_nationality ON players(nationality);
+
                 -- Aggregated player stats for sorting and exploration.
                 -- career_start/end are "YY/YY" season strings (lexicographic order works for sorting).
                 CREATE VIEW IF NOT EXISTS player_stats AS

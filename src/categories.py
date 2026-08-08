@@ -71,6 +71,11 @@ class NationalityCategory(Category):
 
     Matches using LIKE because the DB stores compound nationalities as
     space-separated strings (e.g. "Deutschland Türkei" for dual nationals).
+    Both the column value and the search term are padded with a leading and
+    trailing space before matching, so the target nationality has to appear
+    as a whole space-delimited token (or phrase, for multi-word nationalities
+    like "Vereinigte Staaten") — a plain `LIKE '%Niger%'` would otherwise
+    also match "Nigeria", "Guinea" would match "Guinea-Bissau", etc.
     """
 
     def __init__(self, id: str, label: str, nationality: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
@@ -79,20 +84,20 @@ class NationalityCategory(Category):
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
         row = conn.execute(
-            "SELECT 1 FROM players WHERE id = ? AND nationality LIKE ? LIMIT 1",
-            (player_id, f"%{self.nationality}%"),
+            "SELECT 1 FROM players WHERE id = ? AND (' ' || nationality || ' ') LIKE ? LIMIT 1",
+            (player_id, f"% {self.nationality} %"),
         ).fetchone()
         return row is not None
 
     def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
-            "SELECT id FROM players WHERE nationality LIKE ?",
-            (f"%{self.nationality}%",),
+            "SELECT id FROM players WHERE (' ' || nationality || ' ') LIKE ?",
+            (f"% {self.nationality} %",),
         ).fetchall()
         return {row[0] for row in rows}
 
     def sql_filter(self) -> tuple[str, list]:
-        return "p.nationality LIKE ?", [f"%{self.nationality}%"]
+        return "(' ' || p.nationality || ' ') LIKE ?", [f"% {self.nationality} %"]
 
 
 class PositionCategory(Category):
@@ -484,3 +489,45 @@ class NonEuropeanNationalityCategory(Category):
 
     def sql_filter(self) -> tuple[str, list]:
         return self._condition()
+
+
+class LeagueScopedCategory(Category):
+    """Wraps another category, additionally requiring a career stint at one
+    of a league's clubs — used for league-scoped game modes ("Bundesliga
+    only"). Each method independently re-derives the combined condition
+    rather than caching anything, so the check_player/eligible_player_ids/
+    sql_filter agreement invariant every other Category subclass already
+    guarantees holds for wrapped instances too, without special-casing.
+    """
+
+    def __init__(self, base: Category, league_club_names: list[str], id: str, label: str, icon: Optional[str] = None) -> None:
+        super().__init__(id=id, label=label, type=base.type, icon=icon, difficulty=base.difficulty)
+        self.base = base
+        self.league_club_names = league_club_names
+
+    def _league_ph(self) -> str:
+        return ",".join("?" * len(self.league_club_names))
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        if not self.base.check_player(player_id, conn):
+            return False
+        row = conn.execute(
+            f"SELECT 1 FROM career_stints WHERE player_id = ? AND club_name IN ({self._league_ph()}) LIMIT 1",
+            [player_id] + self.league_club_names,
+        ).fetchone()
+        return row is not None
+
+    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        base_ids = self.base.eligible_player_ids(conn)
+        if not base_ids:
+            return set()
+        rows = conn.execute(
+            f"SELECT DISTINCT player_id FROM career_stints WHERE club_name IN ({self._league_ph()})",
+            self.league_club_names,
+        ).fetchall()
+        return base_ids & {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        base_sql, base_params = self.base.sql_filter()
+        league_sql = f"EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name IN ({self._league_ph()}))"
+        return f"({base_sql}) AND {league_sql}", base_params + list(self.league_club_names)
