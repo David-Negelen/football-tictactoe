@@ -34,6 +34,8 @@
     }
     .win-cell { animation: pulse-gold 1.3s ease-in-out infinite; }
     .diff-btn { transition: background .15s, color .15s; }
+    .mode-card { transition: background .15s, border-color .15s, transform .15s; }
+    .mode-card:hover { transform: translateY(-2px); }
     @keyframes confetti-fall {
       0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
       100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
@@ -48,53 +50,73 @@
       <span>Tiki-Taka-Toe</span>
     </h1>
     <div class="flex items-center gap-2 flex-wrap justify-end">
-      <div class="flex rounded-lg overflow-hidden border border-slate-600">
+      <div id="diff-picker" class="flex rounded-lg overflow-hidden border border-slate-600">
         <button data-diff="1" class="diff-btn px-2.5 py-1 text-xs font-semibold bg-slate-700 text-slate-300 hover:text-white transition-colors">Leicht</button>
         <button data-diff="2" class="diff-btn px-2.5 py-1 text-xs font-semibold bg-slate-700 text-slate-300 hover:text-white border-x border-slate-600 transition-colors">Mittel</button>
         <button data-diff="3" class="diff-btn px-2.5 py-1 text-xs font-semibold bg-yellow-400 text-slate-900 transition-colors">Schwer</button>
       </div>
-      <button id="btn-new-game" class="bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors">
-        Neues Spiel
-      </button>
+      <button id="btn-menu" class="hidden items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">🏠 Menü</button>
       <button id="btn-stats" class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">📊 Stats</button>
-      <button id="btn-mute" title="Sound an/aus" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors">🔊</button>
       <button id="btn-install" class="hidden items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">⬇️ Installieren</button>
-      <a href="/" class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">⚽ DB Explorer</a>
-      <a href="/combos" class="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">🔗 Club Combos</a>
-      <a href="/squad-guesser" class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">👕 Squad Guesser</a>
     </div>
   </header>
 
-  <div class="flex flex-col items-center py-5 px-4 flex-1">
+  <div class="flex flex-col items-center py-5 px-4 flex-1 w-full">
 
-  <!-- Statusleiste -->
-  <div id="status-bar"
-    class="w-full max-w-3xl mb-3 rounded-xl px-4 py-2 flex items-center justify-between gap-3 font-bold text-white text-sm bg-green-800 border border-green-600 min-h-[38px]">
-    <span id="status-text">Rätsel wird geladen…</span>
-    <span class="flex items-center gap-3 text-xs font-semibold text-green-200 flex-shrink-0">
-      <span id="streak-display" class="hidden items-center gap-1"></span>
-      <span id="timer-display">⏱ 0:00</span>
-    </span>
+  <!-- Modus-Auswahl -->
+  <div id="screen-mode-select" class="w-full max-w-3xl flex flex-col items-center gap-6 py-8">
+    <h2 class="text-white text-xl font-bold">Spielmodus wählen</h2>
+    <div class="grid sm:grid-cols-3 gap-4 w-full">
+      <button data-mode="solo" class="mode-card flex flex-col items-center justify-center gap-2 rounded-2xl bg-green-800/60 hover:bg-green-700/70 border border-green-600/40 hover:border-yellow-400/60 p-6 text-center">
+        <span class="text-4xl">🧩</span>
+        <span class="font-bold text-white">Solo</span>
+        <span class="text-xs text-green-200/70">Fülle das Raster allein aus</span>
+      </button>
+      <button data-mode="local" class="mode-card flex flex-col items-center justify-center gap-2 rounded-2xl bg-green-800/60 hover:bg-green-700/70 border border-green-600/40 hover:border-yellow-400/60 p-6 text-center">
+        <span class="text-4xl">🛋️</span>
+        <span class="font-bold text-white">1v1 Lokal</span>
+        <span class="text-xs text-green-200/70">Ein Gerät, zwei Spieler im Wechsel</span>
+      </button>
+      <button data-mode="online" class="mode-card flex flex-col items-center justify-center gap-2 rounded-2xl bg-green-800/60 hover:bg-green-700/70 border border-green-600/40 hover:border-yellow-400/60 p-6 text-center">
+        <span class="text-4xl">🌐</span>
+        <span class="font-bold text-white">1v1 Online</span>
+        <span class="text-xs text-green-200/70">Gegen einen Freund, live über einen Raum-Code</span>
+      </button>
+    </div>
   </div>
 
-  <!-- Spielfeld: 4×4 CSS-Grid -->
-  <div id="board"
-    class="grid gap-2 w-full max-w-3xl"
-    style="grid-template-columns: repeat(4, 1fr);">
+  <!-- Online-Lobby -->
+  <div id="screen-online-lobby" class="hidden w-full max-w-md flex flex-col items-center gap-4 py-8">
+    <div id="online-lobby-body" class="w-full"></div>
   </div>
 
-  <!-- Buttons -->
-  <div class="mt-4 flex gap-3">
-    <button id="btn-draw"
-      class="bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs px-5 py-2 rounded-full tracking-widest uppercase transition-colors opacity-80 hover:opacity-100 disabled:opacity-30"
-      disabled>
-      Unentschieden
-    </button>
-    <button id="btn-solve"
-      class="bg-slate-600 hover:bg-slate-500 text-white font-bold text-xs px-5 py-2 rounded-full tracking-widest uppercase transition-colors opacity-80 hover:opacity-100 disabled:opacity-30"
-      disabled>
-      Lösung
-    </button>
+  <!-- Spielfeld-Screen (Solo / Lokal / Online) -->
+  <div id="screen-board" class="hidden w-full flex flex-col items-center">
+
+    <!-- Statusleiste -->
+    <div id="status-bar"
+      class="w-full max-w-3xl mb-3 rounded-xl px-4 py-2 flex items-center justify-between gap-3 font-bold text-white text-sm bg-green-800 border border-green-600 min-h-[38px]">
+      <span id="status-text">Rätsel wird geladen…</span>
+      <span class="flex items-center gap-3 text-xs font-semibold text-green-200 flex-shrink-0">
+        <span id="streak-display" class="hidden items-center gap-1"></span>
+        <span id="timer-display">⏱ 0:00</span>
+      </span>
+    </div>
+
+    <!-- Spielfeld: 4×4 CSS-Grid -->
+    <div id="board"
+      class="grid gap-2 w-full max-w-3xl"
+      style="grid-template-columns: repeat(4, 1fr);">
+    </div>
+
+    <!-- Buttons -->
+    <div class="mt-4 flex gap-3">
+      <button id="btn-give-up"
+        class="bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs px-5 py-2 rounded-full tracking-widest uppercase transition-colors opacity-80 hover:opacity-100 disabled:opacity-30">
+        Aufgeben
+      </button>
+    </div>
+
   </div>
 
   </div><!-- /content -->
@@ -120,19 +142,6 @@
     </div>
   </div>
 
-  <!-- Lösung-Modal -->
-  <div id="solve-modal"
-    class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
-    style="backdrop-filter:blur(4px)">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden">
-      <div class="bg-slate-700 px-5 py-3 flex items-center justify-between">
-        <span class="text-white font-bold text-sm">Lösung</span>
-        <button id="solve-close" class="text-slate-300 hover:text-white text-2xl leading-none">×</button>
-      </div>
-      <div id="solve-body" class="p-4"></div>
-    </div>
-  </div>
-
   <!-- Endspiel-Overlay -->
   <div id="end-modal"
     class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
@@ -142,10 +151,16 @@
       <h2 id="end-title" class="text-2xl font-black mb-1"></h2>
       <p id="end-sub" class="text-slate-500 text-sm mb-1"></p>
       <p id="end-extra" class="text-slate-400 text-xs mb-6"></p>
-      <button id="end-new-game"
-        class="bg-green-700 hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-full transition-colors">
-        Nochmal spielen
-      </button>
+      <div class="flex flex-col gap-2">
+        <button id="end-new-game"
+          class="bg-green-700 hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-full transition-colors">
+          Nochmal spielen
+        </button>
+        <button id="end-menu"
+          class="text-slate-400 hover:text-slate-600 text-xs font-semibold transition-colors">
+          Zurück zum Menü
+        </button>
+      </div>
     </div>
   </div>
 
@@ -153,682 +168,18 @@
   <div id="stats-modal"
     class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
     style="backdrop-filter:blur(4px)">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-      <div class="bg-slate-700 px-5 py-3 flex items-center justify-between">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
+      <div class="bg-slate-700 px-5 py-3 flex items-center justify-between flex-shrink-0">
         <span class="text-white font-bold text-sm">📊 Deine Statistik</span>
         <button id="stats-close" class="text-slate-300 hover:text-white text-2xl leading-none">×</button>
       </div>
-      <div id="stats-body" class="p-5 space-y-3"></div>
+      <div id="stats-body" class="p-5 space-y-4 overflow-y-auto"></div>
     </div>
   </div>
 
   <!-- Konfetti-Layer -->
   <div id="confetti-layer" class="fixed inset-0 pointer-events-none z-[70] overflow-hidden" aria-hidden="true"></div>
 
-<script>
-// ─── SVG ──────────────────────────────────────────────────────────────────────
-
-function shirtSvg() {
-  return `<svg class="text-green-500 w-10 h-10 mx-auto mb-1 opacity-60" viewBox="0 0 80 72" fill="currentColor">
-    <path d="M22 4 L10 14 L2 36 L18 42 L18 68 L62 68 L62 42 L78 36 L70 14 L58 4
-             C54 14 46 18 40 18 C34 18 26 14 22 4 Z"/>
-  </svg>`;
-}
-
-function markBadge(player) {
-  const color = player === 1 ? 'bg-red-500' : 'bg-blue-500';
-  const sym   = player === 1 ? 'X' : 'O';
-  return `<span class="${color} text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">${sym}</span>`;
-}
-
-// ─── Zustand ──────────────────────────────────────────────────────────────────
-
-const g = {
-  rows: [], cols: [],
-  board: [[null,null,null],[null,null,null],[null,null,null]],
-  current: 1,       // 1 = Spieler 1 (X), 2 = Spieler 2 (O)
-  winner: null,     // null | 1 | 2 | 'draw'
-  usedIds: new Set(),
-  activeCell: null, // {r, c}
-  winCells: [],
-  streak: { 1: 0, 2: 0 },   // aufeinanderfolgende richtige Antworten je Spieler (diese Partie)
-  elapsedSeconds: 0,
-};
-let difficulty = 3; // aktuell gewählter Schwierigkeitsgrad
-
-// ─── Anonyme Identität & Statistik ─────────────────────────────────────────────
-// Kein Login — nur eine zufällige Geräte-ID + Statistik im localStorage des Browsers.
-
-function getDeviceId() {
-  let id = localStorage.getItem('ttt_device_id');
-  if (!id) {
-    id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
-    localStorage.setItem('ttt_device_id', id);
-  }
-  return id;
-}
-
-const DEFAULT_STATS = {
-  gamesPlayed: 0,
-  wins: { 1: 0, 2: 0 },
-  draws: 0,
-  correct: 0,
-  wrong: 0,
-  bestStreak: 0,
-  fastestWinSeconds: null,
-  byDifficulty: { 1: 0, 2: 0, 3: 0 },
-};
-
-function loadStats() {
-  try {
-    const raw = localStorage.getItem('ttt_stats');
-    if (!raw) return structuredClone(DEFAULT_STATS);
-    const parsed = JSON.parse(raw);
-    return {
-      ...structuredClone(DEFAULT_STATS),
-      ...parsed,
-      wins: { ...DEFAULT_STATS.wins, ...(parsed.wins || {}) },
-      byDifficulty: { ...DEFAULT_STATS.byDifficulty, ...(parsed.byDifficulty || {}) },
-    };
-  } catch {
-    return structuredClone(DEFAULT_STATS);
-  }
-}
-
-function saveStats() {
-  localStorage.setItem('ttt_stats', JSON.stringify(stats));
-}
-
-const deviceId = getDeviceId();
-let stats = loadStats();
-
-// ─── Rätsel laden ─────────────────────────────────────────────────────────────
-
-async function newGame() {
-  setStatus('Rätsel wird geladen…');
-  stopTimer();
-  document.getElementById('board').innerHTML = '';
-  document.getElementById('btn-draw').disabled = true;
-  document.getElementById('btn-solve').disabled = true;
-
-  Object.assign(g, {
-    rows: [], cols: [],
-    board: [[null,null,null],[null,null,null],[null,null,null]],
-    current: 1, winner: null, usedIds: new Set(), activeCell: null, winCells: [],
-    streak: { 1: 0, 2: 0 }, elapsedSeconds: 0,
-  });
-  updateStreakDisplay();
-  updateTimerDisplay();
-
-  const resp = await fetch(`/api/game/new?difficulty=${difficulty}`);
-  if (!resp.ok) {
-    setStatus('Kein Rätsel gefunden – bitte erneut versuchen.');
-    document.getElementById('btn-draw').disabled = true;
-    return;
-  }
-  const data = await resp.json();
-  g.rows = data.rows;
-  g.cols = data.cols;
-
-  renderBoard();
-  document.getElementById('btn-draw').disabled = false;
-  document.getElementById('btn-solve').disabled = false;
-  updateStatus();
-  startTimer();
-}
-
-// ─── Spielfeld rendern ────────────────────────────────────────────────────────
-
-function renderBoard() {
-  const board = document.getElementById('board');
-  const cells = [];
-
-  cells.push(`<div class="h-32"></div>`);
-
-  // Spalten-Header
-  g.cols.forEach(cat => {
-    cells.push(headerCellHtml(cat));
-  });
-
-  // Zeilen
-  g.rows.forEach((rowCat, r) => {
-    cells.push(headerCellHtml(rowCat));
-    g.cols.forEach((_, c) => cells.push(cellHtml(r, c)));
-  });
-
-  board.innerHTML = cells.join('');
-  board.querySelectorAll('[data-cell]').forEach(el => {
-    el.addEventListener('click', () => {
-      const [r, c] = el.dataset.cell.split(',').map(Number);
-      openCell(r, c);
-    });
-  });
-}
-
-function headerCellHtml(cat) {
-  return `
-    <div class="rounded-xl flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2"
-         style="background:rgba(20,83,45,.9);border:1px solid rgba(74,222,128,.15);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)"
-         title="${esc(cat.label)}">
-      <div class="text-3xl leading-none flex-shrink-0">${cat.icon}</div>
-      <div class="text-white/90 font-semibold text-center leading-snug px-1"
-           style="font-size:11px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
-        ${esc(cat.label)}
-      </div>
-    </div>`;
-}
-
-function cellHtml(r, c) {
-  const entry = g.board[r][c];
-  const isWin = g.winCells.some(([wr, wc]) => wr === r && wc === c);
-  const gone  = g.winner !== null;
-
-  if (entry) {
-    const p1  = entry.player === 1;
-    const bg  = p1 ? 'bg-red-900/50'  : 'bg-blue-900/50';
-    const ring = isWin
-      ? 'win-cell ring-4 ring-yellow-400'
-      : `ring-2 ${p1 ? 'ring-red-400' : 'ring-blue-400'}`;
-    return `
-      <div class="rounded-xl ${bg} ${ring} flex flex-col items-center justify-center p-3 h-32 pop"
-           data-cell="${r},${c}">
-        <div class="flex justify-end w-full mb-1">${markBadge(entry.player)}</div>
-        <div class="text-white font-bold text-center leading-tight px-1 text-sm">${esc(entry.name)}</div>
-        <div class="text-green-300 text-xs mt-1 truncate max-w-full px-1">${esc(entry.club || '')}</div>
-      </div>`;
-  }
-
-  const hoverBg = gone
-    ? 'bg-green-800/40 opacity-40'
-    : 'bg-green-700/60 hover:bg-green-600/70 cursor-pointer';
-  return `
-    <button ${gone ? 'disabled' : ''} data-cell="${r},${c}"
-      class="cell-btn rounded-xl ${hoverBg} border border-green-600/50 flex flex-col items-center justify-center h-32 w-full">
-      ${shirtSvg()}
-      <span class="text-green-300 font-semibold tracking-wide text-[10px] mt-1">SPIELER WÄHLEN</span>
-    </button>`;
-}
-
-function refreshCell(r, c) {
-  const board = document.getElementById('board');
-  const idx = 1 + 3 + r * 4 + 1 + c; // title + 3 col headers + row*(header + 3 cells)
-  const existing = board.children[idx];
-  const tmp = document.createElement('div');
-  tmp.innerHTML = cellHtml(r, c);
-  const newEl = tmp.firstElementChild;
-  existing.replaceWith(newEl);
-  if (!g.board[r][c]) {
-    newEl.addEventListener('click', () => openCell(r, c));
-  }
-}
-
-// ─── Spiellogik ───────────────────────────────────────────────────────────────
-
-const WIN_LINES = [
-  [[0,0],[0,1],[0,2]], [[1,0],[1,1],[1,2]], [[2,0],[2,1],[2,2]],
-  [[0,0],[1,0],[2,0]], [[0,1],[1,1],[2,1]], [[0,2],[1,2],[2,2]],
-  [[0,0],[1,1],[2,2]], [[0,2],[1,1],[2,0]],
-];
-
-function checkWinner() {
-  for (const line of WIN_LINES) {
-    const vals = line.map(([r, c]) => g.board[r][c]?.player);
-    if (vals[0] && vals[0] === vals[1] && vals[1] === vals[2]) {
-      g.winner  = vals[0];
-      g.winCells = line;
-      return;
-    }
-  }
-  if (g.board.flat().every(c => c !== null)) g.winner = 'draw';
-}
-
-function placePlayer(r, c, playerId, name, club) {
-  g.board[r][c] = { player: g.current, id: playerId, name, club };
-  g.usedIds.add(playerId);
-
-  g.streak[g.current]++;
-  stats.correct++;
-  if (g.streak[g.current] > stats.bestStreak) stats.bestStreak = g.streak[g.current];
-  saveStats();
-  playTone('place');
-
-  checkWinner();
-  refreshCell(r, c);
-  if (g.winner) { endGame(); return; }
-  g.current = g.current === 1 ? 2 : 1;
-  updateStatus();
-}
-
-function endGame() {
-  stopTimer();
-  g.rows.forEach((_, r) => g.cols.forEach((__, c) => refreshCell(r, c)));
-  document.getElementById('btn-draw').disabled = true;
-
-  stats.gamesPlayed++;
-  stats.byDifficulty[difficulty] = (stats.byDifficulty[difficulty] || 0) + 1;
-  const timeStr = formatTime(g.elapsedSeconds);
-
-  if (g.winner === 'draw') {
-    stats.draws++;
-    saveStats();
-    showEndModal('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`);
-  } else {
-    stats.wins[g.winner] = (stats.wins[g.winner] || 0) + 1;
-    if (stats.fastestWinSeconds == null || g.elapsedSeconds < stats.fastestWinSeconds) {
-      stats.fastestWinSeconds = g.elapsedSeconds;
-    }
-    saveStats();
-    playTone('win');
-    fireConfetti();
-    showEndModal(
-      g.winner === 1 ? '🔴' : '🔵',
-      `Spieler ${g.winner} gewinnt!`,
-      g.winner === 1 ? 'X hat das Spiel gewonnen!' : 'O hat das Spiel gewonnen!',
-      `⏱ ${timeStr} · 🔥 Beste Serie: ${stats.bestStreak}`
-    );
-  }
-}
-
-// ─── Zell-Interaktion ─────────────────────────────────────────────────────────
-
-function openCell(r, c) {
-  if (g.winner || g.board[r][c]) return;
-  g.activeCell = { r, c };
-  const rowCat = g.rows[r];
-  const colCat = g.cols[c];
-  document.getElementById('modal-title').textContent =
-    `${rowCat.label} × ${colCat.label}`;
-  document.getElementById('search-input').value = '';
-  document.getElementById('search-results').innerHTML = '';
-  document.getElementById('search-hint').textContent = 'Mindestens 3 Buchstaben eingeben';
-  document.getElementById('search-error').classList.add('hidden');
-  document.getElementById('modal').classList.remove('hidden');
-  document.getElementById('search-input').focus();
-}
-
-function closeModal() {
-  document.getElementById('modal').classList.add('hidden');
-  g.activeCell = null;
-}
-
-// ─── Spieler-Suche ────────────────────────────────────────────────────────────
-
-let searchTimer = null;
-document.getElementById('search-input').addEventListener('input', e => {
-  clearTimeout(searchTimer);
-  const q = e.target.value.trim();
-  document.getElementById('search-error').classList.add('hidden');
-  if (q.length < 3) {
-    document.getElementById('search-results').innerHTML = '';
-    document.getElementById('search-hint').textContent = 'Mindestens 3 Buchstaben eingeben';
-    return;
-  }
-  document.getElementById('search-hint').textContent = '';
-  searchTimer = setTimeout(() => doSearch(q), 280);
-});
-
-async function doSearch(q) {
-  if (!g.activeCell) return;
-  const resp = await fetch(`/api/game/search?q=${encodeURIComponent(q)}`);
-  const data = await resp.json();
-  const container = document.getElementById('search-results');
-
-  if (!data.players?.length) {
-    container.innerHTML = '<p class="text-slate-400 text-xs text-center py-2">Keine Spieler gefunden</p>';
-    return;
-  }
-
-  container.innerHTML = data.players.map(p => {
-    const used = g.usedIds.has(p.id);
-    const cls  = used
-      ? 'opacity-40 cursor-not-allowed bg-slate-50'
-      : 'hover:bg-green-50 cursor-pointer';
-    return `
-      <div class="flex items-center justify-between rounded-lg px-3 py-2 text-sm border border-transparent hover:border-green-200 transition-colors ${cls}"
-           data-pid="${p.id}" data-name="${esc(p.name)}" data-club="${esc(p.current_club_name || '')}">
-        <div class="min-w-0">
-          <span class="font-semibold">${esc(p.name)}</span>
-          ${p.current_club_name
-            ? `<span class="text-slate-400 text-xs ml-1 truncate">${esc(p.current_club_name)}</span>`
-            : ''}
-        </div>
-        ${used ? '<span class="text-xs text-red-400 ml-2 flex-shrink-0">bereits gespielt</span>' : ''}
-      </div>`;
-  }).join('');
-
-  container.querySelectorAll('[data-pid]').forEach(el => {
-    const pid  = parseInt(el.dataset.pid);
-    const name = el.dataset.name;
-    const club = el.dataset.club;
-    if (g.usedIds.has(pid)) return;
-    el.addEventListener('click', () => selectPlayer(pid, name, club));
-  });
-}
-
-async function selectPlayer(pid, name, club) {
-  if (g.usedIds.has(pid) || !g.activeCell) return;
-  const { r, c } = g.activeCell;
-  const resp = await fetch('/api/game/validate', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ player_id: pid, row_id: g.rows[r].id, col_id: g.cols[c].id }),
-  });
-  const data = await resp.json();
-  if (data.valid) {
-    closeModal();
-    placePlayer(r, c, pid, name, club);
-  } else {
-    stats.wrong++;
-    g.streak[g.current] = 0;
-    saveStats();
-    playTone('wrong');
-    const err = document.getElementById('search-error');
-    err.textContent = `${name} passt hier nicht – nächster Spieler ist dran!`;
-    err.classList.remove('hidden');
-    setTimeout(() => {
-      closeModal();
-      g.current = g.current === 1 ? 2 : 1;
-      updateStatus();
-    }, 1500);
-  }
-}
-
-// ─── Lösung ───────────────────────────────────────────────────────────────────
-
-async function showSolve() {
-  const rows = g.rows.map(c => c.id).join(',');
-  const cols = g.cols.map(c => c.id).join(',');
-  const resp = await fetch(`/api/game/solve?rows=${rows}&cols=${cols}`);
-  const data = await resp.json();
-
-  const colHeaders = g.cols.map(c => `
-    <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;text-align:center">
-      <div style="font-size:22px;line-height:1;margin-bottom:4px">${c.icon}</div>
-      <div style="font-size:11px;font-weight:700;color:#475569;line-height:1.3">${esc(c.label)}</div>
-    </div>`).join('');
-
-  const bodyRows = data.grid.map((row, r) => {
-    const cells = row.map(cell => {
-      const names = cell.players.map(p =>
-        `<div style="font-size:12px;color:#334155;padding:2px 4px;border-radius:4px;line-height:1.5">${esc(p.name)}</div>`
-      ).join('');
-      return `
-      <div style="flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:8px">
-        <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${cell.count} Spieler</div>
-        <div style="height:180px;overflow-y:auto;-webkit-overflow-scrolling:touch">${names}</div>
-      </div>`;
-    }).join('');
-    return `
-    <div style="display:flex;gap:8px">
-      <div style="width:110px;flex-shrink:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;display:flex;flex-direction:column;justify-content:center">
-        <div style="font-size:22px;line-height:1;margin-bottom:4px">${g.rows[r].icon}</div>
-        <div style="font-size:11px;font-weight:700;color:#475569;line-height:1.3">${esc(g.rows[r].label)}</div>
-      </div>
-      ${cells}
-    </div>`;
-  }).join('');
-
-  document.getElementById('solve-body').innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <div style="display:flex;gap:8px;padding-left:118px">${colHeaders}</div>
-      ${bodyRows}
-    </div>`;
-  document.getElementById('solve-modal').classList.remove('hidden');
-}
-
-// ─── Status & Hilfsfunktionen ─────────────────────────────────────────────────
-
-function updateStatus() {
-  updateStreakDisplay();
-  if (g.winner) return;
-  const color = g.current === 1 ? '#ef4444' : '#3b82f6';
-  const sym   = g.current === 1 ? 'X' : 'O';
-  document.getElementById('status-text').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
-    <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block"></span>
-    ${sym} – Spieler ${g.current} ist dran
-  </span>`;
-}
-
-function setStatus(msg) {
-  document.getElementById('status-text').textContent = msg;
-}
-
-function updateStreakDisplay() {
-  const el = document.getElementById('streak-display');
-  const s = g.streak[g.current] || 0;
-  if (s >= 2 && !g.winner) {
-    el.classList.remove('hidden');
-    el.classList.add('flex');
-    el.textContent = `🔥 ${s}`;
-  } else {
-    el.classList.add('hidden');
-    el.classList.remove('flex');
-  }
-}
-
-function showEndModal(icon, title, sub, extra) {
-  document.getElementById('end-icon').textContent  = icon;
-  document.getElementById('end-title').textContent = title;
-  document.getElementById('end-sub').textContent   = sub;
-  document.getElementById('end-extra').textContent = extra || '';
-  document.getElementById('end-modal').classList.remove('hidden');
-}
-
-function esc(v) {
-  if (v == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(v);
-  return d.innerHTML;
-}
-
-// ─── Timer ────────────────────────────────────────────────────────────────────
-
-let timerInterval = null;
-
-function formatTime(totalSeconds) {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function startTimer() {
-  stopTimer();
-  timerInterval = setInterval(() => {
-    g.elapsedSeconds++;
-    updateTimerDisplay();
-  }, 1000);
-}
-
-function stopTimer() {
-  if (timerInterval) clearInterval(timerInterval);
-  timerInterval = null;
-}
-
-function updateTimerDisplay() {
-  document.getElementById('timer-display').textContent = `⏱ ${formatTime(g.elapsedSeconds)}`;
-}
-
-// ─── Sound (Web Audio, keine externen Dateien) ────────────────────────────────
-
-let audioCtx = null;
-let muted = localStorage.getItem('ttt_muted') === '1';
-
-function ensureAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  return audioCtx;
-}
-
-const TONE_SEQUENCES = {
-  place: [[520, 0.08]],
-  wrong: [[160, 0.18]],
-  win:   [[520, 0.1], [660, 0.1], [880, 0.24]],
-};
-
-function playTone(kind) {
-  if (muted) return;
-  try {
-    const ctx = ensureAudioCtx();
-    let t = ctx.currentTime;
-    for (const [freq, dur] of TONE_SEQUENCES[kind] || []) {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + dur + 0.02);
-      t += dur;
-    }
-  } catch {
-    // Web Audio nicht verfügbar — Sound einfach überspringen.
-  }
-}
-
-function setMuted(v) {
-  muted = v;
-  localStorage.setItem('ttt_muted', v ? '1' : '0');
-  document.getElementById('btn-mute').textContent = v ? '🔇' : '🔊';
-}
-
-document.getElementById('btn-mute').addEventListener('click', () => setMuted(!muted));
-setMuted(muted);
-
-// ─── Konfetti ──────────────────────────────────────────────────────────────────
-
-function fireConfetti() {
-  const colors = ['#fbbf24', '#ef4444', '#3b82f6', '#22c55e', '#ffffff'];
-  const layer = document.getElementById('confetti-layer');
-  const pieces = 70;
-  for (let i = 0; i < pieces; i++) {
-    const el = document.createElement('div');
-    const color = colors[i % colors.length];
-    const left = Math.random() * 100;
-    const delay = Math.random() * 0.35;
-    const duration = 1.6 + Math.random() * 1.3;
-    const rotate = Math.random() * 360;
-    const w = 6 + Math.random() * 6;
-    el.style.cssText = `position:absolute;top:-20px;left:${left}%;width:${w}px;height:${w * 0.4}px;` +
-      `background:${color};opacity:.9;transform:rotate(${rotate}deg);` +
-      `animation:confetti-fall ${duration}s ease-in ${delay}s forwards;`;
-    layer.appendChild(el);
-    setTimeout(() => el.remove(), (duration + delay) * 1000 + 150);
-  }
-}
-
-// ─── Statistik-Anzeige ─────────────────────────────────────────────────────────
-
-function renderStats() {
-  const total = stats.gamesPlayed;
-  const winRate1 = total ? Math.round((stats.wins[1] / total) * 100) : 0;
-  const winRate2 = total ? Math.round((stats.wins[2] / total) * 100) : 0;
-  const accuracy = (stats.correct + stats.wrong)
-    ? Math.round((stats.correct / (stats.correct + stats.wrong)) * 100)
-    : 0;
-  const fastest = stats.fastestWinSeconds != null ? formatTime(stats.fastestWinSeconds) : '–';
-
-  document.getElementById('stats-body').innerHTML = `
-    <div class="grid grid-cols-2 gap-3 text-center">
-      <div class="bg-slate-50 rounded-xl p-3">
-        <div class="text-2xl font-black text-slate-700">${total}</div>
-        <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Spiele</div>
-      </div>
-      <div class="bg-slate-50 rounded-xl p-3">
-        <div class="text-2xl font-black text-amber-500">${stats.bestStreak} 🔥</div>
-        <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Beste Serie</div>
-      </div>
-      <div class="bg-red-50 rounded-xl p-3">
-        <div class="text-lg font-black text-red-500">${stats.wins[1]} <span class="text-xs font-semibold text-red-300">(${winRate1}%)</span></div>
-        <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Siege X</div>
-      </div>
-      <div class="bg-blue-50 rounded-xl p-3">
-        <div class="text-lg font-black text-blue-500">${stats.wins[2]} <span class="text-xs font-semibold text-blue-300">(${winRate2}%)</span></div>
-        <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Siege O</div>
-      </div>
-      <div class="bg-slate-50 rounded-xl p-3">
-        <div class="text-lg font-black text-slate-700">${stats.draws}</div>
-        <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Unentschieden</div>
-      </div>
-      <div class="bg-slate-50 rounded-xl p-3">
-        <div class="text-lg font-black text-slate-700">${accuracy}%</div>
-        <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Trefferquote</div>
-      </div>
-    </div>
-    <div class="text-center text-xs text-slate-400 pt-1">Schnellster Sieg: <span class="font-bold text-slate-600">${fastest}</span></div>
-    <button id="stats-reset" class="w-full mt-2 text-[11px] text-slate-300 hover:text-red-400 transition-colors">Statistik zurücksetzen</button>
-  `;
-  document.getElementById('stats-reset').addEventListener('click', () => {
-    if (confirm('Statistik wirklich zurücksetzen?')) {
-      stats = structuredClone(DEFAULT_STATS);
-      saveStats();
-      renderStats();
-    }
-  });
-}
-
-document.getElementById('btn-stats').addEventListener('click', () => {
-  renderStats();
-  document.getElementById('stats-modal').classList.remove('hidden');
-});
-document.getElementById('stats-close').addEventListener('click', () => {
-  document.getElementById('stats-modal').classList.add('hidden');
-});
-document.getElementById('stats-modal').addEventListener('click', e => {
-  if (e.target.id === 'stats-modal') document.getElementById('stats-modal').classList.add('hidden');
-});
-
-// ─── Schwierigkeitsgrad-Buttons ───────────────────────────────────────────────
-
-function setDifficulty(d) {
-  difficulty = d;
-  document.querySelectorAll('.diff-btn').forEach(btn => {
-    const active = parseInt(btn.dataset.diff) === d;
-    btn.className = `diff-btn px-2.5 py-1 text-xs font-semibold transition-colors ${
-      active ? 'bg-yellow-400 text-slate-900' : 'bg-slate-700 text-slate-300 hover:text-white'
-    }`;
-    if (btn.dataset.diff === '2') btn.classList.add('border-x', 'border-slate-600');
-  });
-}
-
-document.querySelectorAll('.diff-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    setDifficulty(parseInt(btn.dataset.diff));
-    newGame();
-  });
-});
-
-// ─── Event-Listener ───────────────────────────────────────────────────────────
-
-document.getElementById('btn-new-game').addEventListener('click', newGame);
-document.getElementById('modal-close').addEventListener('click', closeModal);
-document.getElementById('modal').addEventListener('click', e => {
-  if (e.target.id === 'modal') closeModal();
-});
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-
-document.getElementById('btn-draw').addEventListener('click', () => {
-  if (g.winner) return;
-  g.winner = 'draw';
-  endGame();
-});
-
-document.getElementById('btn-solve').addEventListener('click', showSolve);
-document.getElementById('solve-close').addEventListener('click', () => {
-  document.getElementById('solve-modal').classList.add('hidden');
-});
-document.getElementById('solve-modal').addEventListener('click', e => {
-  if (e.target.id === 'solve-modal') document.getElementById('solve-modal').classList.add('hidden');
-});
-
-document.getElementById('end-new-game').addEventListener('click', () => {
-  document.getElementById('end-modal').classList.add('hidden');
-  newGame();
-});
-
-// ─── Start ────────────────────────────────────────────────────────────────────
-newGame();
-</script>
+  <script src="/static/js/game.js" defer></script>
 </body>
 </html>

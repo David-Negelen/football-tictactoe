@@ -23,4 +23,11 @@ EXPOSE 5001
 
 # debug stays off unless FLASK_DEBUG=1 is explicitly set (see app.py) —
 # gunicorn is the production entrypoint, app.run()'s __main__ block never runs here.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --worker-class gthread --workers 2 --threads 4 --timeout 60 app:app"]
+#
+# --workers 1 is deliberate, not a default left unset: online multiplayer room
+# state (src/multiplayer.py) lives in that one process's memory. A second
+# worker process would have its own, disjoint copy of the room dict, so
+# requests randomly routed to it would 404 on rooms that exist in the other
+# worker. Concurrency instead comes from --threads, which share memory within
+# the one process (see the architecture note in src/multiplayer.py).
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --worker-class gthread --workers 1 --threads 8 --timeout 60 app:app"]

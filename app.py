@@ -1,5 +1,6 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 import sqlite3
+import time
 import unicodedata
 import os
 import random
@@ -9,6 +10,7 @@ import json as _json
 from src.category_config import ALL_CATEGORIES, CATEGORY_BY_ID, CLUB_CATEGORIES
 from src.db import Database
 from src.famous_matches import get_random_match
+from src import multiplayer as mp
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "tictactoe.db")
@@ -259,6 +261,42 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
     return None, None
 
 
+# Each entry is tried in order; constraints are relaxed until a puzzle is found.
+# The final fallback for each level has no upper bound and a high attempt count,
+# making it virtually guaranteed to succeed.
+_DIFFICULTY_FALLBACKS = {
+    1: [
+        dict(min_players=15, max_players=9999, max_attempts=500),
+        dict(min_players=10, max_players=9999, max_attempts=400),
+        dict(min_players=5,  max_players=9999, max_attempts=600),
+    ],
+    2: [
+        dict(min_players=6,  max_players=60,   max_attempts=400),
+        dict(min_players=4,  max_players=80,   max_attempts=400),
+        dict(min_players=3,  max_players=9999, max_attempts=600),
+    ],
+    3: [
+        dict(min_players=1,  max_players=20,   max_attempts=300),
+        dict(min_players=1,  max_players=40,   max_attempts=300),
+        dict(min_players=1,  max_players=9999, max_attempts=600),
+    ],
+}
+
+
+def _generate_puzzle_for_difficulty(db: sqlite3.Connection, difficulty: int):
+    """Generate a puzzle for a clamped 1-3 difficulty, walking the fallback ladder.
+
+    Shared by /api/game/new (solo + local) and multiplayer room creation so
+    both draw puzzles with identical quality guarantees.
+    """
+    difficulty = min(3, max(1, difficulty))
+    for cfg in _DIFFICULTY_FALLBACKS[difficulty]:
+        rows, cols = _generate_puzzle(db, max_difficulty=difficulty, **cfg)
+        if rows is not None:
+            return rows, cols
+    return None, None
+
+
 @app.route("/game")
 def game():
     return render_template("game.html")
@@ -267,33 +305,9 @@ def game():
 @app.route("/api/game/new")
 def api_game_new():
     difficulty = min(3, max(1, int(request.args.get("difficulty", 3))))
-    # Each entry is tried in order; constraints are relaxed until a puzzle is found.
-    # The final fallback for each level has no upper bound and a high attempt count,
-    # making it virtually guaranteed to succeed.
-    fallbacks = {
-        1: [
-            dict(min_players=15, max_players=9999, max_attempts=500),
-            dict(min_players=10, max_players=9999, max_attempts=400),
-            dict(min_players=5,  max_players=9999, max_attempts=600),
-        ],
-        2: [
-            dict(min_players=6,  max_players=60,   max_attempts=400),
-            dict(min_players=4,  max_players=80,   max_attempts=400),
-            dict(min_players=3,  max_players=9999, max_attempts=600),
-        ],
-        3: [
-            dict(min_players=1,  max_players=20,   max_attempts=300),
-            dict(min_players=1,  max_players=40,   max_attempts=300),
-            dict(min_players=1,  max_players=9999, max_attempts=600),
-        ],
-    }
     db = get_db()
     try:
-        rows = cols = None
-        for cfg in fallbacks[difficulty]:
-            rows, cols = _generate_puzzle(db, max_difficulty=difficulty, **cfg)
-            if rows is not None:
-                break
+        rows, cols = _generate_puzzle_for_difficulty(db, difficulty)
     finally:
         db.close()
     if rows is None:
@@ -397,6 +411,100 @@ def api_game_validate():
         db.close()
     return jsonify({"valid": valid, "player": dict(player) if player else None})
 
+
+# ─── Online 1v1 (multiplayer rooms) ────────────────────────────────────────
+# Room state lives in-process (src/multiplayer.py) — the deployment must run
+# a single worker process (see Dockerfile) since a second process would have
+# its own, disjoint copy of the room dict.
+
+@app.route("/api/multiplayer/rooms", methods=["POST"])
+def api_mp_create_room():
+    data = request.get_json(silent=True) or {}
+    difficulty = min(3, max(1, int(data.get("difficulty", 3))))
+    db = get_db()
+    try:
+        rows, cols = _generate_puzzle_for_difficulty(db, difficulty)
+    finally:
+        db.close()
+    if rows is None:
+        return jsonify({"error": "Kein gültiges Rätsel gefunden"}), 500
+    room, token = mp.create_room(rows, cols)
+    return jsonify({"code": room.code, "token": token, "slot": 1})
+
+
+@app.route("/api/multiplayer/rooms/<code>/join", methods=["POST"])
+def api_mp_join_room(code):
+    result = mp.join_room(code)
+    if result is None:
+        status = 404 if mp.get_room(code) is None else 409
+        return jsonify({"error": "Raum nicht gefunden oder bereits voll"}), status
+    room, token = result
+    return jsonify({"code": room.code, "token": token, "slot": 2})
+
+
+@app.route("/api/multiplayer/rooms/<code>/state")
+def api_mp_room_state(code):
+    room = mp.get_room(code)
+    if room is None:
+        return jsonify({"error": "Raum nicht gefunden"}), 404
+    slot = mp.room_slot_for_token(room, request.args.get("token", ""))
+    return jsonify(room.public_state(viewer_slot=slot, cat_display_fn=_cat_display))
+
+
+@app.route("/api/multiplayer/rooms/<code>/events")
+def api_mp_room_events(code):
+    room = mp.get_room(code)
+    if room is None:
+        return jsonify({"error": "Raum nicht gefunden"}), 404
+
+    def stream():
+        last_version = -1
+        ticks = 0
+        while True:
+            if room.version != last_version:
+                last_version = room.version
+                yield f"data: {_json.dumps({'version': last_version})}\n\n"
+            elif ticks % 15 == 0:
+                yield ": ping\n\n"  # keep proxies/browsers from closing the idle connection
+            ticks += 1
+            time.sleep(1)
+            if room.is_stale():
+                break
+
+    resp = Response(stream(), mimetype="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"  # disable reverse-proxy response buffering for SSE
+    return resp
+
+
+@app.route("/api/multiplayer/rooms/<code>/moves", methods=["POST"])
+def api_mp_move(code):
+    room = mp.get_room(code)
+    if room is None:
+        return jsonify({"error": "Raum nicht gefunden"}), 404
+
+    data = request.get_json(silent=True) or {}
+    token = data.get("token", "")
+    row, col, player_id = data.get("row"), data.get("col"), data.get("player_id")
+    if row is None or col is None or player_id is None:
+        return jsonify({"ok": False, "reason": "bad_input"}), 400
+
+    db = get_db()
+    try:
+        ok, reason, placed = mp.apply_move(room, token, int(row), int(col), int(player_id), db)
+    finally:
+        db.close()
+    return jsonify({"ok": ok, "reason": reason, "placed": placed})
+
+
+@app.route("/api/multiplayer/rooms/<code>/forfeit", methods=["POST"])
+def api_mp_forfeit(code):
+    room = mp.get_room(code)
+    if room is None:
+        return jsonify({"error": "Raum nicht gefunden"}), 404
+    data = request.get_json(silent=True) or {}
+    ok = mp.forfeit(room, data.get("token", ""))
+    return jsonify({"ok": ok})
 
 
 @app.route("/squad-guesser")
@@ -542,4 +650,7 @@ def api_clubs_combos():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(debug=debug, host="0.0.0.0", port=port)
+    # threaded=True: the multiplayer SSE stream is a long-lived connection —
+    # without it the single-threaded dev server can't also serve moves/state
+    # requests while a room's event stream is open.
+    app.run(debug=debug, host="0.0.0.0", port=port, threaded=True)
