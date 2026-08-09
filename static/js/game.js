@@ -136,9 +136,9 @@ function updateModeChrome() {
   resetGiveUpConfirm();
 }
 
-// Solo give-up uses an inline two-step confirm (click once to arm, click
-// again to confirm) instead of a browser confirm() popup; clicking anywhere
-// else cancels it.
+// Give-up uses an inline two-step confirm (click once to arm, click again
+// to confirm) instead of a browser confirm() popup, in every mode; clicking
+// anywhere else cancels it.
 let giveUpConfirming = false;
 
 function resetGiveUpConfirm() {
@@ -1133,20 +1133,19 @@ async function finishOnline() {
 
 document.getElementById('btn-give-up').addEventListener('click', async (e) => {
   if (g.winner) return;
-  if (g.mode === 'solo') {
-    if (!giveUpConfirming) {
-      giveUpConfirming = true;
-      e.currentTarget.textContent = 'Wirklich aufgeben?';
-      e.currentTarget.classList.remove('bg-orange-500', 'hover:bg-orange-400');
-      e.currentTarget.classList.add('bg-red-600', 'hover:bg-red-500');
-      return;
-    }
-    resetGiveUpConfirm();
-    giveUpSolo();
+  // Same inline two-step confirm (click to arm, click again to confirm) for
+  // every mode — no browser confirm() popup, in solo or local/online either.
+  if (!giveUpConfirming) {
+    giveUpConfirming = true;
+    e.currentTarget.textContent = 'Wirklich aufgeben?';
+    e.currentTarget.classList.remove('bg-orange-500', 'hover:bg-orange-400');
+    e.currentTarget.classList.add('bg-red-600', 'hover:bg-red-500');
     return;
   }
-  if (!confirm('Aufgeben? Der Gegner gewinnt automatisch.')) return;
-  if (g.mode === 'online') {
+  resetGiveUpConfirm();
+  if (g.mode === 'solo') {
+    giveUpSolo();
+  } else if (g.mode === 'online') {
     await fetch(`/api/multiplayer/rooms/${g.onlineCode}/forfeit`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: g.onlineToken }),
