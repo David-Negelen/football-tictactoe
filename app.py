@@ -353,6 +353,15 @@ def _cat_display(cat) -> dict:
 # simply can't happen when both land on the same side by construction.
 GENERAL_MIN_CLUBS = 3
 
+# See _sample_general_puzzle_categories: at most this many of the 3 broad
+# slots may be AWARD (trophy) categories — a trophy category individually
+# clears bounds just fine, but "played for this club AND won that specific
+# trophy" is a much narrower, more hyper-specific kind of fact than
+# "played for this club AND holds this nationality/position/age", and
+# trophies (~490 of ~620 broad categories) would otherwise dominate random
+# sampling by sheer count.
+GENERAL_MAX_AWARD = 1
+
 # League-scoped puzzles (see _resolve_pool/LEAGUE_POOLS): the whole point of
 # picking a league is to see that league's own clubs. Unlike the general
 # pool above, two clubs *within the same league* commonly do share a
@@ -402,9 +411,32 @@ def _sample_general_puzzle_categories(
         b for b in broad
         if all(min_players <= len(ids & b.eligible_player_ids(db)) <= max_players for ids in club_id_sets)
     ]
-    if len(candidate_broad) < 3:
+
+    # AWARD (trophy) categories that individually clear bounds can still
+    # make an unfair puzzle together: "played for this obscure club AND
+    # won that specific trophy" asks for one exact, hyper-specific
+    # transfer-history fact rather than a broadly guessable attribute
+    # (nationality/position/age/...) — two or three of those stacked in
+    # one puzzle is what "way too hard" complaints actually turned out to
+    # be about even after GENERAL_MIN_CLUBS guaranteed real clubs. Capping
+    # how many of the 3 broad slots can be trophies keeps most cells paired
+    # against a structural category instead, without banning trophies
+    # outright (a rare Ballon d'Or category, on its own, is still a fair
+    # hard question).
+    award_candidates = [c for c in candidate_broad if c.type == CategoryType.AWARD]
+    other_candidates = [c for c in candidate_broad if c.type != CategoryType.AWARD]
+    max_award = min(GENERAL_MAX_AWARD, len(award_candidates))
+    n_award = rng.randint(0, max_award) if max_award > 0 else 0
+    # Capped at GENERAL_MAX_AWARD unconditionally — never topped up beyond
+    # it even if other_candidates falls short of filling the remaining
+    # slots (that shortfall means this club triple just doesn't have 3
+    # valid categories under the cap; return None and let the caller retry
+    # with a fresh club triple instead of silently exceeding the cap).
+    n_other = min(len(other_candidates), 3 - n_award)
+    if n_award + n_other < 3:
         return None
-    chosen_broad = rng.sample(candidate_broad, 3)
+
+    chosen_broad = rng.sample(award_candidates, n_award) + rng.sample(other_candidates, n_other)
     rng.shuffle(chosen_clubs)
     rng.shuffle(chosen_broad)
     return (chosen_clubs, chosen_broad) if rng.random() < 0.5 else (chosen_broad, chosen_clubs)
@@ -533,8 +565,16 @@ _DIFFICULTY_FALLBACKS = {
         dict(min_players=1,  max_players=9999, max_attempts=500),
     ],
     3: [
-        dict(min_players=1,  max_players=20,   max_attempts=30),
-        dict(min_players=1,  max_players=40,   max_attempts=30),
+        # min_players=1 here (both tight tiers) is what let a puzzle land on
+        # cells with literally one possible answer in the whole dataset —
+        # "hard" should mean a genuinely narrow category, not a single
+        # obscure fact with no other correct answer. GENERAL_MIN_CLUBS'
+        # constructive sampler (see _sample_general_puzzle_categories)
+        # comfortably sustains min_players=2 here at essentially the same
+        # reliability as min_players=1 used to have; the loosest tier below
+        # stays at 1 as the genuine last-resort safety net.
+        dict(min_players=2,  max_players=20,   max_attempts=30),
+        dict(min_players=2,  max_players=40,   max_attempts=30),
         dict(min_players=1,  max_players=9999, max_attempts=500),
     ],
 }
