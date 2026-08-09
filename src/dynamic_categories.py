@@ -55,13 +55,6 @@ _YOUTH_CLUB_PATTERN = re.compile(
 _RESERVE_CLUB_PATTERN = re.compile(r"\s(?:II|B|C)$|Amateure|Futuro", re.IGNORECASE)
 _RESERVE_CLUB_ALLOWLIST = {"Willem II"}
 
-# (minimum distinct players, difficulty) — checked in order, first match wins.
-# Trophies get no viability floor: a rare trophy is still a legitimate,
-# checkable fact, just a hard one. Clubs and nationalities don't use a
-# tier-threshold list at all anymore — see CLUB_MIN_PLAYERS/CLUB_DIFFICULTY
-# and NATIONALITY_MIN_PLAYERS/NATIONALITY_DIFFICULTY below.
-TROPHY_TIER_THRESHOLDS = [(100, 1), (20, 2), (1, 3)]
-
 # Player count no longer decides a club's difficulty tier (see
 # CLUB_DIFFICULTY below) — it's still used as a bare viability floor, since
 # an answer pool of 1-4 players is too thin to be a fair puzzle no matter how
@@ -77,13 +70,6 @@ def _is_junk_club(name: str) -> bool:
     if name in _RESERVE_CLUB_ALLOWLIST:
         return False
     return bool(_RESERVE_CLUB_PATTERN.search(name))
-
-
-def _tier_difficulty(count: int, thresholds: list[tuple[int, int]]) -> int | None:
-    for min_count, difficulty in thresholds:
-        if count >= min_count:
-            return difficulty
-    return None
 
 
 def _slugify(name: str) -> str:
@@ -385,15 +371,130 @@ def build_dynamic_nationalities(
     return categories
 
 
-def build_dynamic_trophies(conn: sqlite3.Connection) -> list[TrophyCategory]:
+# classify_trophy_title() already filters out individual awards, youth/
+# reserve competitions, and lower-tier regional titles — but 490 titles
+# still pass, and a trophy's player count (how many rows in this dataset
+# happen to carry that title) is no more a fame signal than it was for
+# clubs or nationalities: "Intertoto-Cup-Sieger" (a defunct UEFA summer
+# tournament) and "Mitropacup-Sieger" (a defunct interwar Central European
+# cup) both clear 100+ winners purely because of how many clubs historically
+# entered those competitions, while a genuinely famous trophy like a Copa
+# Libertadores can have far fewer rows just from this dataset's European-
+# heavy squad coverage. Same fix as PROMINENT_CLUB_NAMES/
+# PROMINENT_NATIONALITIES: an explicit whitelist of the trophies a casual
+# player would actually recognize, tiered by fame — not derived from count.
+#
+# Tier 1: major international team trophies, the biggest continental club
+#   competitions, and the league + primary cup of the biggest football
+#   nations (the same nations in NATIONALITY_FAME_TIER_1, plus their
+#   domestic league-cup/super-cup where one exists).
+# Tier 2: the same idea for NATIONALITY_FAME_TIER_2's nations, plus
+#   continental competitions/youth internationals a step below tier 1.
+# Unlisted trophies simply don't appear at all (unlike clubs/nationalities,
+# there's no "real but hard" tier 3 default here — a trophy nobody's ever
+# heard of isn't a harder question, it's an unrecognizable one).
+TROPHY_FAME_TIER_1: frozenset[str] = frozenset({
+    # Major international team trophies + the one individual award already
+    # legacy-curated (see LEGACY_TROPHY_IDS).
+    "Weltmeister", "Europameister", "Copa América-Sieger", "Afrikameister",
+    "Olympiasieger", "Gewinner Ballon d'Or",
+    # Major continental/global club trophies.
+    "UEFA Champions League-Sieger", "Europa-League-Sieger", "UEFA-Supercup-Sieger",
+    "FIFA-Klub-Weltmeister", "Weltpokalsieger", "Copa Libertadores-Sieger",
+    "Europapokal-der-Landesmeister-Sieger", "Europapokal-der-Pokalsieger-Sieger",
+    # Domestic league/cup/super-cup for NATIONALITY_FAME_TIER_1's nations.
+    "Argentinischer Meister", "Argentinischer Pokalsieger",
+    "Belgischer Ligapokalsieger", "Belgischer Meister", "Belgischer Pokalsieger", "Belgischer Superpokalsieger",
+    "Brasilianischer Meister", "Brasilianischer Pokalsieger", "Brasilianischer Superpokalsieger",
+    "Chilenischer Meister", "Chilenischer Pokalsieger", "Chilenischer Supercupsieger",
+    "Deutscher Ligapokalsieger", "Deutscher Meister", "Deutscher Pokalsieger", "Deutscher Superpokalsieger",
+    "Dänischer Meister", "Dänischer Pokalsieger",
+    "Englischer Ligapokalsieger", "Englischer Meister", "Englischer Pokalsieger", "Englischer Superpokalsieger",
+    "Französischer Ligapokalsieger", "Französischer Meister", "Französischer Pokalsieger", "Französischer Superpokalsieger",
+    "Italienischer Meister", "Italienischer Pokalsieger", "Italienischer Superpokalsieger",
+    "Japanischer Ligapokalsieger", "Japanischer Meister", "Japanischer Pokalsieger", "Japanischer Superpokalsieger",
+    "Kolumbianischer Meister", "Kolumbianischer Pokalsieger", "Kolumbianischer Superpokalsieger",
+    "Kroatischer Meister", "Kroatischer Pokalsieger", "Kroatischer Superpokalsieger",
+    "Marokkanischer Meister", "Marokkanischer Pokalsieger",
+    "Mexikanischer Meister", "Mexikanischer Meister Apertura", "Mexikanischer Meister Clausura",
+    "Mexikanischer Pokalsieger", "Mexikanischer Pokalsieger Apertura", "Mexikanischer Pokalsieger Clausura",
+    "Mexikanischer Supercupsieger",
+    "Niederländischer Meister", "Niederländischer Pokalsieger", "Niederländischer Superpokalsieger",
+    "Nigerianischer Meister", "Nigerianischer Pokalsieger",
+    "Norwegischer Meister", "Norwegischer Pokalsieger", "Norwegischer Superpokalsieger",
+    "Polnischer Meister", "Polnischer Pokalsieger", "Polnischer Superpokalsieger",
+    "Portugiesischer Ligapokalsieger", "Portugiesischer Meister", "Portugiesischer Pokalsieger", "Portugiesischer Superpokalsieger",
+    "Schottischer Ligapokalsieger", "Schottischer Meister", "Schottischer Pokalsieger",
+    "Schwedischer Meister", "Schwedischer Pokalsieger", "Schwedischer Superpokalsieger",
+    "Schweizer Cupsieger", "Schweizer Ligapokalsieger", "Schweizer Meister", "Schweizer Supercupsieger",
+    "Senegalesischer Meister",
+    "Spanischer Ligapokalsieger", "Spanischer Meister", "Spanischer Pokalsieger", "Spanischer Superpokalsieger",
+    "Südkoreanischer Ligapokalsieger", "Südkoreanischer Meister", "Südkoreanischer Pokalsieger", "Südkoreanischer Superpokalsieger",
+    "Türkischer Meister", "Türkischer Pokalsieger", "Türkischer Superpokalsieger",
+    "Uruguayischer Meister", "Uruguayischer Pokalsieger",
+    "Walisischer Meister",
+    "Ägyptischer Ligapokalsieger", "Ägyptischer Meister", "Ägyptischer Pokalsieger", "Ägyptischer Superpokalsieger",
+    "Österreichischer Cupsieger", "Österreichischer Meister",
+})
+
+TROPHY_FAME_TIER_2: frozenset[str] = frozenset({
+    # Continental competitions and youth internationals a step below tier 1.
+    "Confederations-Cup-Sieger", "U20-Weltmeister",
+    "Copa Sudamericana-Sieger", "Recopa Sudamericana-Sieger", "Conference League-Sieger",
+    "CAF-Champions-League-Sieger", "AFC-Champions-League-Sieger", "CONCACAF-Champions-League-Sieger",
+    "MLS Cup Champion", "Leagues-Cup-Sieger", "Sieger UEFA Nations League", "Gold-Cup-Sieger",
+    "US Open Cup Winner",
+    # Domestic league/cup/super-cup for NATIONALITY_FAME_TIER_2's nations.
+    "Algerischer Ligapokalsieger", "Algerischer Meister", "Algerischer Pokalsieger", "Algerischer Supercupsieger",
+    "Australischer Meister", "Australischer Pokalsieger",
+    "Bosnisch-Herzegowinischer Meister", "Bosnisch-Herzegowinischer Pokalsieger", "Bosnisch-Herzegowinischer Superpokalsieger",
+    "Costa-Ricanischer Meister", "Costa-Ricanischer Meister Invierno", "Costa-Ricanischer Meister Verano",
+    "Costa-Ricanischer Pokalsieger", "Costa-Ricanischer Superpokalsieger",
+    "Ecuadorianischer Meister",
+    "Ghanaischer Meister",
+    "Griechischer Meister", "Griechischer Pokalsieger", "Griechischer Superpokalsieger",
+    "Iranischer Meister", "Iranischer Pokalsieger", "Iranischer Supercup-Sieger",
+    "Irischer Ligapokalsieger", "Irischer Meister", "Irischer Pokalsieger",
+    "Isländischer Ligapokalsieger", "Isländischer Meister", "Isländischer Pokalsieger", "Isländischer Superpokalsieger",
+    "Kanadischer Meister", "Kanadischer Pokalsieger",
+    "Nordirischer Ligapokalsieger", "Nordirischer Meister", "Nordirischer Pokalsieger",
+    "Paraguayischer Meister", "Paraguayischer Meister Apertura", "Paraguayischer Meister Clausura",
+    "Peruanischer Meister", "Peruanischer Pokalsieger", "Peruanischer Superpokalsieger",
+    "Rumänischer Ligapokalsieger", "Rumänischer Meister", "Rumänischer Pokalsieger", "Rumänischer Superpokalsieger",
+    "Russischer Meister", "Russischer Pokalsieger", "Russischer Superpokalsieger",
+    "Serbischer Meister", "Serbischer Pokalsieger",
+    "Südafrikanischer Meister", "Südafrikanischer Pokalsieger",
+    "Tschechischer Meister", "Tschechischer Pokalsieger",
+    "Tunesischer Meister", "Tunesischer Pokalsieger", "Tunesischer Superpokalsieger",
+    # Two distinct data-scraped variants of the same real title (one with a
+    # trailing space) — both need whitelisting or the space-variant would
+    # silently vanish despite being the identical trophy.
+    "Ukrainischer Meister", "Ukrainischer Meister ",
+    "Ukrainischer Pokalsieger", "Ukrainischer Superpokalsieger",
+    "Ungarischer Ligapokalsieger", "Ungarischer Meister", "Ungarischer Pokalsieger",
+})
+
+PROMINENT_TROPHY_TITLES: frozenset[str] = TROPHY_FAME_TIER_1 | TROPHY_FAME_TIER_2
+
+DEFAULT_TROPHY_DIFFICULTY = 3  # unreachable in practice — every whitelisted title is tier 1 or 2
+
+TROPHY_DIFFICULTY: dict[str, int] = {
+    **{title: 1 for title in TROPHY_FAME_TIER_1},
+    **{title: 2 for title in TROPHY_FAME_TIER_2},
+}
+
+
+def build_dynamic_trophies(
+    conn: sqlite3.Connection,
+    prominent_titles: frozenset[str] = PROMINENT_TROPHY_TITLES,
+    trophy_difficulty: dict[str, int] = TROPHY_DIFFICULTY,
+) -> list[TrophyCategory]:
     rows = conn.execute("SELECT title, COUNT(*) AS n FROM player_trophies GROUP BY title").fetchall()
     categories = []
     for title, n in rows:
-        if not classify_trophy_title(title):
+        if not classify_trophy_title(title) or title not in prominent_titles:
             continue
-        difficulty = _tier_difficulty(n, TROPHY_TIER_THRESHOLDS)
-        if difficulty is None:
-            continue
+        difficulty = trophy_difficulty.get(title, DEFAULT_TROPHY_DIFFICULTY)
         cat_id = LEGACY_TROPHY_IDS.get(title) or _stable_id("trophy", title)
         categories.append(TrophyCategory(cat_id, title, title, difficulty=difficulty))
     return categories

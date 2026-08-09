@@ -11,6 +11,7 @@ from src.dynamic_categories import (
     CLUB_FAME_TIER_2,
     DEFAULT_CLUB_DIFFICULTY,
     DEFAULT_NATIONALITY_DIFFICULTY,
+    DEFAULT_TROPHY_DIFFICULTY,
     LEGACY_CLUB_IDS,
     LEGACY_NATIONALITY_ENTRIES,
     LEGACY_TROPHY_IDS,
@@ -19,6 +20,9 @@ from src.dynamic_categories import (
     NATIONALITY_FAME_TIER_2,
     PROMINENT_CLUB_NAMES,
     PROMINENT_NATIONALITIES,
+    PROMINENT_TROPHY_TITLES,
+    TROPHY_FAME_TIER_1,
+    TROPHY_FAME_TIER_2,
     build_dynamic_clubs,
     build_dynamic_nationalities,
     build_dynamic_trophies,
@@ -241,6 +245,68 @@ def test_dynamic_trophy_applies_the_semantic_filter_and_legacy_ids(fixture_db_pa
     assert "Weltmeister" in trophies
     assert trophies["Weltmeister"].id == LEGACY_TROPHY_IDS["Weltmeister"] == "trophy_world_cup"
     assert "Torschützenkönig" not in trophies  # individual award, filtered out
+
+
+def test_default_prominence_whitelist_excludes_an_obscure_trophy(fixture_db_path: Path) -> None:
+    # "Intertoto-Cup-Sieger" is a real title that passes classify_trophy_
+    # title (a defunct UEFA summer tournament, semantically a legitimate
+    # team trophy) and clears any rarity bar in the real data — but isn't a
+    # trophy any casual player would recognize, exactly the gap the
+    # whitelist closes.
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        pid = conn.execute("SELECT id FROM players WHERE name = 'Alan Adler'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO player_trophies (player_id, title, trophy_count, source_url, created_at) VALUES (?, ?, 1, NULL, ?)",
+            (pid, "Intertoto-Cup-Sieger", now),
+        )
+        conn.commit()
+        trophies = {t.trophy_title for t in build_dynamic_trophies(conn)}
+    finally:
+        conn.close()
+
+    assert "Intertoto-Cup-Sieger" not in trophies
+    assert "Intertoto-Cup-Sieger" not in PROMINENT_TROPHY_TITLES
+
+
+def test_trophy_difficulty_comes_from_the_fame_table_not_player_count(fixture_db_path: Path) -> None:
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        pid = conn.execute("SELECT id FROM players WHERE name = 'Alan Adler'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO player_trophies (player_id, title, trophy_count, source_url, created_at) VALUES (?, ?, 1, NULL, ?)",
+            (pid, "Weltmeister", now),
+        )
+        conn.commit()
+        # A single winner in the whole dataset — a rarity-based scheme would
+        # call that hard. Explicitly tiering it as famous must win anyway.
+        trophies = {
+            t.trophy_title: t
+            for t in build_dynamic_trophies(
+                conn, prominent_titles=frozenset({"Weltmeister"}), trophy_difficulty={"Weltmeister": 1}
+            )
+        }
+    finally:
+        conn.close()
+
+    assert trophies["Weltmeister"].difficulty == 1
+
+
+def test_unlisted_trophies_default_to_the_hardest_tier() -> None:
+    assert DEFAULT_TROPHY_DIFFICULTY == 3
+
+
+def test_every_fame_tiered_trophy_is_in_the_prominence_whitelist() -> None:
+    # Catches a typo that would otherwise silently drop a famous trophy
+    # (PROMINENT_TROPHY_TITLES is defined as the union of both tiers, so
+    # this can only fail if the two are edited out of sync).
+    assert (TROPHY_FAME_TIER_1 | TROPHY_FAME_TIER_2) <= PROMINENT_TROPHY_TITLES
+
+
+def test_trophy_fame_tiers_do_not_overlap() -> None:
+    assert TROPHY_FAME_TIER_1.isdisjoint(TROPHY_FAME_TIER_2)
 
 
 def test_default_prominence_whitelist_excludes_an_obscure_club(dynamic_db_conn) -> None:
