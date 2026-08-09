@@ -74,6 +74,10 @@ class TransfermarktScraper:
         info = self._build_info_map(soup)
 
         name = self._extract_title(soup) or player_url
+        # The player page's <h1> is "#<shirt number> <name>" (the shirt
+        # number badge shares the h1 with no separating markup) — strip it
+        # so `name` is just the name, not "#40 Jonas Urbig".
+        name = re.sub(r'^#\d+\s+', '', name)
         age = self._extract_age(info)
         nationality = self._first_value(info, {"staatsbürgerschaft", "nationality", "nationalität"})
         position = self._first_value(info, {"position", "hauptposition"})
