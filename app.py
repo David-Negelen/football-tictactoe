@@ -353,6 +353,14 @@ def _cat_display(cat) -> dict:
 _SPARSE_TYPES = {CategoryType.CLUB, CategoryType.AWARD}
 MAX_SPARSE_PER_PUZZLE = 2
 
+# A "German" row crossing a "Belgian" column asks a different, less
+# interesting kind of question than the rest of the puzzle ("who holds both
+# nationalities" instead of "who played for this club and holds this
+# nationality") — so, like sparse categories above, nationality categories
+# must never be split across both sides of the grid. Capped at 2 per puzzle
+# (same as sparse) so the group is always small enough to fit on one side.
+MAX_NATIONALITY_PER_PUZZLE = 2
+
 # League-scoped puzzles (see _resolve_pool/LEAGUE_POOLS): the whole point of
 # picking a league is to see that league's own clubs, but the general sparse
 # cap above only allows up to 2 of them — most cells would end up being
@@ -363,12 +371,13 @@ LEAGUE_MIN_CLUBS = 4
 
 
 def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | None:
-    """Returns (rows, cols), keeping all sparse (club/trophy) categories on
-    one side. That guarantees no cell ever pairs two sparse categories
-    against each other — by far the least likely pairing to have any
-    overlap at all, since it relies on two specific narrow categories
-    coinciding rather than either of them being broad enough to reliably
-    intersect with anything.
+    """Returns (rows, cols). Sparse (club/trophy) categories are all kept on
+    one side — by far the least likely pairing to have any overlap at all,
+    since it relies on two specific narrow categories coinciding rather than
+    either of them being broad enough to reliably intersect with anything.
+    Nationality categories are, separately, also kept on one side (see
+    MAX_NATIONALITY_PER_PUZZLE) so no cell ever asks a "holds both
+    nationality x and y" question.
     """
     if len(sparse) + len(broad) < 6:
         return None
@@ -390,14 +399,33 @@ def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | 
         n_broad = len(broad)
         n_sparse = min(len(sparse), 6 - n_broad)
 
+    nat_pool = [c for c in broad if c.type == CategoryType.NATIONALITY]
+    other_pool = [c for c in broad if c.type != CategoryType.NATIONALITY]
+    max_nat = min(MAX_NATIONALITY_PER_PUZZLE, len(nat_pool), n_broad)
+    n_nat = random.randint(0, max_nat) if max_nat > 0 else 0
+    n_other = n_broad - n_nat
+    if len(other_pool) < n_other:
+        n_nat = min(len(nat_pool), n_nat + (n_other - len(other_pool)))
+        n_other = n_broad - n_nat
+
     chosen_sparse = random.sample(sparse, n_sparse)
-    chosen_broad = random.sample(broad, n_broad)
-    fill = 3 - n_sparse
-    sparse_side = chosen_sparse + chosen_broad[:fill]
-    other_side = chosen_broad[fill:]
-    random.shuffle(sparse_side)
-    random.shuffle(other_side)
-    return (sparse_side, other_side) if random.random() < 0.5 else (other_side, sparse_side)
+    chosen_nat = random.sample(nat_pool, n_nat)
+    chosen_other = random.sample(other_pool, n_other)
+    random.shuffle(chosen_other)
+
+    # Greedily pack the sparse group, the nationality group, and each
+    # leftover broad category (a "group" of 1) into two sides of 3 without
+    # ever splitting the sparse or nationality group across both sides.
+    # Since both groups are capped at 2, each always fits alongside at least
+    # one single-category group on its side.
+    side_a: list = []
+    side_b: list = []
+    for group in (chosen_sparse, chosen_nat, *([c] for c in chosen_other)):
+        (side_a if len(side_a) + len(group) <= 3 else side_b).extend(group)
+
+    random.shuffle(side_a)
+    random.shuffle(side_b)
+    return (side_a, side_b) if random.random() < 0.5 else (side_b, side_a)
 
 
 def _sample_league_puzzle_categories(league_clubs: list, broad_no_award: list, min_clubs: int) -> tuple[list, list] | None:
@@ -424,9 +452,26 @@ def _sample_league_puzzle_categories(league_clubs: list, broad_no_award: list, m
         n_clubs = min(max_clubs, 6 - n_broad)
         if n_clubs < min_clubs:
             return None
-    combined = random.sample(league_clubs, n_clubs) + random.sample(broad_no_award, n_broad)
-    random.shuffle(combined)
-    return combined[:3], combined[3:]
+
+    chosen_clubs = random.sample(league_clubs, n_clubs)
+    chosen_broad = random.sample(broad_no_award, n_broad)
+    nat = [c for c in chosen_broad if c.type == CategoryType.NATIONALITY]
+    other = [c for c in chosen_broad if c.type != CategoryType.NATIONALITY]
+
+    # Clubs and non-nationality categories can be placed individually (a
+    # club x club or club x nationality cell is a normal, fine question);
+    # only the nationality group, if it has more than one member, must stay
+    # whole on one side — same reasoning as _sample_puzzle_categories.
+    singles = chosen_clubs + other
+    random.shuffle(singles)
+    side_a: list = []
+    side_b: list = []
+    for group in (nat, *([c] for c in singles)):
+        (side_a if len(side_a) + len(group) <= 3 else side_b).extend(group)
+
+    random.shuffle(side_a)
+    random.shuffle(side_b)
+    return (side_a, side_b) if random.random() < 0.5 else (side_b, side_a)
 
 
 def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300, pool: list | None = None, min_league_clubs: int = 0):
@@ -715,7 +760,10 @@ def api_mp_create_room():
         db.close()
     if rows is None:
         return jsonify({"error": "Kein gültiges Rätsel gefunden"}), 500
-    room, token = mp.create_room(rows, cols)
+    room, token = mp.create_room(
+        rows, cols, difficulty=difficulty, league=league,
+        excluded_types=frozenset(excluded_types), excluded_ids=frozenset(excluded_ids),
+    )
     return jsonify({"code": room.code, "token": token, "slot": 1})
 
 
@@ -735,6 +783,7 @@ def api_mp_room_state(code):
     if room is None:
         return jsonify({"error": "Raum nicht gefunden"}), 404
     slot = mp.room_slot_for_token(room, request.args.get("token", ""))
+    room.mark_seen(slot)
     return jsonify(room.public_state(viewer_slot=slot, cat_display_fn=_cat_display))
 
 
@@ -743,17 +792,27 @@ def api_mp_room_events(code):
     room = mp.get_room(code)
     if room is None:
         return jsonify({"error": "Raum nicht gefunden"}), 404
+    slot = mp.room_slot_for_token(room, request.args.get("token", ""))
 
     def stream():
         last_version = -1
         ticks = 0
+        room.mark_seen(slot)
         while True:
+            # Driven by whichever player still has this connection open —
+            # see check_opponent_disconnected's docstring for why a
+            # disconnected player can't report their own absence. Any
+            # forfeit it applies is picked up by the version-change check
+            # right below.
+            if slot is not None:
+                room.check_opponent_disconnected(slot)
             if room.version != last_version:
                 last_version = room.version
                 yield f"data: {_json.dumps({'version': last_version})}\n\n"
             elif ticks % 15 == 0:
                 yield ": ping\n\n"  # keep proxies/browsers from closing the idle connection
             ticks += 1
+            room.mark_seen(slot)
             time.sleep(1)
             if room.is_stale():
                 break
@@ -792,6 +851,32 @@ def api_mp_forfeit(code):
     data = request.get_json(silent=True) or {}
     ok = mp.forfeit(room, data.get("token", ""))
     return jsonify({"ok": ok})
+
+
+@app.route("/api/multiplayer/rooms/<code>/rematch", methods=["POST"])
+def api_mp_rematch(code):
+    room = mp.get_room(code)
+    if room is None:
+        return jsonify({"error": "Raum nicht gefunden"}), 404
+    data = request.get_json(silent=True) or {}
+    if mp.room_slot_for_token(room, data.get("token", "")) is None:
+        return jsonify({"error": "Nicht in diesem Raum"}), 403
+    if room.winner is None:
+        return jsonify({"error": "Runde läuft noch"}), 409
+
+    pool = _resolve_pool(excluded_types=set(room.excluded_types), excluded_ids=set(room.excluded_ids), league=room.league)
+    db = get_db()
+    try:
+        rows, cols = _generate_puzzle_for_difficulty(
+            db, room.difficulty, pool=pool, min_league_clubs=LEAGUE_MIN_CLUBS if room.league else 0
+        )
+    finally:
+        db.close()
+    if rows is None:
+        return jsonify({"error": "Kein gültiges Rätsel gefunden"}), 500
+
+    mp.reset_room(room, rows, cols)
+    return jsonify({"ok": True})
 
 
 @app.route("/squad-guesser")

@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 import app as app_module
-from src.categories import ClubCategory
+from src.categories import CategoryType, ClubCategory, NationalityCategory
 
 
 def _conn(db_path: Path) -> sqlite3.Connection:
@@ -95,3 +95,42 @@ def test_sample_puzzle_categories_never_exceeds_the_sparse_cap() -> None:
 def test_sample_puzzle_categories_returns_none_when_not_enough_categories() -> None:
     assert app_module._sample_puzzle_categories([], []) is None
     assert app_module._sample_puzzle_categories([ClubCategory("a", "A", "A")], []) is None
+
+
+def test_sample_puzzle_categories_never_splits_nationalities_across_sides() -> None:
+    """Regression test: a "German" row crossing a "Belgian" column asks a
+    "who holds both nationalities" question, a different (and less
+    interesting) kind of cell than the rest of the puzzle — nationality
+    categories must always land together on one side, like sparse ones."""
+    sparse: list = []
+    nationalities = [NationalityCategory(f"nat_{i}", f"Nat {i}", f"Nat {i}") for i in range(10)]
+    other_broad = list(app_module.category_config.AGE_CATEGORIES) + list(app_module.category_config.POSITION_CATEGORIES)
+    broad = nationalities + other_broad
+
+    for _ in range(50):
+        rows, cols = app_module._sample_puzzle_categories(sparse, broad)
+        sample = rows + cols
+        assert len(sample) == 6
+        assert len({c.id for c in sample}) == 6
+
+        n_nat = sum(1 for c in sample if c.type == CategoryType.NATIONALITY)
+        assert n_nat <= app_module.MAX_NATIONALITY_PER_PUZZLE
+        row_nat = sum(1 for c in rows if c.type == CategoryType.NATIONALITY)
+        col_nat = sum(1 for c in cols if c.type == CategoryType.NATIONALITY)
+        assert row_nat == 0 or col_nat == 0
+
+
+def test_sample_league_puzzle_categories_never_splits_nationalities_across_sides() -> None:
+    league_clubs = [ClubCategory(f"club_{i}", f"Club {i}", f"Club {i}") for i in range(10)]
+    nationalities = [NationalityCategory(f"nat_{i}", f"Nat {i}", f"Nat {i}") for i in range(10)]
+
+    for _ in range(50):
+        rows, cols = app_module._sample_league_puzzle_categories(league_clubs, nationalities, min_clubs=4)
+        assert rows is not None
+        sample = rows + cols
+        assert len(sample) == 6
+        assert len({c.id for c in sample}) == 6
+
+        row_nat = sum(1 for c in rows if c.type == CategoryType.NATIONALITY)
+        col_nat = sum(1 for c in cols if c.type == CategoryType.NATIONALITY)
+        assert row_nat == 0 or col_nat == 0
