@@ -344,14 +344,22 @@ def _cat_display(cat) -> dict:
 # not something that holds at this scale. Uniformly sampling 6 categories
 # from a pool this lopsided also risked landing on zero clubs at all (e.g.
 # an all-nationality/trophy/letter grid) despite "Alle Ligen" being the
-# whole-catalog club mode. GENERAL_MIN_CLUBS fixes both: a fixed 3 real
-# clubs confined to one whole side of the grid (see
-# _sample_general_puzzle_categories) — every cell ends up club x broad
-# (the reliable pairing type), never club x club, and — since neither side
-# ever faces another member of itself — the broad side needs no internal
-# grouping either: a nationality x nationality or trophy x trophy cell
-# simply can't happen when both land on the same side by construction.
+# whole-catalog club mode. GENERAL_MIN_CLUBS fixes both: 3 real clubs
+# confined to one whole side of the grid (see
+# _sample_general_puzzle_categories) — every cell involving them ends up
+# club x broad (the reliable pairing type), never club x club, and — since
+# neither side ever faces another member of itself — the broad side needs
+# no internal grouping either: a nationality x nationality or trophy x
+# trophy cell simply can't happen when both land on the same side.
 GENERAL_MIN_CLUBS = 3
+
+# On top of the confined 3, one more club is mixed into the *other* side —
+# unlike the confined 3, this one does face them in 3 club x club cells, so
+# it's only ever picked from clubs that individually clear bounds against
+# all 3 (same construction as the broad side below). GENERAL_MIN_CLUBS +
+# GENERAL_EXTRA_CLUBS = 4 real clubs per puzzle, same floor league mode
+# already guarantees.
+GENERAL_EXTRA_CLUBS = 1
 
 # See _sample_general_puzzle_categories: at most this many of the 3 broad
 # slots may be AWARD (trophy) categories — a trophy category individually
@@ -375,10 +383,14 @@ def _sample_general_puzzle_categories(
     clubs: list, broad: list, db: sqlite3.Connection, min_players: int, max_players: int, rng=random
 ) -> tuple[list, list] | None:
     """Non-league mode ("Alle Ligen"): GENERAL_MIN_CLUBS (3) real clubs,
-    confined to one whole side of the grid, crossed against 3 categories
-    from everything else. See GENERAL_MIN_CLUBS above for why clubs are
-    fixed at exactly 3 and kept to one side (unlike league mode's variable,
-    mixed 4-6) and why the broad side needs no grouping.
+    confined to one whole side of the grid, plus GENERAL_EXTRA_CLUBS (1)
+    more mixed into the other side — 4 real clubs total, same floor league
+    mode already guarantees. See GENERAL_MIN_CLUBS/GENERAL_EXTRA_CLUBS above
+    for why the confined 3 stay fixed and kept to one side (unlike league
+    mode's variable, fully-mixed 4-6) while the 4th is treated more like a
+    broad category: picked only if it individually clears bounds against
+    the confined 3 (3 more club x club cells), and why the rest of the
+    "broad" side still needs no internal grouping.
 
     Unlike every other sampler here, this one checks eligible-player bounds
     itself (via the `db`/`min_players`/`max_players` params) instead of
@@ -387,14 +399,16 @@ def _sample_general_puzzle_categories(
     league's regulars), so any club paired with any broad category is
     usually fine; three *random* prominent clubs pulled from the whole
     catalog (up to Bayern München next to Kaizer Chiefs) often have almost
-    no roster overlap with a specific one of ~600 broad categories at all —
-    empirically, blind uniform sampling here only cleared bounds on
-    ~0.1-8% of attempts depending on difficulty, instead of the ~90%+ every
-    other sampler gets. Restricting the broad draw to only categories that
-    already clear bounds against all 3 chosen clubs turns that into a
-    ~100%-single-attempt success rate (measured against the real catalog)
-    for a bit of upfront filtering (a few thousand cached set intersections,
-    single-digit milliseconds) instead of hundreds of wasted blind retries.
+    no roster overlap with a specific one of ~600 broad categories (or each
+    other) at all — empirically, blind uniform sampling here only cleared
+    bounds on ~0.1-8% of attempts depending on difficulty, instead of the
+    ~90%+ every other sampler gets. Restricting the draw to only categories
+    that already clear bounds against the confined 3 turns that into a
+    ~100%-single-attempt success rate for the broad side (~45-99% for the
+    extra club, depending on difficulty — still ~100% within the caller's
+    per-tier attempt budget) for a bit of upfront filtering (a few thousand
+    cached set intersections, single-digit milliseconds) instead of
+    hundreds of wasted blind retries.
 
     `rng` defaults to the `random` module itself; passing a seeded
     `random.Random(seed)` instance instead (same method surface: shuffle/
@@ -403,10 +417,20 @@ def _sample_general_puzzle_categories(
     app.py's /api/daily/today) so everyone gets the identical puzzle on a
     given day, and concurrent requests never race on shared global state.
     """
-    if len(clubs) < GENERAL_MIN_CLUBS:
+    if len(clubs) < GENERAL_MIN_CLUBS + GENERAL_EXTRA_CLUBS:
         return None
     chosen_clubs = rng.sample(clubs, GENERAL_MIN_CLUBS)
     club_id_sets = [c.eligible_player_ids(db) for c in chosen_clubs]
+
+    remaining_clubs = [c for c in clubs if c not in chosen_clubs]
+    extra_club_candidates = [
+        c for c in remaining_clubs
+        if all(min_players <= len(ids & c.eligible_player_ids(db)) <= max_players for ids in club_id_sets)
+    ]
+    if len(extra_club_candidates) < GENERAL_EXTRA_CLUBS:
+        return None
+    extra_clubs = rng.sample(extra_club_candidates, GENERAL_EXTRA_CLUBS)
+
     candidate_broad = [
         b for b in broad
         if all(min_players <= len(ids & b.eligible_player_ids(db)) <= max_players for ids in club_id_sets)
@@ -419,24 +443,25 @@ def _sample_general_puzzle_categories(
     # (nationality/position/age/...) — two or three of those stacked in
     # one puzzle is what "way too hard" complaints actually turned out to
     # be about even after GENERAL_MIN_CLUBS guaranteed real clubs. Capping
-    # how many of the 3 broad slots can be trophies keeps most cells paired
-    # against a structural category instead, without banning trophies
-    # outright (a rare Ballon d'Or category, on its own, is still a fair
-    # hard question).
+    # how many of the remaining broad slots can be trophies keeps most
+    # cells paired against a structural category instead, without banning
+    # trophies outright (a rare Ballon d'Or category, on its own, is still
+    # a fair hard question).
+    n_broad_slots = 3 - GENERAL_EXTRA_CLUBS
     award_candidates = [c for c in candidate_broad if c.type == CategoryType.AWARD]
     other_candidates = [c for c in candidate_broad if c.type != CategoryType.AWARD]
     max_award = min(GENERAL_MAX_AWARD, len(award_candidates))
     n_award = rng.randint(0, max_award) if max_award > 0 else 0
     # Capped at GENERAL_MAX_AWARD unconditionally — never topped up beyond
     # it even if other_candidates falls short of filling the remaining
-    # slots (that shortfall means this club triple just doesn't have 3
+    # slots (that shortfall means this club triple just doesn't have enough
     # valid categories under the cap; return None and let the caller retry
     # with a fresh club triple instead of silently exceeding the cap).
-    n_other = min(len(other_candidates), 3 - n_award)
-    if n_award + n_other < 3:
+    n_other = min(len(other_candidates), n_broad_slots - n_award)
+    if n_award + n_other < n_broad_slots:
         return None
 
-    chosen_broad = rng.sample(award_candidates, n_award) + rng.sample(other_candidates, n_other)
+    chosen_broad = extra_clubs + rng.sample(award_candidates, n_award) + rng.sample(other_candidates, n_other)
     rng.shuffle(chosen_clubs)
     rng.shuffle(chosen_broad)
     return (chosen_clubs, chosen_broad) if rng.random() < 0.5 else (chosen_broad, chosen_clubs)
@@ -525,7 +550,7 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
         return None, None
 
     clubs = [c for c in pool if c.type == CategoryType.CLUB]
-    if len(clubs) < GENERAL_MIN_CLUBS:
+    if len(clubs) < GENERAL_MIN_CLUBS + GENERAL_EXTRA_CLUBS:
         return None, None
     broad = [c for c in pool if c.type != CategoryType.CLUB]
     for _ in range(max_attempts):

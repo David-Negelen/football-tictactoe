@@ -28,10 +28,15 @@ def test_generate_puzzle_succeeds_and_respects_bounds(monkeypatch, fixture_db_pa
         col_ids = {c.id for c in cols}
         assert row_ids.isdisjoint(col_ids)
         assert (row_ids | col_ids) <= set(fixture_categories)  # fixture_categories now has more clubs than a single grid needs
-        # 3 real clubs (t_club/t_club2/t_club3), confined to one whole side.
-        club_ids = {"t_club", "t_club2", "t_club3"}
-        assert len(club_ids & (row_ids | col_ids)) == app_module.GENERAL_MIN_CLUBS
-        assert club_ids.issuperset(row_ids) or club_ids.issuperset(col_ids)
+        # 4 real clubs total (t_club/t_club2/t_club3/t_club4): 3 confined to
+        # one whole side, 1 more mixed into the other.
+        club_ids = {"t_club", "t_club2", "t_club3", "t_club4"}
+        used_club_ids = club_ids & (row_ids | col_ids)
+        assert len(used_club_ids) == app_module.GENERAL_MIN_CLUBS + app_module.GENERAL_EXTRA_CLUBS
+        confined_side = row_ids if club_ids.issuperset(row_ids) else col_ids
+        other_side = col_ids if confined_side is row_ids else row_ids
+        assert club_ids.issuperset(confined_side) and len(confined_side) == app_module.GENERAL_MIN_CLUBS
+        assert len(club_ids & other_side) == app_module.GENERAL_EXTRA_CLUBS
 
         for row_cat in rows:
             for col_cat in cols:
@@ -92,13 +97,13 @@ def test_generate_puzzle_with_a_seeded_rng_is_deterministic(monkeypatch, fixture
 
 
 def test_sample_general_puzzle_categories_always_uses_exactly_the_min_clubs(fixture_db_path) -> None:
-    """"Alle Ligen" mode must always feature GENERAL_MIN_CLUBS (3) real
-    clubs — the bug this replaces let a puzzle land on zero clubs at all
-    (e.g. an all-nationality/trophy/letter grid) since clubs used to
-    compete with trophies for a single small "sparse" slot. Bounds are
-    passed as (0, 9999) — trivially satisfied by anything — to isolate the
-    structural behavior under test from the bounds-filtering behavior
-    covered separately below."""
+    """"Alle Ligen" mode must always feature GENERAL_MIN_CLUBS + GENERAL_
+    EXTRA_CLUBS (4) real clubs — the bug this replaces let a puzzle land on
+    zero clubs at all (e.g. an all-nationality/trophy/letter grid) since
+    clubs used to compete with trophies for a single small "sparse" slot.
+    Bounds are passed as (0, 9999) — trivially satisfied by anything — to
+    isolate the structural behavior under test from the bounds-filtering
+    behavior covered separately below."""
     conn = _conn(fixture_db_path)
     try:
         clubs = [ClubCategory(f"club_{i}", f"Club {i}", f"Club {i}", difficulty=1) for i in range(20)]
@@ -110,14 +115,16 @@ def test_sample_general_puzzle_categories_always_uses_exactly_the_min_clubs(fixt
             assert len(sample) == 6
             assert len({c.id for c in sample}) == 6  # no duplicates
             n_clubs = sum(1 for c in sample if c.type == CategoryType.CLUB)
-            assert n_clubs == app_module.GENERAL_MIN_CLUBS
-            # All clubs confined to one whole side — every cell ends up
-            # club x broad, never club x club (see _sample_general_puzzle_
-            # categories' docstring for why that pairing is unreliable at
-            # the scale of the general, whole-catalog club pool).
+            assert n_clubs == app_module.GENERAL_MIN_CLUBS + app_module.GENERAL_EXTRA_CLUBS
+            # GENERAL_MIN_CLUBS (3) confined to one whole side — every cell
+            # they're part of ends up club x broad, never club x club (see
+            # _sample_general_puzzle_categories' docstring for why that
+            # pairing is unreliable at the scale of the general,
+            # whole-catalog club pool); GENERAL_EXTRA_CLUBS (1) more sits on
+            # the other side instead.
             row_clubs = sum(1 for c in rows if c.type == CategoryType.CLUB)
             col_clubs = sum(1 for c in cols if c.type == CategoryType.CLUB)
-            assert row_clubs == 0 or col_clubs == 0
+            assert {row_clubs, col_clubs} == {app_module.GENERAL_MIN_CLUBS, app_module.GENERAL_EXTRA_CLUBS}
     finally:
         conn.close()
 
@@ -162,17 +169,17 @@ def test_sample_general_puzzle_categories_broad_side_needs_no_grouping(fixture_d
 
 def test_sample_general_puzzle_categories_excludes_broads_that_dont_overlap_every_chosen_club(fixture_db_path) -> None:
     """Regression test for the actual reliability bug: a broad category
-    that doesn't clear bounds against every one of the 3 chosen clubs must
+    that doesn't clear bounds against every one of the confined clubs must
     never be selectable, however many times the sampler runs — this is what
     took general-pool generation from ~0.1-8% single-attempt success (blind
     uniform sampling) to ~100% (see _sample_general_puzzle_categories'
     docstring)."""
     conn = _conn(fixture_db_path)
     try:
-        # t_club2/t_club3 (Third FC/Fourth United) are only played for by
-        # Alan Adler (Defense) and Carl Cole (Midfield) — neither plays
-        # "Attack", so bad_pos (Attack) has zero overlap with those two
-        # clubs and must never be selected once all 3 clubs are in play.
+        # t_club2/t_club3/t_club4 (Third FC/Fourth United/Fifth FC) are only
+        # played for by Alan Adler (Defense) and Carl Cole (Midfield) —
+        # neither plays "Attack", so bad_pos (Attack) has zero overlap with
+        # those clubs and must never be selected once they're in play.
         # Nationality/age/a different position all include Alan and so give
         # the filter enough valid options to still succeed once bad_pos is
         # excluded.
@@ -182,6 +189,7 @@ def test_sample_general_puzzle_categories_excludes_broads_that_dont_overlap_ever
             ClubCategory("t_club", "Testville FC", "Testville FC"),
             ClubCategory("t_club2", "Third FC", "Third FC"),
             ClubCategory("t_club3", "Fourth United", "Fourth United"),
+            ClubCategory("t_club4", "Fifth FC", "Fifth FC"),
         ]
         bad_pos = PositionCategory("t_bad_pos", "Attack", "Attack")
         broad = [

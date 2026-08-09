@@ -24,18 +24,19 @@ from src.db import Database
 #
 # name, age, nationality, position, market_value, club, career_clubs, trophies
 #
-# Alan Adler and Carl Cole additionally carry stints at "Third FC" and
-# "Fourth United" — two extra clubs that exist purely so fixture_categories
-# below can offer 3 distinct club categories (t_club/t_club2/t_club3), all
-# with the same non-empty-overlap-against-every-broad-category guarantee as
-# t_club: between them, Alan (Testland/Defense/Testcup/U23) and Carl
-# (Testland/High-value/Testcup) already cover every one of the 5 broad
+# Alan Adler and Carl Cole additionally carry stints at "Third FC",
+# "Fourth United" and "Fifth FC" — three extra clubs that exist purely so
+# fixture_categories below can offer 4 distinct club categories
+# (t_club/t_club2/t_club3/t_club4), all with the same non-empty-overlap-
+# against-every-broad-category guarantee as t_club, *and* non-empty overlap
+# against each other: between them, Alan (Testland/Defense/Testcup/U23) and
+# Carl (Testland/High-value/Testcup) already cover every one of the 5 broad
 # fixture categories, so any club the two of them share inherits full
-# coverage for free.
+# coverage for free — including club x club, since both play at all four.
 PLAYERS = [
-    ("Alan Adler",     22, "Testland",             "Defense - Center Back", "€5.00m",  "Testville FC",  ["Testville FC", "Third FC", "Fourth United"],  ["Testcup"]),
+    ("Alan Adler",     22, "Testland",             "Defense - Center Back", "€5.00m",  "Testville FC",  ["Testville FC", "Third FC", "Fourth United", "Fifth FC"],  ["Testcup"]),
     ("Bella Bauer",    29, "Sampleland",            "Defense - Full Back",   "€25.00m", "Sample United", ["Sample United"],                  []),
-    ("Carl Cole",      31, "Testland",              "Midfield - Central",    "€15.00m", "Testville FC",  ["Testville FC", "Fixture Town", "Third FC", "Fourth United"],   ["Testcup", "Samplecup"]),
+    ("Carl Cole",      31, "Testland",              "Midfield - Central",    "€15.00m", "Testville FC",  ["Testville FC", "Fixture Town", "Third FC", "Fourth United", "Fifth FC"],   ["Testcup", "Samplecup"]),
     ("Dana Diaz",      19, "Fixturia",              "Attack - Striker",      "€500k",   "Fixture Town",  ["Fixture Town"],                   []),
     ("Elan Evans",     35, "Sampleland",            "Goalkeeper",            "€1.00m",  "Demo Athletic", ["Demo Athletic"],                  ["Samplecup"]),
     ("Farid Fischer",  22, "Testland Sampleland",   "Midfield - Defensive",  "€20.00m", "Sample United", ["Sample United", "Testville FC"],  []),
@@ -96,18 +97,20 @@ def fixture_db_path(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def fixture_categories() -> dict[str, object]:
-    """Eight categories with hand-verified, non-empty pairwise intersections
+    """Nine categories with hand-verified, non-empty pairwise intersections
     against PLAYERS. The first six (t_club/t_nat/t_pos/t_mv/t_trophy/t_age)
     are the original set — every one of their 15 possible pairs has at
-    least one eligible player in common. t_club2/t_club3 are appended after
-    them (not interleaved) so code that slices "the first N" of this dict
-    keeps seeing the original six in the original order (see
+    least one eligible player in common. t_club2/t_club3/t_club4 are
+    appended after them (not interleaved) so code that slices "the first N"
+    of this dict keeps seeing the original six in the original order (see
     tests/test_multiplayer.py's _room() helper); each has the same
     non-empty overlap against every one of the five non-club categories
-    (t_nat/t_pos/t_mv/t_trophy/t_age) as t_club — needed because
-    _sample_general_puzzle_categories (see app.py) requires 3 real clubs to
-    generate a general-pool puzzle at all, and always confines whichever 3
-    it draws to one whole side, so club x club overlap is never required."""
+    (t_nat/t_pos/t_mv/t_trophy/t_age) as t_club, *and* against each other —
+    needed because _sample_general_puzzle_categories (see app.py) requires
+    GENERAL_MIN_CLUBS + GENERAL_EXTRA_CLUBS (4) real clubs to generate a
+    general-pool puzzle at all: 3 confined to one whole side (no club x
+    club overlap needed among those three) plus 1 more mixed into the other
+    side, which does need club x club overlap against the first three."""
     cats = [
         ClubCategory("t_club", "Testville FC", "Testville FC", difficulty=1),
         NationalityCategory("t_nat", "Testland", "Testland", difficulty=1),
@@ -117,6 +120,7 @@ def fixture_categories() -> dict[str, object]:
         AgeCategory("t_age", "U23", max_age=23, difficulty=1),
         ClubCategory("t_club2", "Third FC", "Third FC", difficulty=1),
         ClubCategory("t_club3", "Fourth United", "Fourth United", difficulty=1),
+        ClubCategory("t_club4", "Fifth FC", "Fifth FC", difficulty=1),
     ]
     return {cat.id: cat for cat in cats}
 
