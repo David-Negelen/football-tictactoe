@@ -428,7 +428,7 @@ def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | 
     return (side_a, side_b) if random.random() < 0.5 else (side_b, side_a)
 
 
-def _sample_league_puzzle_categories(league_clubs: list, broad_no_award: list, min_clubs: int) -> tuple[list, list] | None:
+def _sample_league_puzzle_categories(league_clubs: list, broad: list, min_clubs: int) -> tuple[list, list] | None:
     """League mode: at least `min_clubs` real clubs from the selected league
     among the 6 categories — but, unlike the general sparse-type cap, mixed
     freely across rows/cols rather than confined to one whole side. Within a
@@ -437,36 +437,42 @@ def _sample_league_puzzle_categories(league_clubs: list, broad_no_award: list, m
     same league are common), so club x club cells are safe to allow here —
     keeping clubs pinned to one solid side every time made every league
     puzzle the same rigid shape ("league's clubs" vs "everything else").
-    Non-club/non-trophy categories fill the rest; trophies are excluded even
-    though they're not clubs — a trophy narrowed to "won by a player who
-    also played in this one league" is often too thin to be reliable, same
-    reasoning _SPARSE_TYPES applies elsewhere.
+    Non-club categories fill the rest, trophies included — a trophy doesn't
+    need to be specific to the selected league (e.g. "Ballon d'Or" showing up
+    in a Bundesliga puzzle is fine). The thinness risk of a rare trophy ANDed
+    with "played in this league" is handled structurally rather than by
+    exclusion: at most 2 broad slots exist per puzzle (min_clubs=4 of 6), the
+    trophy group is kept whole on one side (below) so trophy x trophy cells
+    never occur, and the caller's bounds check + retry loop rejects any
+    sample that comes out too thin anyway.
     """
     max_clubs = min(6, len(league_clubs))
     if max_clubs < min_clubs:
         return None
     n_clubs = random.randint(min_clubs, max_clubs)
     n_broad = 6 - n_clubs
-    if len(broad_no_award) < n_broad:
-        n_broad = len(broad_no_award)
+    if len(broad) < n_broad:
+        n_broad = len(broad)
         n_clubs = min(max_clubs, 6 - n_broad)
         if n_clubs < min_clubs:
             return None
 
     chosen_clubs = random.sample(league_clubs, n_clubs)
-    chosen_broad = random.sample(broad_no_award, n_broad)
+    chosen_broad = random.sample(broad, n_broad)
     nat = [c for c in chosen_broad if c.type == CategoryType.NATIONALITY]
-    other = [c for c in chosen_broad if c.type != CategoryType.NATIONALITY]
+    award = [c for c in chosen_broad if c.type == CategoryType.AWARD]
+    other = [c for c in chosen_broad if c.type not in (CategoryType.NATIONALITY, CategoryType.AWARD)]
 
-    # Clubs and non-nationality categories can be placed individually (a
-    # club x club or club x nationality cell is a normal, fine question);
-    # only the nationality group, if it has more than one member, must stay
-    # whole on one side — same reasoning as _sample_puzzle_categories.
+    # Clubs and non-nationality/non-trophy categories can be placed
+    # individually (a club x club or club x nationality cell is a normal,
+    # fine question); the nationality and trophy groups, if they have more
+    # than one member, must each stay whole on one side — same reasoning as
+    # _sample_puzzle_categories.
     singles = chosen_clubs + other
     random.shuffle(singles)
     side_a: list = []
     side_b: list = []
-    for group in (nat, *([c] for c in singles)):
+    for group in (nat, award, *([c] for c in singles)):
         (side_a if len(side_a) + len(group) <= 3 else side_b).extend(group)
 
     random.shuffle(side_a)
@@ -498,9 +504,13 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
 
     if min_league_clubs > 0:
         league_clubs = [c for c in pool if c.type == CategoryType.CLUB]
-        broad_no_award = [c for c in pool if c.type not in (CategoryType.CLUB, CategoryType.AWARD, CategoryType.LEAGUE, CategoryType.CONTINENT)]
+        # LEAGUE/CONTINENT stay excluded (already-scoped clubs make a
+        # "played in league X" or "played on continent Y" cell tautological
+        # or irrelevant); AWARD (trophies) is allowed — see
+        # _sample_league_puzzle_categories' docstring.
+        broad = [c for c in pool if c.type not in (CategoryType.CLUB, CategoryType.LEAGUE, CategoryType.CONTINENT)]
         for _ in range(max_attempts):
-            sampled = _sample_league_puzzle_categories(league_clubs, broad_no_award, min_league_clubs)
+            sampled = _sample_league_puzzle_categories(league_clubs, broad, min_league_clubs)
             if sampled is None:
                 return None, None
             rows, cols = sampled

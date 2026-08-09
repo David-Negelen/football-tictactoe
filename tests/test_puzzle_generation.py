@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 import app as app_module
-from src.categories import CategoryType, ClubCategory, NationalityCategory
+from src.categories import CategoryType, ClubCategory, NationalityCategory, TrophyCategory
 
 
 def _conn(db_path: Path) -> sqlite3.Connection:
@@ -134,3 +134,27 @@ def test_sample_league_puzzle_categories_never_splits_nationalities_across_sides
         row_nat = sum(1 for c in rows if c.type == CategoryType.NATIONALITY)
         col_nat = sum(1 for c in cols if c.type == CategoryType.NATIONALITY)
         assert row_nat == 0 or col_nat == 0
+
+
+def test_sample_league_puzzle_categories_never_splits_trophies_across_sides() -> None:
+    """Trophies are allowed in league mode (not just clubs/nationality) —
+    same grouping rule applies: two trophy categories must never end up on
+    opposite sides of the grid, and they do need to actually show up (a
+    regression here could silently re-exclude AWARD entirely)."""
+    league_clubs = [ClubCategory(f"club_{i}", f"Club {i}", f"Club {i}") for i in range(10)]
+    trophies = [TrophyCategory(f"trophy_{i}", f"Trophy {i}", f"Trophy {i}") for i in range(10)]
+
+    saw_award = False
+    for _ in range(50):
+        rows, cols = app_module._sample_league_puzzle_categories(league_clubs, trophies, min_clubs=4)
+        assert rows is not None
+        sample = rows + cols
+        assert len(sample) == 6
+        assert len({c.id for c in sample}) == 6
+
+        row_award = sum(1 for c in rows if c.type == CategoryType.AWARD)
+        col_award = sum(1 for c in cols if c.type == CategoryType.AWARD)
+        assert row_award == 0 or col_award == 0
+        saw_award = saw_award or (row_award + col_award) > 0
+
+    assert saw_award
