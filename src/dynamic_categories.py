@@ -1,13 +1,15 @@
 """Builds Club/Nationality/Trophy categories dynamically from the real
 dataset instead of a small hand-curated list, so puzzle generation can draw
-on ~6,000 clubs, ~150 nationalities, and ~490 trophies instead of the
-original 31/19/11.
+on ~150 nationalities and ~490 trophies instead of the original 19/11
+(clubs are further restricted to a whitelist — see PROMINENT_CLUB_NAMES).
 
-Difficulty (1-3) is derived directly from how many distinct players satisfy
-a category — the same "how rare is this" idea the hand-curated categories
-already used, just applied uniformly and automatically instead of by hand
-per entry. This is what the user meant by "add this as difficulties" when
-asked how permissive the auto-generated pool should be.
+Nationality/trophy difficulty (1-3) is derived directly from how many
+distinct players satisfy a category — the same "how rare is this" idea the
+hand-curated categories already used, just applied uniformly and
+automatically instead of by hand per entry. Club difficulty is NOT rarity-
+based (see CLUB_DIFFICULTY below) — how many players happen to share a
+club_name string measures Transfermarkt scraping history, not how
+recognizable the club actually is to a casual player.
 
 Called once at app startup (see app.py) — building the whole catalog is a
 low-single-digit-second one-time cost, not something to repeat per request.
@@ -50,13 +52,22 @@ _RESERVE_CLUB_PATTERN = re.compile(r"\s(?:II|B|C)$|Amateure|Futuro", re.IGNORECA
 _RESERVE_CLUB_ALLOWLIST = {"Willem II"}
 
 # (minimum distinct players, difficulty) — checked in order, first match wins.
-# Below the lowest threshold, a club/nationality is dropped entirely rather
-# than forced into difficulty 3 (an answer pool of 1-4 players is too thin
-# to be a fair puzzle even on hard). Trophies get no such floor (see below):
-# a rare trophy is still a legitimate, checkable fact, just a hard one.
-CLUB_TIER_THRESHOLDS = [(50, 1), (20, 2), (5, 3)]
+# Below the lowest threshold, a nationality is dropped entirely rather than
+# forced into difficulty 3 (an answer pool of 1-4 players is too thin to be
+# a fair puzzle even on hard). Trophies get no such floor (see below): a
+# rare trophy is still a legitimate, checkable fact, just a hard one. Clubs
+# no longer use a tier-threshold list at all — see CLUB_MIN_PLAYERS and
+# CLUB_DIFFICULTY below.
 NATIONALITY_TIER_THRESHOLDS = [(100, 1), (50, 2), (20, 3)]
 TROPHY_TIER_THRESHOLDS = [(100, 1), (20, 2), (1, 3)]
+
+# Player count no longer decides a club's difficulty tier (see
+# CLUB_DIFFICULTY below) — it's still used as a bare viability floor, since
+# an answer pool of 1-4 players is too thin to be a fair puzzle no matter how
+# famous the club's name is. Same value as the old CLUB_TIER_THRESHOLDS'
+# lowest bucket, so this change moves which clubs get which difficulty, not
+# which clubs appear at all.
+CLUB_MIN_PLAYERS = 5
 
 
 def _is_junk_club(name: str) -> bool:
@@ -138,21 +149,94 @@ LEGACY_TROPHY_IDS: dict[str, str] = {
     "Leagues-Cup-Sieger": "trophy_leagues_cup",
 }
 
-# CLUB_TIER_THRESHOLDS above only measures rarity ("how many players have
-# this literal club_name"), not recognizability — a 5th-tier German amateur
-# club or a long-defunct English lower-league side can easily clear the
-# "hard" bar (5+ scraped players) just by having been one waypoint in an
-# otherwise-notable career, without being remotely guessable. Outside of
-# league mode (which already uses its own per-league club_names directly,
-# see build_league_pools) the general "club" pool needs an actual
-# prominence whitelist, not just a player-count floor. Reusing the clubs
-# that are already hand-picked and DB-verified elsewhere — the major-league
-# and continental "played in X" lists — avoids re-curating (and
-# re-risking-typos-on) an entirely new list from scratch.
+# A club's player count only measures rarity ("how many players have this
+# literal club_name"), not recognizability — a 5th-tier German amateur club
+# or a long-defunct English lower-league side can easily clear a rarity bar
+# just by having been one waypoint in an otherwise-notable career, without
+# being remotely guessable. Outside of league mode (which already uses its
+# own per-league club_names directly, see build_league_pools) the general
+# "club" pool needs an actual prominence whitelist, not just a player-count
+# floor. Reusing the clubs that are already hand-picked and DB-verified
+# elsewhere — the major-league and continental "played in X" lists — avoids
+# re-curating (and re-risking-typos-on) an entirely new list from scratch.
 PROMINENT_CLUB_NAMES: set[str] = {
     *(name for league in LEAGUE_CATEGORIES for name in league.club_names),
     *(name for cont in CONTINENT_CATEGORIES for name in cont.club_names),
     *LEGACY_CLUB_IDS.keys(),
+}
+
+# Being on the whitelist above only answers "may this club appear at all" —
+# every one of these ~160 clubs is wildly different in actual fame (Bayern
+# München vs. SC Paderborn vs. Como). This answers "how hard is it": bigger,
+# more famous clubs are always easier, because a casual player actually
+# knows their squad. Criteria — would a casual football fan recognize the
+# club and name two of its players, based on the club's fame across its
+# *whole* history, not just this season (e.g. Hamburger SV and FC Schalke 04
+# are tier 1 despite currently playing in the second division)?
+#   Tier 1: Champions-League/continental-final regulars, multiple major
+#     domestic or continental titles in roughly the last 20 years,
+#     near-universal name recognition.
+#   Tier 2: established, nationally/regionally well-known clubs — not
+#     continental regulars, but a real name with at least one household
+#     player.
+#   Tier 3 (default, not enumerated below): everything else — most of the
+#     smaller top-flight clubs and most of the Asia/Africa/smaller-South-
+#     America continental whitelist.
+#
+# Every name below must match career_stints.club_name byte-for-byte (see the
+# "Man City" vs "Manchester City" note on LEGACY_CLUB_IDS above for the kind
+# of mismatch that silently produces zero matches) — a typo here just falls
+# through to DEFAULT_CLUB_DIFFICULTY (tier 3) instead of erroring, which is
+# why test_every_fame_tiered_club_name_is_in_the_prominence_whitelist and
+# test_every_league_has_enough_easy_clubs exist in
+# tests/test_dynamic_categories.py: they're the only things that catch it.
+CLUB_FAME_TIER_1: frozenset[str] = frozenset({
+    # Bundesliga
+    "Bayern München", "Bor. Dortmund", "B. Leverkusen", "RB Leipzig",
+    "FC Schalke 04", "Hamburger SV", "E. Frankfurt", "Werder Bremen",
+    # Premier League
+    "Arsenal", "Chelsea", "Liverpool", "Man City", "Manchester Utd.",
+    "Tottenham", "Newcastle", "Aston Villa", "FC Everton",
+    # La Liga
+    "Real Madrid", "FC Barcelona", "Atlético Madrid", "FC Sevilla",
+    "FC Valencia", "Athletic Bilbao", "Real Sociedad", "FC Villarreal",
+    "Betis Sevilla",
+    # Serie A
+    "Juventus", "Milan", "Inter", "SSC Neapel", "AS Rom", "Lazio Rom",
+    "Atalanta", "AC Florenz", "AC Parma",
+    # South America
+    "Boca Juniors", "River Plate", "Flamengo", "Corinthians",
+    # Other Europe (from LEGACY_CLUB_IDS, no whitelisted league of their own)
+    "Ajax", "Paris SG",
+})
+
+CLUB_FAME_TIER_2: frozenset[str] = frozenset({
+    # Bundesliga
+    "Bor. M'gladbach", "1.FC Köln", "VfL Wolfsburg", "VfB Stuttgart",
+    # Premier League
+    "Leeds United", "Nottingham", "Crystal Palace", "AFC Sunderland",
+    # La Liga
+    "Celta Vigo", "Rayo Vallecano", "Esp. Barcelona", "Dep. La Coruña",
+    # Serie A
+    "FC Turin", "FC Bologna", "Genua CFC", "Udinese",
+    # South America
+    "Palmeiras", "FC Santos", "FC São Paulo", "Independiente",
+    "Fluminense", "Peñarol",
+    # Africa
+    "Esperance", "Wydad AC", "Raja Casablanca", "Zamalek", "Kaizer Chiefs",
+    # Asia — Saudi Pro League's globally-covered signings, and the
+    # historically biggest J-League names
+    "Al-Hilal", "Al-Nassr", "Al-Ittihad", "Al-Ahli", "Urawa Reds",
+    "Kashima Antlers",
+    # Other Europe
+    "PSV",
+})
+
+DEFAULT_CLUB_DIFFICULTY = 3  # unlisted above (or a name typo) -> hardest tier
+
+CLUB_DIFFICULTY: dict[str, int] = {
+    **{name: 1 for name in CLUB_FAME_TIER_1},
+    **{name: 2 for name in CLUB_FAME_TIER_2},
 }
 
 # Transfermarkt records a distinct "nationality" string per birthplace, which
@@ -171,7 +255,11 @@ NON_PLAYABLE_NATIONALITIES: set[str] = {
 }
 
 
-def build_dynamic_clubs(conn: sqlite3.Connection, prominent_names: set[str] = PROMINENT_CLUB_NAMES) -> list[ClubCategory]:
+def build_dynamic_clubs(
+    conn: sqlite3.Connection,
+    prominent_names: set[str] = PROMINENT_CLUB_NAMES,
+    club_difficulty: dict[str, int] = CLUB_DIFFICULTY,
+) -> list[ClubCategory]:
     rows = conn.execute(
         "SELECT club_name, COUNT(DISTINCT player_id) AS n FROM career_stints GROUP BY club_name"
     ).fetchall()
@@ -179,9 +267,9 @@ def build_dynamic_clubs(conn: sqlite3.Connection, prominent_names: set[str] = PR
     for club_name, n in rows:
         if _is_junk_club(club_name) or club_name not in prominent_names:
             continue
-        difficulty = _tier_difficulty(n, CLUB_TIER_THRESHOLDS)
-        if difficulty is None:
+        if n < CLUB_MIN_PLAYERS:  # viability floor only — not a difficulty
             continue
+        difficulty = club_difficulty.get(club_name, DEFAULT_CLUB_DIFFICULTY)
         cat_id = LEGACY_CLUB_IDS.get(club_name) or _stable_id("club", club_name)
         categories.append(ClubCategory(cat_id, club_name, club_name, difficulty=difficulty))
     return categories

@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 
 from src.dynamic_categories import (
+    CLUB_FAME_TIER_1,
+    CLUB_FAME_TIER_2,
+    DEFAULT_CLUB_DIFFICULTY,
     LEGACY_CLUB_IDS,
     LEGACY_NATIONALITY_ENTRIES,
     LEGACY_TROPHY_IDS,
@@ -32,8 +35,11 @@ FIXTURE_PROMINENT_CLUB_NAMES = PROMINENT_CLUB_NAMES | {
 }
 
 
-def _build_clubs(conn):
-    return build_dynamic_clubs(conn, prominent_names=FIXTURE_PROMINENT_CLUB_NAMES)
+def _build_clubs(conn, club_difficulty=None):
+    kwargs = {"prominent_names": FIXTURE_PROMINENT_CLUB_NAMES}
+    if club_difficulty is not None:
+        kwargs["club_difficulty"] = club_difficulty
+    return build_dynamic_clubs(conn, **kwargs)
 
 
 def _add_career_stint(conn: sqlite3.Connection, player_name: str, club_name: str) -> None:
@@ -101,18 +107,46 @@ def test_willem_ii_is_not_treated_as_a_reserve_team(dynamic_db_conn) -> None:
     assert "Willem II" in names
 
 
-def test_clubs_below_the_lowest_tier_threshold_are_dropped(dynamic_db_conn) -> None:
+def test_clubs_below_the_viability_floor_are_dropped(dynamic_db_conn) -> None:
     clubs = _build_clubs(dynamic_db_conn)
     names = {c.club_name for c in clubs}
     assert "Small Rare FC" not in names  # 3 players, below the floor of 5
     assert "Just Enough FC" in names     # exactly 5 players, right at the floor
 
 
-def test_club_difficulty_is_derived_from_player_count(dynamic_db_conn) -> None:
-    clubs = {c.club_name: c for c in _build_clubs(dynamic_db_conn)}
-    assert clubs["Just Enough FC"].difficulty == 3  # 5 players: difficulty-3 tier only
-    # Testville FC has all 13 fixture players via the pre-existing conftest roster + this fixture's extra stints
-    assert clubs["Testville FC"].difficulty in (1, 2, 3)
+def test_club_difficulty_comes_from_the_fame_table_not_player_count(dynamic_db_conn) -> None:
+    # "Just Enough FC" has only 5 players (the bare viability floor) — a
+    # rarity-based scheme would call that hard. Explicitly tiering it as
+    # famous must win anyway.
+    clubs = {c.club_name: c for c in _build_clubs(dynamic_db_conn, club_difficulty={"Just Enough FC": 1})}
+    assert clubs["Just Enough FC"].difficulty == 1
+
+
+def test_a_high_player_count_club_absent_from_the_fame_table_is_hardest(dynamic_db_conn) -> None:
+    # Testville FC has all 13 fixture players (the biggest club in the
+    # fixture) but no fame-table entry — this is the actual bug being fixed:
+    # a big player count must NOT imply an easy difficulty.
+    clubs = {c.club_name: c for c in _build_clubs(dynamic_db_conn, club_difficulty={})}
+    assert clubs["Testville FC"].difficulty == DEFAULT_CLUB_DIFFICULTY
+
+
+def test_unlisted_clubs_default_to_the_hardest_tier() -> None:
+    assert DEFAULT_CLUB_DIFFICULTY == 3
+
+
+def test_every_fame_tiered_club_name_is_in_the_prominence_whitelist() -> None:
+    # Catches a byte-for-byte name typo (e.g. "Manchester City" instead of
+    # the real "Man City") that would otherwise silently demote a famous
+    # club to the hardest tier instead of erroring.
+    assert (CLUB_FAME_TIER_1 | CLUB_FAME_TIER_2) <= PROMINENT_CLUB_NAMES
+
+
+def test_every_league_has_enough_easy_clubs() -> None:
+    from src.category_config import LEAGUE_CATEGORIES
+
+    for league in LEAGUE_CATEGORIES:
+        tier_1_count = len(set(league.club_names) & CLUB_FAME_TIER_1)
+        assert tier_1_count >= 8, f"{league.id} only has {tier_1_count} tier-1 clubs"
 
 
 def test_legacy_club_id_is_preserved_when_the_real_club_name_appears(dynamic_db_conn) -> None:
