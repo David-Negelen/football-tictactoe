@@ -156,11 +156,8 @@ document.querySelectorAll('[data-mode]').forEach(btn => {
 // never needs it at all — the room creator's settings apply to them too, and
 // making them pick unused settings before even seeing the host/join choice
 // was the previous (wrong) order.
-const SETUP_TITLES = { solo: 'Solo einstellen', local: '1v1 Lokal einstellen', 'online-host': 'Raum erstellen' };
-
 function enterSetupScreen(pendingMode) {
   g.pendingMode = pendingMode;
-  document.getElementById('setup-title').textContent = SETUP_TITLES[pendingMode] || 'Rätsel einstellen';
   document.getElementById('btn-setup-continue').disabled = false;
   showScreen('setup');
 }
