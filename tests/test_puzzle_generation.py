@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import sqlite3
 from pathlib import Path
 
@@ -66,6 +67,22 @@ def test_generate_puzzle_filters_by_difficulty(monkeypatch, fixture_db_path, fix
         rows, cols = app_module._generate_puzzle(conn, max_difficulty=1, min_players=1, max_attempts=5)
         assert rows is not None
         assert all(c.id != "t_hard" for c in rows + cols)
+    finally:
+        conn.close()
+
+
+def test_generate_puzzle_with_a_seeded_rng_is_deterministic(monkeypatch, fixture_db_path, fixture_categories) -> None:
+    """The daily grid (see app.py's /api/daily/today) passes a seeded
+    random.Random(...) instead of the global `random` module so that
+    everyone gets the same puzzle on a given day — a fresh Random instance
+    built from the same seed must reproduce the identical draw every time."""
+    monkeypatch.setattr(app_module, "ALL_CATEGORIES", list(fixture_categories.values()))
+    conn = _conn(fixture_db_path)
+    try:
+        first = app_module._generate_puzzle(conn, max_difficulty=3, min_players=1, max_attempts=5, rng=random.Random("same-seed"))
+        second = app_module._generate_puzzle(conn, max_difficulty=3, min_players=1, max_attempts=5, rng=random.Random("same-seed"))
+        assert [c.id for c in first[0]] == [c.id for c in second[0]]
+        assert [c.id for c in first[1]] == [c.id for c in second[1]]
     finally:
         conn.close()
 

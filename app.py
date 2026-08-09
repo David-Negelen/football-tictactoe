@@ -5,12 +5,14 @@ import time
 import unicodedata
 import os
 import random
+from datetime import datetime, timezone
 from pathlib import Path
 
 import json as _json
 
 from src import category_config
 from src import dynamic_categories
+from src import grids as grid_store
 from src.categories import CategoryType
 from src.countries import country_flag_image_code
 from src.db import Database
@@ -370,7 +372,7 @@ MAX_NATIONALITY_PER_PUZZLE = 2
 LEAGUE_MIN_CLUBS = 4
 
 
-def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | None:
+def _sample_puzzle_categories(sparse: list, broad: list, rng=random) -> tuple[list, list] | None:
     """Returns (rows, cols). Sparse (club/trophy) categories are all kept on
     one side — by far the least likely pairing to have any overlap at all,
     since it relies on two specific narrow categories coinciding rather than
@@ -378,13 +380,20 @@ def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | 
     Nationality categories are, separately, also kept on one side (see
     MAX_NATIONALITY_PER_PUZZLE) so no cell ever asks a "holds both
     nationality x and y" question.
+
+    `rng` defaults to the `random` module itself; passing a seeded
+    `random.Random(seed)` instance instead (same method surface: shuffle/
+    sample/randint/random) makes generation fully deterministic without
+    touching global random state — used by the daily grid (see
+    app.py's /api/daily/today) so everyone gets the identical puzzle on a
+    given day, and concurrent requests never race on shared global state.
     """
     if len(sparse) + len(broad) < 6:
         return None
     if not broad:
         if len(sparse) < 6:
             return None
-        six = random.sample(sparse, 6)
+        six = rng.sample(sparse, 6)
         return six[:3], six[3:]
 
     # At least 1 sparse category (when available) rather than 0-2: an all-broad
@@ -393,7 +402,7 @@ def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | 
     # side covers a large structural slice of players. Mixing in a sparse
     # category keeps most cells at a moderate, bounds-friendly size instead.
     min_sparse = 1 if sparse else 0
-    n_sparse = min(MAX_SPARSE_PER_PUZZLE, len(sparse), random.randint(min_sparse, MAX_SPARSE_PER_PUZZLE))
+    n_sparse = min(MAX_SPARSE_PER_PUZZLE, len(sparse), rng.randint(min_sparse, MAX_SPARSE_PER_PUZZLE))
     n_broad = 6 - n_sparse
     if len(broad) < n_broad:
         n_broad = len(broad)
@@ -402,16 +411,16 @@ def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | 
     nat_pool = [c for c in broad if c.type == CategoryType.NATIONALITY]
     other_pool = [c for c in broad if c.type != CategoryType.NATIONALITY]
     max_nat = min(MAX_NATIONALITY_PER_PUZZLE, len(nat_pool), n_broad)
-    n_nat = random.randint(0, max_nat) if max_nat > 0 else 0
+    n_nat = rng.randint(0, max_nat) if max_nat > 0 else 0
     n_other = n_broad - n_nat
     if len(other_pool) < n_other:
         n_nat = min(len(nat_pool), n_nat + (n_other - len(other_pool)))
         n_other = n_broad - n_nat
 
-    chosen_sparse = random.sample(sparse, n_sparse)
-    chosen_nat = random.sample(nat_pool, n_nat)
-    chosen_other = random.sample(other_pool, n_other)
-    random.shuffle(chosen_other)
+    chosen_sparse = rng.sample(sparse, n_sparse)
+    chosen_nat = rng.sample(nat_pool, n_nat)
+    chosen_other = rng.sample(other_pool, n_other)
+    rng.shuffle(chosen_other)
 
     # Greedily pack the sparse group, the nationality group, and each
     # leftover broad category (a "group" of 1) into two sides of 3 without
@@ -423,12 +432,12 @@ def _sample_puzzle_categories(sparse: list, broad: list) -> tuple[list, list] | 
     for group in (chosen_sparse, chosen_nat, *([c] for c in chosen_other)):
         (side_a if len(side_a) + len(group) <= 3 else side_b).extend(group)
 
-    random.shuffle(side_a)
-    random.shuffle(side_b)
-    return (side_a, side_b) if random.random() < 0.5 else (side_b, side_a)
+    rng.shuffle(side_a)
+    rng.shuffle(side_b)
+    return (side_a, side_b) if rng.random() < 0.5 else (side_b, side_a)
 
 
-def _sample_league_puzzle_categories(league_clubs: list, broad: list, min_clubs: int) -> tuple[list, list] | None:
+def _sample_league_puzzle_categories(league_clubs: list, broad: list, min_clubs: int, rng=random) -> tuple[list, list] | None:
     """League mode: at least `min_clubs` real clubs from the selected league
     among the 6 categories — but, unlike the general sparse-type cap, mixed
     freely across rows/cols rather than confined to one whole side. Within a
@@ -449,7 +458,7 @@ def _sample_league_puzzle_categories(league_clubs: list, broad: list, min_clubs:
     max_clubs = min(6, len(league_clubs))
     if max_clubs < min_clubs:
         return None
-    n_clubs = random.randint(min_clubs, max_clubs)
+    n_clubs = rng.randint(min_clubs, max_clubs)
     n_broad = 6 - n_clubs
     if len(broad) < n_broad:
         n_broad = len(broad)
@@ -457,8 +466,8 @@ def _sample_league_puzzle_categories(league_clubs: list, broad: list, min_clubs:
         if n_clubs < min_clubs:
             return None
 
-    chosen_clubs = random.sample(league_clubs, n_clubs)
-    chosen_broad = random.sample(broad, n_broad)
+    chosen_clubs = rng.sample(league_clubs, n_clubs)
+    chosen_broad = rng.sample(broad, n_broad)
     nat = [c for c in chosen_broad if c.type == CategoryType.NATIONALITY]
     award = [c for c in chosen_broad if c.type == CategoryType.AWARD]
     other = [c for c in chosen_broad if c.type not in (CategoryType.NATIONALITY, CategoryType.AWARD)]
@@ -469,18 +478,18 @@ def _sample_league_puzzle_categories(league_clubs: list, broad: list, min_clubs:
     # than one member, must each stay whole on one side — same reasoning as
     # _sample_puzzle_categories.
     singles = chosen_clubs + other
-    random.shuffle(singles)
+    rng.shuffle(singles)
     side_a: list = []
     side_b: list = []
     for group in (nat, award, *([c] for c in singles)):
         (side_a if len(side_a) + len(group) <= 3 else side_b).extend(group)
 
-    random.shuffle(side_a)
-    random.shuffle(side_b)
-    return (side_a, side_b) if random.random() < 0.5 else (side_b, side_a)
+    rng.shuffle(side_a)
+    rng.shuffle(side_b)
+    return (side_a, side_b) if rng.random() < 0.5 else (side_b, side_a)
 
 
-def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300, pool: list | None = None, min_league_clubs: int = 0):
+def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_players: int = 5, max_players: int = 9999, max_attempts: int = 300, pool: list | None = None, min_league_clubs: int = 0, rng=random):
     if pool is None:
         pool = ALL_CATEGORIES
     pool = [cat for cat in pool if cat.difficulty <= max_difficulty]
@@ -510,7 +519,7 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
         # _sample_league_puzzle_categories' docstring.
         broad = [c for c in pool if c.type not in (CategoryType.CLUB, CategoryType.LEAGUE, CategoryType.CONTINENT)]
         for _ in range(max_attempts):
-            sampled = _sample_league_puzzle_categories(league_clubs, broad, min_league_clubs)
+            sampled = _sample_league_puzzle_categories(league_clubs, broad, min_league_clubs, rng=rng)
             if sampled is None:
                 return None, None
             rows, cols = sampled
@@ -522,7 +531,7 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
     sparse = [c for c in pool if c.type in _SPARSE_TYPES]
     broad = [c for c in pool if c.type not in _SPARSE_TYPES]
     for _ in range(max_attempts):
-        sampled = _sample_puzzle_categories(sparse, broad)
+        sampled = _sample_puzzle_categories(sparse, broad, rng=rng)
         if sampled is None:
             return None, None
         rows, cols = sampled
@@ -564,19 +573,22 @@ _DIFFICULTY_FALLBACKS = {
 }
 
 
-def _generate_puzzle_for_difficulty(db: sqlite3.Connection, difficulty: int, pool: list | None = None, min_league_clubs: int = 0):
+def _generate_puzzle_for_difficulty(db: sqlite3.Connection, difficulty: int, pool: list | None = None, min_league_clubs: int = 0, rng=random):
     """Generate a puzzle for a clamped 1-3 difficulty, walking the fallback ladder.
 
-    Shared by /api/game/new (solo + local) and multiplayer room creation so
-    both draw puzzles with identical quality guarantees. `pool` defaults to
-    the full category catalog; callers pass a narrower one to respect a
-    player's excluded-categories settings or a league-scoped game mode
-    (see _resolve_pool()). `min_league_clubs` > 0 switches to the
-    league-priority sampler (see _sample_league_puzzle_categories).
+    Shared by /api/game/new (solo + local), multiplayer room creation, and
+    the daily grid so all draw puzzles with identical quality guarantees.
+    `pool` defaults to the full category catalog; callers pass a narrower
+    one to respect a league-scoped game mode (see _resolve_pool()).
+    `min_league_clubs` > 0 switches to the league-priority sampler (see
+    _sample_league_puzzle_categories). `rng` defaults to the `random`
+    module; the daily grid passes a seeded `random.Random(...)` instead so
+    the same date always produces the same puzzle (see _sample_puzzle_
+    categories' docstring).
     """
     difficulty = min(3, max(1, difficulty))
     for cfg in _DIFFICULTY_FALLBACKS[difficulty]:
-        rows, cols = _generate_puzzle(db, max_difficulty=difficulty, pool=pool, min_league_clubs=min_league_clubs, **cfg)
+        rows, cols = _generate_puzzle(db, max_difficulty=difficulty, pool=pool, min_league_clubs=min_league_clubs, rng=rng, **cfg)
         if rows is not None:
             return rows, cols
     return None, None
@@ -604,11 +616,13 @@ def _parse_csv_param(raw: str | None) -> set[str]:
 
 @app.route("/api/categories")
 def api_categories():
-    """Server-side search over the category catalog, backing the settings
-    page's individual-exclude checklist — with ~6,500 clubs and ~490
-    trophies, shipping the full catalog to the browser up front isn't
+    """Server-side search over the category catalog — with ~6,500 clubs and
+    ~490 trophies, shipping the full catalog to the browser up front isn't
     practical, so this mirrors the debounced-search pattern /api/game/search
-    already uses for players."""
+    already uses for players. Backs the editor's category picker (see
+    game.js); `type` is optional there (searching "Bayern" should find the
+    club regardless of the user thinking in terms of category types), but
+    still supported for a type-scoped browse."""
     cat_type = request.args.get("type", "").strip()
     query = _normalize(request.args.get("q", "").strip())
     try:
@@ -616,7 +630,7 @@ def api_categories():
     except ValueError:
         limit = 50
 
-    results = [c for c in ALL_CATEGORIES if c.type.value == cat_type]
+    results = [c for c in ALL_CATEGORIES if c.type.value == cat_type] if cat_type else list(ALL_CATEGORIES)
     if query:
         results = [c for c in results if query in _normalize(c.label)]
     results.sort(key=lambda c: (c.difficulty, c.label))
@@ -743,6 +757,125 @@ def api_game_validate():
     finally:
         db.close()
     return jsonify({"valid": valid, "player": dict(player) if player else None})
+
+
+# ─── Tägliches Rätsel (daily curated grid + streak) ────────────────────────
+# The "once per day" gate and streak itself live entirely client-side (see
+# game.js), matching this app's existing trust model — nothing else here
+# (stats, settings) has ever had server-verified per-user state, and
+# real-world Wordle works the same way (localStorage-gated, not server-
+# enforced). What the backend *does* guarantee is that everyone who opens
+# the daily puzzle on the same UTC calendar day gets the exact same grid —
+# that's the part that actually needs to be authoritative and shared.
+
+DAILY_WEEKDAY_DIFFICULTY = 2
+DAILY_WEEKEND_DIFFICULTY = 3  # Saturday/Sunday a bit harder, like a crossword
+
+
+def _today_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+@app.route("/api/daily/today")
+def api_daily_today():
+    date = _today_str()
+    db = get_db()
+    try:
+        rows = cols = None
+        existing = grid_store.get_daily_grid(db, date)
+        if existing is not None:
+            row_ids, col_ids = existing
+            rows = [CATEGORY_BY_ID[i] for i in row_ids if i in CATEGORY_BY_ID]
+            cols = [CATEGORY_BY_ID[i] for i in col_ids if i in CATEGORY_BY_ID]
+            if len(rows) != 3 or len(cols) != 3:
+                # A category the stored grid referenced no longer exists
+                # (e.g. a club fell out of the prominence whitelist since) —
+                # regenerate below rather than serve a broken puzzle.
+                rows = cols = None
+
+        if rows is None:
+            weekday = datetime.now(timezone.utc).weekday()  # 0=Mon .. 6=Sun
+            difficulty = DAILY_WEEKEND_DIFFICULTY if weekday >= 5 else DAILY_WEEKDAY_DIFFICULTY
+            # Seeded by the date, not the global `random` module — every
+            # request for the same date computes the identical puzzle, and
+            # concurrent requests never race on shared global RNG state.
+            rng = random.Random(f"daily-{date}")
+            rows, cols = _generate_puzzle_for_difficulty(db, difficulty, pool=ALL_CATEGORIES, rng=rng)
+            if rows is None:
+                return jsonify({"error": "Kein gültiges Tagesrätsel gefunden"}), 500
+            grid_store.store_daily_grid(db, date, [c.id for c in rows], [c.id for c in cols])
+    finally:
+        db.close()
+    return jsonify({
+        "date": date,
+        "rows": [_cat_display(c) for c in rows],
+        "cols": [_cat_display(c) for c in cols],
+    })
+
+
+# ─── Editor: build, save, and load custom grids by code ────────────────────
+
+@app.route("/api/grids", methods=["POST"])
+def api_create_grid():
+    data = request.get_json(silent=True) or {}
+    row_ids = data.get("row_ids") or []
+    col_ids = data.get("col_ids") or []
+    if (
+        not isinstance(row_ids, list) or not isinstance(col_ids, list)
+        or len(row_ids) != 3 or len(col_ids) != 3
+    ):
+        return jsonify({"error": "Genau 3 Zeilen- und 3 Spalten-Kategorien nötig"}), 400
+    if len(set(row_ids)) != 3 or len(set(col_ids)) != 3 or set(row_ids) & set(col_ids):
+        return jsonify({"error": "Kategorien dürfen sich nicht wiederholen"}), 400
+
+    cats = {}
+    for cid in row_ids + col_ids:
+        cat = CATEGORY_BY_ID.get(cid)
+        if cat is None:
+            return jsonify({"error": f"Unbekannte Kategorie: {cid}"}), 400
+        cats[cid] = cat
+
+    db = get_db()
+    try:
+        # Every one of the 9 cells needs at least one real answer — reusing
+        # the same eligible-player-id intersection the generator itself
+        # relies on, so a shared code can never point at an unsolvable cell.
+        empty_cells = []
+        for r_id in row_ids:
+            row_cat = cats[r_id]
+            row_players = row_cat.eligible_player_ids(db)
+            for c_id in col_ids:
+                col_cat = cats[c_id]
+                if not (row_players & col_cat.eligible_player_ids(db)):
+                    empty_cells.append(f"{row_cat.label} × {col_cat.label}")
+        if empty_cells:
+            return jsonify({"error": "Diese Kombination hat leere Felder: " + ", ".join(empty_cells)}), 400
+
+        code = grid_store.save_grid(db, row_ids, col_ids)
+    finally:
+        db.close()
+    return jsonify({"code": code})
+
+
+@app.route("/api/grids/<code>")
+def api_get_grid(code):
+    db = get_db()
+    try:
+        result = grid_store.get_saved_grid(db, code)
+        if result is None:
+            return jsonify({"error": "Rätsel nicht gefunden"}), 404
+        row_ids, col_ids = result
+        rows = [CATEGORY_BY_ID.get(i) for i in row_ids]
+        cols = [CATEGORY_BY_ID.get(i) for i in col_ids]
+        if None in rows or None in cols:
+            return jsonify({"error": "Rätsel enthält veraltete Kategorien"}), 410
+    finally:
+        db.close()
+    return jsonify({
+        "code": code.upper(),
+        "rows": [_cat_display(c) for c in rows],
+        "cols": [_cat_display(c) for c in cols],
+    })
 
 
 # ─── Online 1v1 (multiplayer rooms) ────────────────────────────────────────

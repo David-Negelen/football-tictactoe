@@ -105,3 +105,105 @@ def test_solve_returns_grid_matching_eligible_sets(app_client) -> None:
 def test_solve_rejects_wrong_row_col_count(app_client) -> None:
     resp = app_client.get("/api/game/solve?rows=t_club,t_nat&cols=t_mv,t_trophy,t_age")
     assert resp.status_code == 400
+
+
+# ─── /api/daily/today ──────────────────────────────────────────────────────
+
+def test_daily_today_returns_three_rows_and_three_cols(app_client) -> None:
+    resp = app_client.get("/api/daily/today")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "date" in data
+    assert len(data["rows"]) == 3
+    assert len(data["cols"]) == 3
+
+
+def test_daily_today_is_identical_across_repeated_requests(app_client) -> None:
+    """The whole point of a daily grid is that everyone gets the same
+    puzzle — two requests (simulating two different players, or the same
+    player reloading) must resolve to the exact same categories."""
+    first = app_client.get("/api/daily/today").get_json()
+    second = app_client.get("/api/daily/today").get_json()
+    assert first["date"] == second["date"]
+    assert [c["id"] for c in first["rows"]] == [c["id"] for c in second["rows"]]
+    assert [c["id"] for c in first["cols"]] == [c["id"] for c in second["cols"]]
+
+
+# ─── /api/grids (editor save/share/load by code) ──────────────────────────
+
+def test_create_grid_returns_a_loadable_code(app_client) -> None:
+    resp = app_client.post(
+        "/api/grids",
+        data=json.dumps({"row_ids": ["t_club", "t_nat", "t_pos"], "col_ids": ["t_mv", "t_trophy", "t_age"]}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    code = resp.get_json()["code"]
+    assert code
+
+    loaded = app_client.get(f"/api/grids/{code}")
+    assert loaded.status_code == 200
+    data = loaded.get_json()
+    assert {c["id"] for c in data["rows"]} == {"t_club", "t_nat", "t_pos"}
+    assert {c["id"] for c in data["cols"]} == {"t_mv", "t_trophy", "t_age"}
+
+
+def test_create_grid_code_is_case_insensitive_on_lookup(app_client) -> None:
+    resp = app_client.post(
+        "/api/grids",
+        data=json.dumps({"row_ids": ["t_club", "t_nat", "t_pos"], "col_ids": ["t_mv", "t_trophy", "t_age"]}),
+        content_type="application/json",
+    )
+    code = resp.get_json()["code"]
+    loaded = app_client.get(f"/api/grids/{code.lower()}")
+    assert loaded.status_code == 200
+
+
+def test_get_grid_rejects_unknown_code(app_client) -> None:
+    resp = app_client.get("/api/grids/ZZZZZZ")
+    assert resp.status_code == 404
+
+
+def test_create_grid_rejects_wrong_row_col_count(app_client) -> None:
+    resp = app_client.post(
+        "/api/grids",
+        data=json.dumps({"row_ids": ["t_club", "t_nat"], "col_ids": ["t_mv", "t_trophy", "t_age"]}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400
+
+
+def test_create_grid_rejects_a_category_reused_across_rows_and_cols(app_client) -> None:
+    resp = app_client.post(
+        "/api/grids",
+        data=json.dumps({"row_ids": ["t_club", "t_nat", "t_pos"], "col_ids": ["t_club", "t_trophy", "t_age"]}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400
+
+
+def test_create_grid_rejects_an_unknown_category_id(app_client) -> None:
+    resp = app_client.post(
+        "/api/grids",
+        data=json.dumps({"row_ids": ["t_club", "t_nat", "nonexistent"], "col_ids": ["t_mv", "t_trophy", "t_age"]}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400
+
+
+def test_create_grid_rejects_a_combination_with_an_empty_cell(app_client, fixture_categories) -> None:
+    from src.categories import AgeCategory
+
+    # No fixture player is 200 years old — this category is guaranteed to
+    # produce a zero-answer cell against every other fixture category.
+    # fixture_categories is the same dict object app_module.CATEGORY_BY_ID
+    # was monkeypatched to (see conftest.py's app_client fixture), so adding
+    # to it here is enough for the route to see it too.
+    fixture_categories["impossible"] = AgeCategory("impossible", "Impossible", min_age=200, difficulty=1)
+
+    resp = app_client.post(
+        "/api/grids",
+        data=json.dumps({"row_ids": ["t_club", "t_nat", "impossible"], "col_ids": ["t_mv", "t_trophy", "t_age"]}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400

@@ -122,6 +122,24 @@ class Database:
                     message TEXT
                 );
 
+                -- Puzzle grids are stored as comma-joined category ids, never
+                -- full category data — resolved back to real Category objects
+                -- by id at read time (see src/grids.py, app.py's CATEGORY_BY_ID),
+                -- the same way excluded-category-id settings already work.
+                CREATE TABLE IF NOT EXISTS daily_grids (
+                    date TEXT PRIMARY KEY,
+                    row_ids TEXT NOT NULL,
+                    col_ids TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS saved_grids (
+                    code TEXT PRIMARY KEY,
+                    row_ids TEXT NOT NULL,
+                    col_ids TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 -- Indexes for the category engine's eligible_player_ids()/sql_filter()
                 -- queries. idx_career_stints_club and idx_career_stints_player already
                 -- existed by hand on the live deployed DB but were never actually created
