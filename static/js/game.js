@@ -168,27 +168,57 @@ document.querySelectorAll('[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => selectMode(btn.dataset.mode));
 });
 
-// Difficulty and league are chosen once, right after picking a mode, on
-// their own screen — this also covers online (previously the room creator
-// had no way to choose them at all, since the header pickers were hidden
-// outright in online mode).
-const SETUP_TITLES = { solo: 'Solo einstellen', local: '1v1 Lokal einstellen', online: '1v1 Online einstellen' };
+// Difficulty and league are chosen once, on their own screen — for solo/
+// local right after picking the mode; for online, only after choosing to
+// host (see renderLobbyHome's "Raum erstellen" handler), since a joiner
+// never needs it at all — the room creator's settings apply to them too, and
+// making them pick unused settings before even seeing the host/join choice
+// was the previous (wrong) order.
+const SETUP_TITLES = { solo: 'Solo einstellen', local: '1v1 Lokal einstellen', 'online-host': 'Raum erstellen' };
 
-function selectMode(mode) {
-  g.pendingMode = mode;
-  document.getElementById('setup-title').textContent = SETUP_TITLES[mode] || 'Rätsel einstellen';
+function enterSetupScreen(pendingMode) {
+  g.pendingMode = pendingMode;
+  document.getElementById('setup-title').textContent = SETUP_TITLES[pendingMode] || 'Rätsel einstellen';
+  document.getElementById('btn-setup-continue').disabled = false;
   showScreen('setup');
 }
 
-document.getElementById('btn-setup-back').addEventListener('click', () => showScreen('mode-select'));
-document.getElementById('btn-setup-continue').addEventListener('click', () => {
+function selectMode(mode) {
+  if (mode === 'online') {
+    g.mode = 'online';
+    showScreen('online-lobby');
+    updateModeChrome();
+    renderLobbyHome();
+    return;
+  }
+  enterSetupScreen(mode);
+}
+
+document.getElementById('btn-setup-back').addEventListener('click', () => {
+  if (g.pendingMode === 'online-host') {
+    g.mode = 'online';
+    showScreen('online-lobby');
+    renderLobbyHome();
+  } else {
+    showScreen('mode-select');
+  }
+});
+document.getElementById('btn-setup-continue').addEventListener('click', e => {
   const mode = g.pendingMode;
   if (mode === 'solo') { startSolo(); return; }
   if (mode === 'local') { startLocal(); return; }
-  g.mode = 'online';
-  showScreen('online-lobby');
-  updateModeChrome();
-  renderLobbyHome();
+  if (mode === 'online-host') {
+    // Creating a room is a ~0.5s round-trip — without this guard a fast
+    // double-click fires it twice, creating two rooms and leaving the
+    // client attached to whichever response happens to land last. Capture
+    // the button now, synchronously — Event.currentTarget is nulled out by
+    // the browser once dispatch finishes, so it can't be read inside the
+    // .finally() below (after the await in createOnlineRoom has yielded).
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    createOnlineRoom().finally(() => { btn.disabled = false; });
+  }
 });
 
 function goToMenu() {
@@ -905,10 +935,16 @@ function renderLobbyHome() {
       </div>
       <p id="lobby-error" class="text-red-300 text-xs hidden"></p>
     </div>`;
-  document.getElementById('btn-create-room').addEventListener('click', createOnlineRoom);
-  document.getElementById('btn-join-room').addEventListener('click', () => {
+  // Hosting needs difficulty/league first — that's the setup screen, shown
+  // only now (not before this host-vs-join choice) since a joiner never
+  // needs it at all (the room's creator-chosen settings apply to them too).
+  document.getElementById('btn-create-room').addEventListener('click', () => enterSetupScreen('online-host'));
+  document.getElementById('btn-join-room').addEventListener('click', e => {
+    if (e.currentTarget.disabled) return;
     const code = document.getElementById('join-code-input').value.trim();
-    if (code.length >= 4) joinOnlineRoom(code);
+    if (code.length < 4) return;
+    e.currentTarget.disabled = true;
+    joinOnlineRoom(code);
   });
   document.getElementById('join-code-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-join-room').click();
@@ -982,11 +1018,20 @@ async function createOnlineRoom() {
       excludedTypes: settings.excludedTypes, excludedCategoryIds: settings.excludedCategoryIds,
     }),
   });
-  if (!resp.ok) { showLobbyError('Raum konnte nicht erstellt werden.'); return; }
+  if (!resp.ok) {
+    // Creation happens from the setup screen — surface the failure back on
+    // the lobby screen (where #lobby-error already lives from renderLobbyHome)
+    // rather than leaving the user stranded looking at the setup screen with
+    // nothing having visibly happened.
+    showScreen('online-lobby');
+    showLobbyError('Raum konnte nicht erstellt werden.');
+    return;
+  }
   const data = await resp.json();
   g.onlineCode = data.code;
   g.onlineToken = data.token;
   g.onlineSlot = data.slot;
+  showScreen('online-lobby');
   renderLobbyWaiting(data.code);
   connectOnlineEvents();
 }
@@ -995,7 +1040,12 @@ async function joinOnlineRoom(code) {
   Object.assign(g, { onlineBoardEntered: false, onlineFinished: false });
   code = code.toUpperCase();
   const resp = await fetch(`/api/multiplayer/rooms/${code}/join`, { method: 'POST' });
-  if (!resp.ok) { showLobbyError('Raum nicht gefunden oder schon voll.'); return; }
+  if (!resp.ok) {
+    showLobbyError('Raum nicht gefunden oder schon voll.');
+    const btn = document.getElementById('btn-join-room');
+    if (btn) btn.disabled = false;
+    return;
+  }
   const data = await resp.json();
   g.onlineCode = data.code;
   g.onlineToken = data.token;
