@@ -815,6 +815,33 @@ def api_daily_today():
 
 # ─── Editor: build, save, and load custom grids by code ────────────────────
 
+@app.route("/api/grids/preview")
+def api_grid_preview():
+    """Live cell-count preview for the editor grid (see game.js's
+    renderEditorGrid) — as the builder fills in row/col categories, each
+    cell where both a row and a column are picked shows how many players
+    would answer it, so thin/impossible combos are obvious before saving.
+    Only counts are returned, never player names. Empty slots are sent as
+    empty strings (not omitted) so the response stays aligned to the 3x3
+    grid positions."""
+    row_ids = (request.args.get("rows", "") or "").split(",")
+    col_ids = (request.args.get("cols", "") or "").split(",")
+    if len(row_ids) != 3 or len(col_ids) != 3:
+        return jsonify({"error": "Need exactly 3 row and 3 col slots"}), 400
+
+    db = get_db()
+    try:
+        row_players = [CATEGORY_BY_ID[i].eligible_player_ids(db) if i in CATEGORY_BY_ID else None for i in row_ids]
+        col_players = [CATEGORY_BY_ID[i].eligible_player_ids(db) if i in CATEGORY_BY_ID else None for i in col_ids]
+        counts = [
+            [len(rp & cp) if rp is not None and cp is not None else None for cp in col_players]
+            for rp in row_players
+        ]
+    finally:
+        db.close()
+    return jsonify({"counts": counts})
+
+
 @app.route("/api/grids", methods=["POST"])
 def api_create_grid():
     data = request.get_json(silent=True) or {}

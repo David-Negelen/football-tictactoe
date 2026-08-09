@@ -50,6 +50,7 @@ const g = {
   // editor:
   editor: { row: [null, null, null], col: [null, null, null] },
   editorSavedCode: null,
+  editorCounts: null, // 3x3, entry is null until both that row+col are picked
 };
 let difficulty = 3;
 
@@ -973,7 +974,8 @@ document.getElementById('end-share').addEventListener('click', () => {
 
 function goToEditor() {
   showScreen('editor');
-  renderEditorSlots();
+  renderEditorGrid();
+  refreshEditorCounts();
 }
 document.getElementById('btn-editor').addEventListener('click', () => {
   closeMenuDropdown();
@@ -981,26 +983,90 @@ document.getElementById('btn-editor').addEventListener('click', () => {
 });
 document.getElementById('btn-editor-back').addEventListener('click', goToMenu);
 
-function renderEditorSlots() {
-  ['row', 'col'].forEach(side => {
-    [0, 1, 2].forEach(i => {
-      const btn = document.querySelector(`[data-editor-slot="${side}-${i}"]`);
-      const cat = g.editor[side][i];
-      btn.innerHTML = cat
-        ? `<span class="flex items-center gap-2 min-w-0">${categoryIconHtml(cat)}<span class="truncate">${esc(cat.label)}</span></span>`
-        : `<span class="text-green-200/60">Kategorie wählen</span>`;
+// Same header-cell look as the real board (headerCellHtml/cellHtml above),
+// but clickable and empty until a category is picked — so building a grid
+// looks like filling in the board you're about to play, not a form.
+function editorSlotHtml(side, i) {
+  const cat = g.editor[side][i];
+  if (cat) {
+    return `
+      <div class="rounded-xl flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2 cursor-pointer hover:brightness-110 transition-all"
+           style="background:rgba(20,83,45,.9);border:1px solid rgba(74,222,128,.15);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)"
+           data-editor-slot="${side}-${i}" title="${esc(cat.label)}">
+        ${categoryIconHtml(cat)}
+        <div class="text-white/90 font-semibold text-center leading-snug px-1"
+             style="font-size:11px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
+          ${esc(cat.label)}
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="rounded-xl flex items-center justify-center h-32 border-2 border-dashed border-green-500/40 text-green-200/60 text-xs font-semibold text-center px-2 cursor-pointer hover:border-green-400 hover:text-white transition-colors"
+         data-editor-slot="${side}-${i}">
+      + Kategorie
+    </div>`;
+}
+
+function editorCountCellHtml(r, c) {
+  if (!g.editor.row[r] || !g.editor.col[c]) {
+    return `<div class="rounded-xl bg-slate-800/30 border border-slate-700/30 h-32"></div>`;
+  }
+  const count = g.editorCounts ? g.editorCounts[r][c] : undefined;
+  if (count === undefined || count === null) {
+    return `<div class="rounded-xl bg-slate-800/40 border border-slate-700/40 flex items-center justify-center h-32 text-slate-400 text-xs">…</div>`;
+  }
+  const empty = count === 0;
+  return `
+    <div class="rounded-xl ${empty ? 'bg-red-900/30 border-red-700/40' : 'bg-green-900/30 border-green-700/30'} border flex flex-col items-center justify-center h-32">
+      <div class="text-2xl font-black ${empty ? 'text-red-300' : 'text-green-300'}">${count}</div>
+      <div class="text-[10px] uppercase tracking-wide ${empty ? 'text-red-400/70' : 'text-green-400/70'}">${empty ? 'keine Spieler' : 'möglich'}</div>
+    </div>`;
+}
+
+function renderEditorGrid() {
+  const grid = document.getElementById('editor-grid');
+  const cells = [`<div class="h-32"></div>`];
+  [0, 1, 2].forEach(c => cells.push(editorSlotHtml('col', c)));
+  [0, 1, 2].forEach(r => {
+    cells.push(editorSlotHtml('row', r));
+    [0, 1, 2].forEach(c => cells.push(editorCountCellHtml(r, c)));
+  });
+  grid.innerHTML = cells.join('');
+  grid.querySelectorAll('[data-editor-slot]').forEach(el => {
+    el.addEventListener('click', () => {
+      const [side, idx] = el.dataset.editorSlot.split('-');
+      openCategoryPicker(side, parseInt(idx));
     });
   });
   const allFilled = [...g.editor.row, ...g.editor.col].every(Boolean);
   document.getElementById('btn-editor-save').disabled = !allFilled;
 }
 
-document.querySelectorAll('[data-editor-slot]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const [side, idx] = btn.dataset.editorSlot.split('-');
-    openCategoryPicker(side, parseInt(idx));
-  });
-});
+// Debounced+ordered: a slow late response for a stale grid must never
+// overwrite a fresher one, so each call carries a token and only the most
+// recent one is allowed to apply its result.
+let editorCountsToken = 0;
+async function refreshEditorCounts() {
+  const anyPicked = [...g.editor.row, ...g.editor.col].some(Boolean);
+  if (!anyPicked) {
+    g.editorCounts = null;
+    renderEditorGrid();
+    return;
+  }
+  const token = ++editorCountsToken;
+  const rows = g.editor.row.map(c => c ? c.id : '').join(',');
+  const cols = g.editor.col.map(c => c ? c.id : '').join(',');
+  try {
+    const resp = await fetch(`/api/grids/preview?rows=${encodeURIComponent(rows)}&cols=${encodeURIComponent(cols)}`);
+    const data = await resp.json();
+    if (token !== editorCountsToken) return; // superseded by a newer pick
+    g.editorCounts = data.counts || null;
+  } catch {
+    if (token !== editorCountsToken) return;
+    g.editorCounts = null;
+  }
+  renderEditorGrid();
+}
 
 let editorActiveSlot = null; // {side: 'row'|'col', index: 0|1|2}
 let categoryPickerTimer = null;
@@ -1061,9 +1127,11 @@ function selectEditorCategory(cat) {
   if (!editorActiveSlot) return;
   g.editor[editorActiveSlot.side][editorActiveSlot.index] = cat;
   closeCategoryPicker();
-  renderEditorSlots();
+  g.editorCounts = null;
+  renderEditorGrid();
   document.getElementById('editor-share').classList.add('hidden');
   document.getElementById('editor-error').classList.add('hidden');
+  refreshEditorCounts();
 }
 
 document.getElementById('btn-editor-save').addEventListener('click', async e => {
