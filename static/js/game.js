@@ -149,8 +149,19 @@ function resetGiveUpConfirm() {
   btn.classList.add('bg-orange-500', 'hover:bg-orange-400');
 }
 
-document.getElementById('league-picker').addEventListener('change', e => {
-  selectedLeague = e.target.value;
+function setLeague(value) {
+  selectedLeague = value;
+  document.querySelectorAll('.league-btn').forEach(btn => {
+    const active = btn.dataset.league === value;
+    btn.classList.toggle('bg-yellow-400', active);
+    btn.classList.toggle('text-slate-900', active);
+    btn.classList.toggle('bg-green-900/40', !active);
+    btn.classList.toggle('text-green-200', !active);
+  });
+}
+
+document.querySelectorAll('.league-btn').forEach(btn => {
+  btn.addEventListener('click', () => setLeague(btn.dataset.league));
 });
 
 document.querySelectorAll('[data-mode]').forEach(btn => {
@@ -376,7 +387,7 @@ function cellHtml(r, c) {
     return `
       <div class="rounded-xl bg-slate-800/60 border border-red-900/40 flex flex-col items-center justify-center h-32">
         <div class="text-red-400 text-2xl mb-1">✕</div>
-        <div class="text-red-300/70 text-[10px] font-semibold uppercase tracking-wide">Verpasst</div>
+        <div class="text-red-300/70 text-[10px] font-semibold uppercase tracking-wide">Falsch</div>
       </div>`;
   }
 
@@ -845,7 +856,7 @@ async function soloSelectPlayer(pid, name, club, r, c) {
 function giveUpSolo() {
   // Leave untouched cells empty (not 'missed') so endGameSolo's
   // revealSolutions() renders the actual answer in them, per cellHtml's
-  // `gone && g.solution` branch — "Verpasst" is reserved for cells the
+  // `gone && g.solution` branch — "Falsch" is reserved for cells the
   // player actually got wrong.
   g.soloAttempted = 9;
   g.winner = 'complete';

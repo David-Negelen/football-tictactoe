@@ -95,14 +95,15 @@
       </div>
       <div>
         <div class="text-xs font-bold uppercase tracking-wide text-green-200/70 mb-2">Liga</div>
-        <select id="league-picker" title="Nur Spieler dieser Liga"
-          class="w-full rounded-lg border border-green-600/40 bg-green-900/40 text-white text-sm font-semibold px-3 py-2 focus:outline-none">
-          <option value="">Alle Ligen</option>
-          <option value="league_buli">🇩🇪 Bundesliga</option>
-          <option value="league_pl">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League</option>
-          <option value="league_laliga">🇪🇸 La Liga</option>
-          <option value="league_seriea">🇮🇹 Serie A</option>
-        </select>
+        <div id="league-picker" class="flex flex-col gap-2">
+          <button data-league="" class="league-btn w-full rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 transition-colors bg-yellow-400 text-slate-900">Alle Ligen</button>
+          <div class="grid grid-cols-2 gap-2">
+            <button data-league="league_buli" class="league-btn rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 bg-green-900/40 text-green-200 hover:text-white transition-colors">🇩🇪 Bundesliga</button>
+            <button data-league="league_pl" class="league-btn rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 bg-green-900/40 text-green-200 hover:text-white transition-colors">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League</button>
+            <button data-league="league_laliga" class="league-btn rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 bg-green-900/40 text-green-200 hover:text-white transition-colors">🇪🇸 La Liga</button>
+            <button data-league="league_seriea" class="league-btn rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 bg-green-900/40 text-green-200 hover:text-white transition-colors">🇮🇹 Serie A</button>
+          </div>
+        </div>
       </div>
     </div>
     <button id="btn-setup-continue" class="w-full bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold text-sm px-4 py-3 rounded-xl transition-colors">Los geht's →</button>
