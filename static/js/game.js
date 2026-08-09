@@ -593,6 +593,7 @@ function showEndBanner(icon, title, sub, extra, showReplay = true) {
   document.getElementById('end-extra').textContent = extra || '';
   const replayBtn = document.getElementById('end-new-game');
   replayBtn.classList.toggle('hidden', !showReplay);
+  replayBtn.disabled = false;
   replayBtn.textContent = g.mode === 'online' ? '🔁 Revanche' : 'Nochmal spielen';
   document.getElementById('end-banner').classList.remove('hidden');
 }
@@ -601,10 +602,13 @@ function hideEndBanner() {
   document.getElementById('end-banner').classList.add('hidden');
 }
 
+// Online rematches need both players' agreement — see updateRematchButtonState,
+// which keeps this button in sync (waiting / accept / ask) on every poll
+// while the round is over. Solo/local restart immediately on click since
+// there's no one else to ask.
 document.getElementById('end-new-game').addEventListener('click', () => {
-  hideEndBanner();
-  if (g.mode === 'solo') newSoloRound();
-  else if (g.mode === 'local') newLocalRound();
+  if (g.mode === 'solo') { hideEndBanner(); newSoloRound(); }
+  else if (g.mode === 'local') { hideEndBanner(); newLocalRound(); }
   else if (g.mode === 'online') rematchOnline();
 });
 document.getElementById('end-menu').addEventListener('click', () => {
@@ -1063,8 +1067,31 @@ function applyOnlineState(data) {
       g.onlineFinished = true;
       finishOnline();
     }
+    updateRematchButtonState(data.rematchRequested || []);
   } else {
     updateStatus();
+  }
+}
+
+// Keeps the "Revanche" button in sync with both players' state on every
+// poll/SSE tick while the round is over: nobody has asked yet, you asked and
+// are waiting on the opponent, or the opponent asked and a click from you
+// would complete the match (handled server-side by request_rematch).
+function updateRematchButtonState(requested) {
+  if (g.mode !== 'online') return;
+  const btn = document.getElementById('end-new-game');
+  if (btn.classList.contains('hidden')) return;
+  const youRequested = requested.includes(g.onlineSlot);
+  const oppRequested = requested.some(s => s !== g.onlineSlot);
+  if (youRequested) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Warte auf Gegner…';
+  } else if (oppRequested) {
+    btn.disabled = false;
+    btn.textContent = '✅ Revanche annehmen';
+  } else {
+    btn.disabled = false;
+    btn.textContent = '🔁 Revanche';
   }
 }
 
@@ -1092,9 +1119,11 @@ async function onlineSelectPlayer(pid, name, club, r, c) {
 }
 
 async function rematchOnline() {
-  // Optimistic: the actual reset is picked up by both clients via the SSE
-  // -> applyOnlineState "rematch detected" branch once the server confirms
-  // it, so nothing else needs to happen here on success.
+  // Records this player's vote server-side; the round only actually resets
+  // once the opponent has voted too. Refresh right away (rather than
+  // waiting for the next ~1s SSE tick) so the button's waiting/accepted
+  // state — or the actual round reset once both have agreed, picked up by
+  // applyOnlineState's "rematch detected" branch — shows up immediately.
   const resp = await fetch(`/api/multiplayer/rooms/${g.onlineCode}/rematch`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token: g.onlineToken }),
@@ -1102,7 +1131,9 @@ async function rematchOnline() {
   if (!resp.ok) {
     alert('Revanche nicht möglich – Raum eventuell nicht mehr aktiv.');
     document.getElementById('end-banner').classList.remove('hidden');
+    return;
   }
+  await refreshOnlineState();
 }
 
 async function finishOnline() {

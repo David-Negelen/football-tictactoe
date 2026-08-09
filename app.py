@@ -855,14 +855,22 @@ def api_mp_forfeit(code):
 
 @app.route("/api/multiplayer/rooms/<code>/rematch", methods=["POST"])
 def api_mp_rematch(code):
+    # Either player can ask for a rematch, but the round only actually
+    # resets once both have — request_rematch just records this player's
+    # vote and tells us whether the other one already voted too.
     room = mp.get_room(code)
     if room is None:
         return jsonify({"error": "Raum nicht gefunden"}), 404
     data = request.get_json(silent=True) or {}
-    if mp.room_slot_for_token(room, data.get("token", "")) is None:
+    slot = mp.room_slot_for_token(room, data.get("token", ""))
+    if slot is None:
         return jsonify({"error": "Nicht in diesem Raum"}), 403
     if room.winner is None:
         return jsonify({"error": "Runde läuft noch"}), 409
+
+    both_agreed = room.request_rematch(slot)
+    if not both_agreed:
+        return jsonify({"ok": True, "started": False})
 
     pool = _resolve_pool(excluded_types=set(room.excluded_types), excluded_ids=set(room.excluded_ids), league=room.league)
     db = get_db()
@@ -876,7 +884,7 @@ def api_mp_rematch(code):
         return jsonify({"error": "Kein gültiges Rätsel gefunden"}), 500
 
     mp.reset_room(room, rows, cols)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "started": True})
 
 
 @app.route("/squad-guesser")

@@ -223,3 +223,53 @@ def test_check_opponent_disconnected_is_false_with_no_last_seen_record_yet(fixtu
     # first SSE connection hasn't ticked once) — must not be misread as a
     # disconnect.
     assert room.check_opponent_disconnected(1) is False
+
+
+def test_request_rematch_requires_both_slots_to_agree(fixture_categories) -> None:
+    room, creator_token = _room(fixture_categories)
+    mp.join_room(room.code)
+    room.winner = 1  # round must be over before a rematch can be requested
+
+    assert room.request_rematch(1) is False
+    assert room.rematch_requested == {1}
+    assert room.request_rematch(2) is True
+    assert room.rematch_requested == {1, 2}
+
+
+def test_request_rematch_is_idempotent_for_the_same_slot(fixture_categories) -> None:
+    room, creator_token = _room(fixture_categories)
+    mp.join_room(room.code)
+    room.winner = 1
+
+    assert room.request_rematch(1) is False
+    assert room.request_rematch(1) is False  # asking again doesn't fake the opponent's vote
+    assert room.rematch_requested == {1}
+
+
+def test_request_rematch_is_false_while_the_round_is_still_running(fixture_categories) -> None:
+    room, creator_token = _room(fixture_categories)
+    mp.join_room(room.code)
+    assert room.winner is None
+
+    assert room.request_rematch(1) is False
+    assert room.rematch_requested == set()
+
+
+def test_reset_room_clears_pending_rematch_requests(fixture_categories) -> None:
+    room, creator_token = _room(fixture_categories)
+    mp.join_room(room.code)
+    room.winner = 1
+    room.request_rematch(1)
+
+    mp.reset_room(room, room.rows, room.cols)
+    assert room.rematch_requested == set()
+    assert room.winner is None
+
+
+def test_public_state_includes_rematch_requested(fixture_categories) -> None:
+    room, token = _room(fixture_categories)
+    mp.join_room(room.code)
+    room.winner = 1
+    room.request_rematch(1)
+    state = room.public_state(viewer_slot=2)
+    assert state["rematchRequested"] == [1]

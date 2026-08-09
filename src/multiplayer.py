@@ -51,6 +51,7 @@ class Room:
     created_at: float = field(default_factory=time.monotonic)
     last_activity: float = field(default_factory=time.monotonic)
     last_seen: dict = field(default_factory=dict)  # slot (1|2) -> monotonic time of last request
+    rematch_requested: set = field(default_factory=set)  # slots that have asked for a rematch this round
     lock: threading.Lock = field(default_factory=threading.Lock)
     # Remembered from room creation (the creator's settings govern the whole
     # room — see api_mp_create_room) so a rematch can generate a fresh
@@ -100,6 +101,20 @@ class Room:
             self.touch()
             return True
 
+    def request_rematch(self, slot: int) -> bool:
+        """Either seated player can ask for a rematch, but the round only
+        actually resets once *both* have asked — see reset_room, called by
+        the caller once this returns True. Returns whether both slots have
+        now requested one.
+        """
+        with self.lock:
+            if self.winner is None:
+                return False
+            self.rematch_requested.add(slot)
+            self.version += 1
+            self.touch()
+            return {1, 2} <= self.rematch_requested
+
     def public_state(self, viewer_slot: Optional[int] = None, cat_display_fn: Optional[Callable] = None) -> dict:
         disp = cat_display_fn or (lambda c: {"id": c.id, "label": c.label})
         return {
@@ -114,6 +129,7 @@ class Room:
             "version": self.version,
             "playersConnected": len(self.tokens),
             "yourSlot": viewer_slot,
+            "rematchRequested": sorted(self.rematch_requested),
         }
 
 
@@ -167,6 +183,7 @@ def reset_room(room: Room, rows: list, cols: list) -> None:
         room.winner = None
         room.win_cells = []
         room.used_ids = set()
+        room.rematch_requested = set()
         room.version += 1
         room.touch()
 
