@@ -180,6 +180,19 @@ document.getElementById('btn-menu').addEventListener('click', () => {
   showScreen('mode-select');
 });
 
+// Closing the tab, navigating away, or reloading mid-game should forfeit
+// immediately instead of leaving the opponent waiting for the server's
+// ~20s disconnect timeout (see multiplayer.py's check_opponent_disconnected
+// for the fallback that still covers a crash/network loss, where no JS ever
+// gets to run). A regular fetch() gets cancelled when the page unloads —
+// sendBeacon is specifically designed to survive that.
+window.addEventListener('pagehide', () => {
+  if (g.mode === 'online' && g.onlineCode && !g.winner) {
+    const body = new Blob([JSON.stringify({ token: g.onlineToken })], { type: 'application/json' });
+    navigator.sendBeacon?.(`/api/multiplayer/rooms/${g.onlineCode}/forfeit`, body);
+  }
+});
+
 // ─── Einstellungen-Screen ───────────────────────────────────────────────────────
 
 const CATEGORY_TYPE_LABELS = {
@@ -344,7 +357,7 @@ function cellHtml(r, c) {
       ? 'win-cell ring-4 ring-yellow-400'
       : `ring-2 ${p1 ? 'ring-red-400' : 'ring-blue-400'}`;
     return `
-      <div class="rounded-xl ${bg} ${ring} flex flex-col items-center justify-center p-3 h-32 pop"
+      <div class="rounded-xl ${bg} ${ring} flex flex-col items-center justify-center p-3 h-32"
            data-cell="${r},${c}">
         ${g.mode !== 'solo' ? `<div class="flex justify-end w-full mb-1">${markBadge(entry.player)}</div>` : ''}
         <div class="text-white font-bold text-center leading-tight px-1 text-sm">${esc(entry.name)}</div>
@@ -363,11 +376,17 @@ function cellHtml(r, c) {
       </div>`;
   }
 
-  const hoverBg = gone
+  // Online mode: names can only be entered on your own turn — the server
+  // already rejects an out-of-turn move, but the cell itself should refuse
+  // to even open the search modal instead of letting you type/search/pick
+  // a name first and only finding out afterward.
+  const notYourTurn = g.mode === 'online' && g.onlineSlot && g.current !== g.onlineSlot;
+  const disabled = gone || notYourTurn;
+  const hoverBg = disabled
     ? 'bg-green-800/40 opacity-40'
     : 'bg-green-700/60 hover:bg-green-600/70 cursor-pointer';
   return `
-    <button ${gone ? 'disabled' : ''} data-cell="${r},${c}"
+    <button ${disabled ? 'disabled' : ''} data-cell="${r},${c}"
       class="cell-btn rounded-xl ${hoverBg} border border-green-600/50 flex flex-col items-center justify-center h-32 w-full">
       ${shirtSvg()}
       <span class="text-green-300 font-semibold tracking-wide text-[10px] mt-1">SPIELER WÄHLEN</span>
@@ -407,6 +426,7 @@ async function revealSolutions() {
 
 function openCell(r, c) {
   if (g.winner || g.board[r][c]) return;
+  if (g.mode === 'online' && g.onlineSlot && g.current !== g.onlineSlot) return;
   g.activeCell = { r, c };
   document.getElementById('modal-title').textContent = `${g.rows[r].label} × ${g.cols[c].label}`;
   document.getElementById('search-input').value = '';
@@ -527,7 +547,9 @@ function showEndModal(icon, title, sub, extra, showReplay = true) {
   document.getElementById('end-title').textContent = title;
   document.getElementById('end-sub').textContent   = sub;
   document.getElementById('end-extra').textContent = extra || '';
-  document.getElementById('end-new-game').classList.toggle('hidden', !showReplay);
+  const replayBtn = document.getElementById('end-new-game');
+  replayBtn.classList.toggle('hidden', !showReplay);
+  replayBtn.textContent = g.mode === 'online' ? '🔁 Revanche' : 'Nochmal spielen';
   document.getElementById('end-modal').classList.remove('hidden');
 }
 
@@ -535,6 +557,7 @@ document.getElementById('end-new-game').addEventListener('click', () => {
   document.getElementById('end-modal').classList.add('hidden');
   if (g.mode === 'solo') newSoloRound();
   else if (g.mode === 'local') newLocalRound();
+  else if (g.mode === 'online') rematchOnline();
 });
 document.getElementById('end-menu').addEventListener('click', () => {
   document.getElementById('end-modal').classList.add('hidden');
@@ -846,6 +869,36 @@ function renderLobbyHome() {
   });
 }
 
+// navigator.clipboard requires a "secure context" (https:, or http://
+// localhost/127.0.0.1) — it's simply undefined everywhere else, e.g. when
+// two people test multiplayer across devices via the host's plain-http LAN
+// address. Falls back to the older execCommand('copy') approach, which
+// works in insecure contexts too.
+function copyToClipboard(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
+  } else {
+    execCommandCopy(text);
+  }
+}
+
+function execCommandCopy(text) {
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.style.position = 'fixed';
+  el.style.opacity = '0';
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+  try {
+    document.execCommand('copy');
+  } catch (_) {
+    // Nothing more we can do — the button's "✅ Kopiert" feedback still
+    // fires, but that's a pre-existing tradeoff, not something new here.
+  }
+  document.body.removeChild(el);
+}
+
 function renderLobbyWaiting(code) {
   const link = `${location.origin}/game?join=${code}`;
   document.getElementById('online-lobby-body').innerHTML = `
@@ -859,7 +912,7 @@ function renderLobbyWaiting(code) {
       </div>
     </div>`;
   document.getElementById('btn-copy-link').addEventListener('click', () => {
-    navigator.clipboard?.writeText(link).catch(() => {});
+    copyToClipboard(link);
     const btn = document.getElementById('btn-copy-link');
     if (!btn) return;
     btn.textContent = '✅ Kopiert';
@@ -931,6 +984,10 @@ function enterOnlineBoard() {
 
 function applyOnlineState(data) {
   const justConnected = data.playersConnected === 2 && !g.onlineBoardEntered;
+  // A rematch looks like "the round we already finished is now back to no
+  // winner and an empty board" — reset the finished-flag and re-enter the
+  // board the same way both players do on first connecting.
+  const isRematch = g.onlineFinished && data.winner === null;
   g.onlineConnected = data.playersConnected;
   g.rows = data.rows;
   g.cols = data.cols;
@@ -947,6 +1004,11 @@ function applyOnlineState(data) {
   }
   if (justConnected) {
     g.onlineBoardEntered = true;
+    enterOnlineBoard();
+  }
+  if (isRematch) {
+    g.onlineFinished = false;
+    document.getElementById('end-modal').classList.add('hidden');
     enterOnlineBoard();
   }
   if (document.getElementById('screen-board').classList.contains('hidden')) return;
@@ -986,6 +1048,20 @@ async function onlineSelectPlayer(pid, name, club, r, c) {
   }
 }
 
+async function rematchOnline() {
+  // Optimistic: the actual reset is picked up by both clients via the SSE
+  // -> applyOnlineState "rematch detected" branch once the server confirms
+  // it, so nothing else needs to happen here on success.
+  const resp = await fetch(`/api/multiplayer/rooms/${g.onlineCode}/rematch`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: g.onlineToken }),
+  });
+  if (!resp.ok) {
+    alert('Revanche nicht möglich – Raum eventuell nicht mehr aktiv.');
+    document.getElementById('end-modal').classList.remove('hidden');
+  }
+}
+
 async function finishOnline() {
   stopTimer();
   stats.online.rounds++;
@@ -994,7 +1070,7 @@ async function finishOnline() {
   if (g.winner === 'draw') {
     stats.online.draws++;
     saveStats();
-    showEndModal('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`, false);
+    showEndModal('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`, true);
   } else {
     const youWon = g.winner === g.onlineSlot;
     if (youWon) stats.online.wins++; else stats.online.losses++;
@@ -1005,7 +1081,7 @@ async function finishOnline() {
       youWon ? 'Du gewinnst!' : 'Du verlierst',
       youWon ? 'Gut gespielt!' : 'Nächstes Mal klappt’s!',
       `⏱ ${timeStr}`,
-      false
+      true
     );
   }
   await revealSolutions();
