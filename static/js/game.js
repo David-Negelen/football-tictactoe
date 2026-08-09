@@ -88,36 +88,11 @@ function saveStats() {
 const deviceId = getDeviceId();
 let stats = loadStats();
 
-// ─── Einstellungen (welche Kategorien dürfen im Raster vorkommen) ─────────────
-
-const DEFAULT_SETTINGS = { excludedTypes: [], excludedCategoryIds: [] };
-
-function loadSettings() {
-  try {
-    const raw = localStorage.getItem('ttt_settings');
-    if (!raw) return structuredClone(DEFAULT_SETTINGS);
-    const parsed = JSON.parse(raw);
-    return {
-      excludedTypes: Array.isArray(parsed.excludedTypes) ? parsed.excludedTypes : [],
-      excludedCategoryIds: Array.isArray(parsed.excludedCategoryIds) ? parsed.excludedCategoryIds : [],
-    };
-  } catch {
-    return structuredClone(DEFAULT_SETTINGS);
-  }
-}
-
-function saveSettings() {
-  localStorage.setItem('ttt_settings', JSON.stringify(settings));
-}
-
-let settings = loadSettings();
 let selectedLeague = '';
 
 function genParams() {
   const p = new URLSearchParams({ difficulty: String(difficulty) });
   if (selectedLeague) p.set('league', selectedLeague);
-  if (settings.excludedTypes.length) p.set('excluded_types', settings.excludedTypes.join(','));
-  if (settings.excludedCategoryIds.length) p.set('excluded', settings.excludedCategoryIds.join(','));
   return p;
 }
 
@@ -128,7 +103,6 @@ function showScreen(name) {
   document.getElementById('screen-setup').classList.toggle('hidden', name !== 'setup');
   document.getElementById('screen-online-lobby').classList.toggle('hidden', name !== 'online-lobby');
   document.getElementById('screen-board').classList.toggle('hidden', name !== 'board');
-  document.getElementById('screen-settings').classList.toggle('hidden', name !== 'settings');
   closeMenuDropdown();
 }
 
@@ -263,98 +237,6 @@ window.addEventListener('pagehide', () => {
     navigator.sendBeacon?.(`/api/multiplayer/rooms/${g.onlineCode}/forfeit`, body);
   }
 });
-
-// ─── Einstellungen-Screen ───────────────────────────────────────────────────────
-
-const CATEGORY_TYPE_LABELS = {
-  club: 'Vereine', nationality: 'Nationalitäten', position: 'Positionen',
-  award: 'Trophäen', league: 'Ligen', continent: 'Kontinente',
-  initial: 'Anfangsbuchstabe', contains_letter: 'Enthält Buchstabe',
-  age: 'Alter', market_value: 'Marktwert',
-};
-
-document.getElementById('btn-settings').addEventListener('click', () => {
-  renderSettingsScreen();
-  showScreen('settings');
-});
-document.getElementById('btn-settings-back').addEventListener('click', () => showScreen('mode-select'));
-
-function renderSettingsScreen() {
-  const toggles = document.getElementById('settings-type-toggles');
-  toggles.innerHTML = Object.entries(CATEGORY_TYPE_LABELS).map(([type, label]) => `
-    <label class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 cursor-pointer text-white">
-      <input type="checkbox" data-type-toggle="${type}" ${settings.excludedTypes.includes(type) ? '' : 'checked'}>
-      ${esc(label)}
-    </label>`).join('');
-  toggles.querySelectorAll('[data-type-toggle]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const type = cb.dataset.typeToggle;
-      settings.excludedTypes = cb.checked
-        ? settings.excludedTypes.filter(t => t !== type)
-        : [...new Set([...settings.excludedTypes, type])];
-      saveSettings();
-    });
-  });
-
-  renderExcludedList();
-
-  const typeSelect = document.getElementById('settings-exclude-type');
-  const searchInput = document.getElementById('settings-exclude-search');
-  let searchTimer = null;
-  const runSearch = () => searchCategoriesForExclusion(typeSelect.value, searchInput.value.trim());
-  typeSelect.onchange = runSearch;
-  searchInput.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 250); };
-  runSearch();
-}
-
-async function searchCategoriesForExclusion(type, query) {
-  const container = document.getElementById('settings-exclude-results');
-  const resp = await fetch(`/api/categories?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}&limit=40`);
-  const data = await resp.json();
-  if (!data.categories?.length) {
-    container.innerHTML = '<p class="text-slate-400 text-xs text-center py-2">Keine Treffer</p>';
-    return;
-  }
-  container.innerHTML = data.categories.map(c => {
-    const excluded = settings.excludedCategoryIds.includes(c.id);
-    return `<label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 text-sm cursor-pointer">
-      <input type="checkbox" data-exclude-id="${esc(c.id)}" ${excluded ? 'checked' : ''}>
-      <span>${esc(c.label)}</span>
-    </label>`;
-  }).join('');
-  container.querySelectorAll('[data-exclude-id]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const id = cb.dataset.excludeId;
-      settings.excludedCategoryIds = cb.checked
-        ? [...new Set([...settings.excludedCategoryIds, id])]
-        : settings.excludedCategoryIds.filter(x => x !== id);
-      saveSettings();
-      renderExcludedList();
-    });
-  });
-}
-
-function renderExcludedList() {
-  document.getElementById('settings-excluded-count').textContent = settings.excludedCategoryIds.length;
-  const list = document.getElementById('settings-excluded-list');
-  if (!settings.excludedCategoryIds.length) {
-    list.innerHTML = '<span class="text-green-200/50 text-xs">Keine</span>';
-    return;
-  }
-  list.innerHTML = settings.excludedCategoryIds.map(id => `
-    <button data-remove-excluded="${esc(id)}" class="bg-red-900/40 hover:bg-red-900/60 text-red-200 text-xs px-2 py-1 rounded-full transition-colors">
-      ${esc(id)} ×
-    </button>`).join('');
-  list.querySelectorAll('[data-remove-excluded]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.removeExcluded;
-      settings.excludedCategoryIds = settings.excludedCategoryIds.filter(x => x !== id);
-      saveSettings();
-      renderExcludedList();
-      searchCategoriesForExclusion(document.getElementById('settings-exclude-type').value, document.getElementById('settings-exclude-search').value.trim());
-    });
-  });
-}
 
 // ─── Spielfeld rendern (gemeinsam für alle Modi) ───────────────────────────────
 
@@ -1013,10 +895,7 @@ async function createOnlineRoom() {
   Object.assign(g, { onlineBoardEntered: false, onlineFinished: false });
   const resp = await fetch('/api/multiplayer/rooms', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      difficulty, league: selectedLeague || undefined,
-      excludedTypes: settings.excludedTypes, excludedCategoryIds: settings.excludedCategoryIds,
-    }),
+    body: JSON.stringify({ difficulty, league: selectedLeague || undefined }),
   });
   if (!resp.ok) {
     // Creation happens from the setup screen — surface the failure back on
