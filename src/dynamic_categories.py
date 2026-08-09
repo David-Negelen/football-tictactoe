@@ -200,21 +200,25 @@ CLUB_FAME_TIER_1: frozenset[str] = frozenset({
 CLUB_FAME_TIER_2: frozenset[str] = frozenset({
     # Bundesliga
     "Bor. M'gladbach", "1.FC Köln", "VfL Wolfsburg", "VfB Stuttgart",
+    "SC Freiburg", "TSG Hoffenheim", "Union Berlin",
     # Premier League
     "Leeds United", "Nottingham", "Crystal Palace", "AFC Sunderland",
+    "Brighton",
     # La Liga
     "Celta Vigo", "Rayo Vallecano", "Esp. Barcelona", "Dep. La Coruña",
     # Serie A
     "FC Turin", "FC Bologna", "Genua CFC", "Udinese",
     # South America
     "Palmeiras", "FC Santos", "FC São Paulo", "Independiente",
-    "Fluminense", "Peñarol",
+    "Fluminense", "Peñarol", "Grêmio", "Internacional", "Racing Club",
+    "Estudiantes LP", "San Lorenzo", "Nacional", "Atl. Nacional",
     # Africa
     "Esperance", "Wydad AC", "Raja Casablanca", "Zamalek", "Kaizer Chiefs",
+    "Sundowns", "TP Mazembe",
     # Asia — Saudi Pro League's globally-covered signings, and the
-    # historically biggest J-League names
+    # historically biggest J-League/K-League/CSL names
     "Al-Hilal", "Al-Nassr", "Al-Ittihad", "Al-Ahli", "Urawa Reds",
-    "Kashima Antlers",
+    "Kashima Antlers", "GZ Evergrande", "Jeonbuk Hyundai", "Vissel Kobe",
     # Other Europe
     "PSV",
 })
