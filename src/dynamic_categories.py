@@ -1,15 +1,19 @@
 """Builds Club/Nationality/Trophy categories dynamically from the real
 dataset instead of a small hand-curated list, so puzzle generation can draw
-on ~150 nationalities and ~490 trophies instead of the original 19/11
-(clubs are further restricted to a whitelist — see PROMINENT_CLUB_NAMES).
+on ~500 trophies instead of the original 19/11 hand-curated lists (clubs and
+nationalities are further restricted to a whitelist — see
+PROMINENT_CLUB_NAMES / NATIONALITY_DENYLIST).
 
-Nationality/trophy difficulty (1-3) is derived directly from how many
-distinct players satisfy a category — the same "how rare is this" idea the
-hand-curated categories already used, just applied uniformly and
-automatically instead of by hand per entry. Club difficulty is NOT rarity-
-based (see CLUB_DIFFICULTY below) — how many players happen to share a
-club_name string measures Transfermarkt scraping history, not how
-recognizable the club actually is to a casual player.
+Trophy difficulty (1-3) is derived directly from how many distinct players
+satisfy a category — "how rare is this" is a fair proxy for a trophy, since
+winning something obscure is still a real, checkable fact, just a hard one.
+Club and nationality difficulty are NOT rarity-based (see CLUB_DIFFICULTY /
+NATIONALITY_DIFFICULTY below) — how many players happen to share a
+club_name/nationality string measures Transfermarkt scraping/dataset
+composition, not how recognizable the club or country actually is to a
+casual player (e.g. "Simbabwe" and "Mauretanien" clear a rarity bar just
+from a handful of diaspora-listed players, without being remotely
+guessable).
 
 Called once at app startup (see app.py) — building the whole catalog is a
 low-single-digit-second one-time cost, not something to repeat per request.
@@ -52,13 +56,10 @@ _RESERVE_CLUB_PATTERN = re.compile(r"\s(?:II|B|C)$|Amateure|Futuro", re.IGNORECA
 _RESERVE_CLUB_ALLOWLIST = {"Willem II"}
 
 # (minimum distinct players, difficulty) — checked in order, first match wins.
-# Below the lowest threshold, a nationality is dropped entirely rather than
-# forced into difficulty 3 (an answer pool of 1-4 players is too thin to be
-# a fair puzzle even on hard). Trophies get no such floor (see below): a
-# rare trophy is still a legitimate, checkable fact, just a hard one. Clubs
-# no longer use a tier-threshold list at all — see CLUB_MIN_PLAYERS and
-# CLUB_DIFFICULTY below.
-NATIONALITY_TIER_THRESHOLDS = [(100, 1), (50, 2), (20, 3)]
+# Trophies get no viability floor: a rare trophy is still a legitimate,
+# checkable fact, just a hard one. Clubs and nationalities don't use a
+# tier-threshold list at all anymore — see CLUB_MIN_PLAYERS/CLUB_DIFFICULTY
+# and NATIONALITY_MIN_PLAYERS/NATIONALITY_DIFFICULTY below.
 TROPHY_TIER_THRESHOLDS = [(100, 1), (20, 2), (1, 3)]
 
 # Player count no longer decides a club's difficulty tier (see
@@ -245,14 +246,93 @@ CLUB_DIFFICULTY: dict[str, int] = {
 # territories whose players are internationally French (or otherwise their
 # parent state) for football purposes, not a "nationality" a casual player
 # could ever guess as a football category (e.g. "Französisch-Guayana").
-# Deliberately conservative: genuinely small-but-real football nations (San
-# Marino, Färöer, Kosovo, Curaçao, ...) stay in — "rare but real" is a fair
-# hard category, "not actually a football nationality" is not.
-NON_PLAYABLE_NATIONALITIES: set[str] = {
+NATIONALITY_DENYLIST: frozenset[str] = frozenset({
     "Französisch-Guayana", "Guadeloupe", "Martinique", "Réunion", "Saint-Martin",
     "DDR", "Jugoslawien (SFR)", "Jugoslawien (Bundesrepublik)", "Niederländische Antillen",
     "Monaco",
+})
+
+# A nationality's player count only measures how many rows happen to carry
+# that string in this specific dataset, not how recognizable the country
+# actually is as a football nation (e.g. "Simbabwe"/"Mauretanien" clear a
+# rarity bar just from a handful of diaspora-listed players, without being
+# remotely guessable) — the same rarity-vs-fame gap PROMINENT_CLUB_NAMES
+# exists to close for clubs. Outside the denylist above (real junk, not
+# fame), the general nationality pool needs an actual prominence whitelist,
+# not just a player-count floor — otherwise lowering NATIONALITY_MIN_PLAYERS
+# below the old ~20 implicit floor (needed so genuinely small-but-real
+# football nations like Island/Kosovo stay reachable) floods the pool with
+# every barely-populated nationality token instead.
+PROMINENT_NATIONALITIES: frozenset[str] = frozenset({
+    # Fame-tiered below (see NATIONALITY_FAME_TIER_1/2).
+    "Deutschland", "Italien", "Spanien", "Frankreich", "England", "Niederlande",
+    "Brasilien", "Argentinien", "Schottland", "Portugal", "Belgien", "Marokko",
+    "Türkei", "Polen", "Nigeria", "Kroatien", "Dänemark", "Senegal", "Schweden",
+    "Schweiz", "Wales", "Uruguay", "Vereinigte Staaten", "Österreich", "Norwegen",
+    "Kolumbien", "Japan", "Chile", "Mexiko", "Südkorea", "Ägypten",
+    "Irland", "Serbien", "Ghana", "Elfenbeinküste", "Kamerun", "Algerien",
+    "Mali", "Tschechien", "Bosnien-Herzegowina", "Australien", "Nordirland",
+    "Griechenland", "Rumänien", "Ungarn", "Tunesien", "Russland", "Paraguay",
+    "Ukraine", "Kanada", "Island", "Südafrika", "Peru", "Iran", "Ecuador",
+    "Costa Rica",
+    # Real, recognizable-enough football nations that don't clear a fame
+    # tier — whitelisted (may appear, at the default hardest difficulty)
+    # but not called out as easy or medium.
+    "DR Kongo", "Suriname", "Jamaika", "Guinea", "Albanien", "Slowenien",
+    "Bulgarien", "Slowakei", "Finnland", "Kosovo", "Angola", "Kongo",
+    "Nordmazedonien", "Montenegro", "Venezuela", "Israel", "Gabun", "Togo",
+    "Trinidad und Tobago", "Liberia", "Neuseeland",
+})
+
+# Being on the whitelist above only answers "may this nationality appear at
+# all" — this answers "how hard is it", the same fame-not-rarity idea
+# CLUB_FAME_TIER_1/2 applies to clubs (e.g. Ägypten/Egypt has few players in
+# this dataset but is instantly recognizable via Mohamed Salah — the exact
+# rarity-vs-fame gap this replaces).
+#   Tier 1: World Cup regulars / recent deep runs, globally recognized star
+#     players, near-universal name recognition as a football nation.
+#   Tier 2: recognizable, established football nations — regular continental
+#     (not necessarily World Cup) participants, or known via a handful of
+#     star players.
+#   Tier 3 (default, not enumerated below): everything else on the
+#     whitelist — a real, checkable nationality, just not one most casual
+#     players would immediately recognize as a football nation.
+#
+# Every name below must match a real, exact token from players.nationality
+# (see parse_nationality_tokens) and be a subset of PROMINENT_NATIONALITIES —
+# a typo here just falls through to DEFAULT_NATIONALITY_DIFFICULTY (tier 3)
+# instead of erroring, which is why
+# test_every_fame_tiered_nationality_is_in_the_prominence_whitelist exists
+# in tests/test_dynamic_categories.py.
+NATIONALITY_FAME_TIER_1: frozenset[str] = frozenset({
+    "Deutschland", "Italien", "Spanien", "Frankreich", "England", "Niederlande",
+    "Brasilien", "Argentinien", "Schottland", "Portugal", "Belgien", "Marokko",
+    "Türkei", "Polen", "Nigeria", "Kroatien", "Dänemark", "Senegal", "Schweden",
+    "Schweiz", "Wales", "Uruguay", "Vereinigte Staaten", "Österreich", "Norwegen",
+    "Kolumbien", "Japan", "Chile", "Mexiko", "Südkorea", "Ägypten",
+})
+
+NATIONALITY_FAME_TIER_2: frozenset[str] = frozenset({
+    "Irland", "Serbien", "Ghana", "Elfenbeinküste", "Kamerun", "Algerien",
+    "Mali", "Tschechien", "Bosnien-Herzegowina", "Australien", "Nordirland",
+    "Griechenland", "Rumänien", "Ungarn", "Tunesien", "Russland", "Paraguay",
+    "Ukraine", "Kanada", "Island", "Südafrika", "Peru", "Iran", "Ecuador",
+    "Costa Rica",
+})
+
+DEFAULT_NATIONALITY_DIFFICULTY = 3  # whitelisted, but unlisted above -> hardest
+
+NATIONALITY_DIFFICULTY: dict[str, int] = {
+    **{name: 1 for name in NATIONALITY_FAME_TIER_1},
+    **{name: 2 for name in NATIONALITY_FAME_TIER_2},
 }
+
+# Answer pool of 1-2 players is too thin to be a fair puzzle no matter how
+# famous the country's name is — but set much lower than CLUB_MIN_PLAYERS
+# (5), since PROMINENT_NATIONALITIES above (not player count) now does the
+# real "is this worth including" gatekeeping; this is just a bare sanity
+# floor.
+NATIONALITY_MIN_PLAYERS = 3
 
 
 def build_dynamic_clubs(
@@ -275,7 +355,12 @@ def build_dynamic_clubs(
     return categories
 
 
-def build_dynamic_nationalities(conn: sqlite3.Connection) -> list[NationalityCategory]:
+def build_dynamic_nationalities(
+    conn: sqlite3.Connection,
+    denylist: frozenset[str] = NATIONALITY_DENYLIST,
+    prominent_names: frozenset[str] = PROMINENT_NATIONALITIES,
+    nationality_difficulty: dict[str, int] = NATIONALITY_DIFFICULTY,
+) -> list[NationalityCategory]:
     rows = conn.execute(
         "SELECT nationality, COUNT(*) AS n FROM players WHERE nationality IS NOT NULL AND nationality != '' GROUP BY nationality"
     ).fetchall()
@@ -286,11 +371,11 @@ def build_dynamic_nationalities(conn: sqlite3.Connection) -> list[NationalityCat
 
     categories = []
     for name, n in counts.items():
-        if name not in COUNTRY_BY_NAME or name in NON_PLAYABLE_NATIONALITIES:
+        if name not in COUNTRY_BY_NAME or name in denylist or name not in prominent_names:
             continue
-        difficulty = _tier_difficulty(n, NATIONALITY_TIER_THRESHOLDS)
-        if difficulty is None:
+        if n < NATIONALITY_MIN_PLAYERS:  # viability floor only — not a difficulty
             continue
+        difficulty = nationality_difficulty.get(name, DEFAULT_NATIONALITY_DIFFICULTY)
         legacy = LEGACY_NATIONALITY_ENTRIES.get(name)
         cat_id = legacy[0] if legacy else f"nat_dyn_{COUNTRY_BY_NAME[name].iso_code.lower()}"
         label = legacy[1] if legacy else name

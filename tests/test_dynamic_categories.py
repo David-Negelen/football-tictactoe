@@ -10,11 +10,15 @@ from src.dynamic_categories import (
     CLUB_FAME_TIER_1,
     CLUB_FAME_TIER_2,
     DEFAULT_CLUB_DIFFICULTY,
+    DEFAULT_NATIONALITY_DIFFICULTY,
     LEGACY_CLUB_IDS,
     LEGACY_NATIONALITY_ENTRIES,
     LEGACY_TROPHY_IDS,
-    NON_PLAYABLE_NATIONALITIES,
+    NATIONALITY_DENYLIST,
+    NATIONALITY_FAME_TIER_1,
+    NATIONALITY_FAME_TIER_2,
     PROMINENT_CLUB_NAMES,
+    PROMINENT_NATIONALITIES,
     build_dynamic_clubs,
     build_dynamic_nationalities,
     build_dynamic_trophies,
@@ -195,8 +199,8 @@ def test_dynamic_nationality_recognizes_real_countries() -> None:
         Database(db_path).initialize()
         conn = sqlite3.connect(db_path)
         now = datetime.now(timezone.utc).isoformat()
-        # 25 German players — comfortably clears the difficulty-1 threshold (>=100 is needed
-        # for diff 1, so this alone only reaches diff 3, which is fine for this assertion).
+        # 25 German players — comfortably clears NATIONALITY_MIN_PLAYERS (3);
+        # Deutschland is fame-tiered to difficulty 1 regardless of count.
         for i in range(25):
             conn.execute(
                 "INSERT INTO players (source_url, name, nationality, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -210,6 +214,7 @@ def test_dynamic_nationality_recognizes_real_countries() -> None:
     assert nats["Deutschland"].id == LEGACY_NATIONALITY_ENTRIES["Deutschland"][0] == "nat_ger"
     assert nats["Deutschland"].label == LEGACY_NATIONALITY_ENTRIES["Deutschland"][1] == "Deutsch"
     assert nats["Deutschland"].icon  # a real flag emoji, not None
+    assert nats["Deutschland"].difficulty == 1
 
 
 def test_dynamic_trophy_applies_the_semantic_filter_and_legacy_ids(fixture_db_path: Path) -> None:
@@ -256,7 +261,7 @@ def test_default_prominence_whitelist_includes_a_known_club(dynamic_db_conn) -> 
     assert "Bayern München" in {c.club_name for c in clubs}
 
 
-def test_non_playable_nationalities_are_excluded_even_at_high_player_counts() -> None:
+def test_denylisted_nationalities_are_excluded_even_at_high_player_counts() -> None:
     import tempfile
 
     from src.db import Database
@@ -266,8 +271,8 @@ def test_non_playable_nationalities_are_excluded_even_at_high_player_counts() ->
         Database(db_path).initialize()
         conn = sqlite3.connect(db_path)
         now = datetime.now(timezone.utc).isoformat()
-        for name in NON_PLAYABLE_NATIONALITIES:
-            for i in range(150):  # comfortably clears every rarity tier
+        for name in NATIONALITY_DENYLIST:
+            for i in range(150):  # comfortably clears the viability floor
                 conn.execute(
                     "INSERT INTO players (source_url, name, nationality, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
                     (f"https://example.test/nat/{name}/{i}", f"Player {name} {i}", name, now, now),
@@ -276,7 +281,77 @@ def test_non_playable_nationalities_are_excluded_even_at_high_player_counts() ->
         nats = {n.nationality for n in build_dynamic_nationalities(conn)}
         conn.close()
 
-    assert nats.isdisjoint(NON_PLAYABLE_NATIONALITIES)
+    assert nats.isdisjoint(NATIONALITY_DENYLIST)
+
+
+def test_default_prominence_whitelist_excludes_an_obscure_nationality() -> None:
+    import tempfile
+
+    from src.db import Database
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "nat.db"
+        Database(db_path).initialize()
+        conn = sqlite3.connect(db_path)
+        now = datetime.now(timezone.utc).isoformat()
+        # "Simbabwe" is a real, non-denylisted country (passes COUNTRY_BY_NAME
+        # and NATIONALITY_DENYLIST) that clears the viability floor here, but
+        # isn't on PROMINENT_NATIONALITIES — exactly the gap the whitelist
+        # closes: a real country too obscure as a football nation to be fair.
+        for i in range(50):
+            conn.execute(
+                "INSERT INTO players (source_url, name, nationality, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (f"https://example.test/nat/{i}", f"Player {i}", "Simbabwe", now, now),
+            )
+        conn.commit()
+        nats = {n.nationality for n in build_dynamic_nationalities(conn)}
+        conn.close()
+
+    assert "Simbabwe" not in nats
+    assert "Simbabwe" not in PROMINENT_NATIONALITIES
+
+
+def test_nationality_difficulty_comes_from_the_fame_table_not_player_count() -> None:
+    import tempfile
+
+    from src.db import Database
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "nat.db"
+        Database(db_path).initialize()
+        conn = sqlite3.connect(db_path)
+        now = datetime.now(timezone.utc).isoformat()
+        # "Ägypten" (Egypt) has few players in the real dataset but is
+        # instantly recognizable via Mohamed Salah — a rarity-based scheme
+        # would call that hard. Fame-tiering it must win regardless of count.
+        for i in range(3):  # right at NATIONALITY_MIN_PLAYERS
+            conn.execute(
+                "INSERT INTO players (source_url, name, nationality, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (f"https://example.test/nat/{i}", f"Player {i}", "Ägypten", now, now),
+            )
+        conn.commit()
+        nats = {n.nationality: n for n in build_dynamic_nationalities(conn)}
+        conn.close()
+
+    assert nats["Ägypten"].difficulty == 1
+
+
+def test_unlisted_nationalities_default_to_the_hardest_tier() -> None:
+    assert DEFAULT_NATIONALITY_DIFFICULTY == 3
+
+
+def test_every_fame_tiered_nationality_is_in_the_prominence_whitelist() -> None:
+    # Catches a typo that would otherwise silently demote a famous football
+    # nation to the hardest tier instead of erroring.
+    assert (NATIONALITY_FAME_TIER_1 | NATIONALITY_FAME_TIER_2) <= PROMINENT_NATIONALITIES
+
+
+def test_nationality_fame_tiers_do_not_overlap() -> None:
+    assert NATIONALITY_FAME_TIER_1.isdisjoint(NATIONALITY_FAME_TIER_2)
+
+
+def test_nationality_denylist_and_prominence_whitelist_do_not_overlap() -> None:
+    assert NATIONALITY_DENYLIST.isdisjoint(PROMINENT_NATIONALITIES)
 
 
 def test_league_pools_scope_clubs_to_the_leagues_own_club_list(dynamic_db_conn) -> None:
