@@ -21,6 +21,7 @@ window.addEventListener('DOMContentLoaded', () => {
   btn.addEventListener('click', async () => {
     if (!deferredInstallPrompt) return;
     btn.classList.add('hidden');
+    if (typeof closeMenuDropdown === 'function') closeMenuDropdown();
     deferredInstallPrompt.prompt();
     await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;

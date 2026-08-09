@@ -125,15 +125,14 @@ function genParams() {
 
 function showScreen(name) {
   document.getElementById('screen-mode-select').classList.toggle('hidden', name !== 'mode-select');
+  document.getElementById('screen-setup').classList.toggle('hidden', name !== 'setup');
   document.getElementById('screen-online-lobby').classList.toggle('hidden', name !== 'online-lobby');
   document.getElementById('screen-board').classList.toggle('hidden', name !== 'board');
   document.getElementById('screen-settings').classList.toggle('hidden', name !== 'settings');
-  document.getElementById('btn-menu').classList.toggle('hidden', name === 'mode-select' || name === 'settings');
+  closeMenuDropdown();
 }
 
 function updateModeChrome() {
-  document.getElementById('diff-picker').classList.toggle('hidden', g.mode === 'online');
-  document.getElementById('league-picker').classList.toggle('hidden', g.mode === 'online');
   resetGiveUpConfirm();
 }
 
@@ -158,16 +157,30 @@ document.querySelectorAll('[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => selectMode(btn.dataset.mode));
 });
 
+// Difficulty and league are chosen once, right after picking a mode, on
+// their own screen — this also covers online (previously the room creator
+// had no way to choose them at all, since the header pickers were hidden
+// outright in online mode).
+const SETUP_TITLES = { solo: 'Solo einstellen', local: '1v1 Lokal einstellen', online: '1v1 Online einstellen' };
+
 function selectMode(mode) {
+  g.pendingMode = mode;
+  document.getElementById('setup-title').textContent = SETUP_TITLES[mode] || 'Rätsel einstellen';
+  showScreen('setup');
+}
+
+document.getElementById('btn-setup-back').addEventListener('click', () => showScreen('mode-select'));
+document.getElementById('btn-setup-continue').addEventListener('click', () => {
+  const mode = g.pendingMode;
   if (mode === 'solo') { startSolo(); return; }
   if (mode === 'local') { startLocal(); return; }
   g.mode = 'online';
   showScreen('online-lobby');
   updateModeChrome();
   renderLobbyHome();
-}
+});
 
-document.getElementById('btn-menu').addEventListener('click', () => {
+function goToMenu() {
   stopTimer();
   if (g.mode === 'online' && g.onlineCode && !g.winner) {
     fetch(`/api/multiplayer/rooms/${g.onlineCode}/forfeit`, {
@@ -178,6 +191,23 @@ document.getElementById('btn-menu').addEventListener('click', () => {
   if (g.onlineEventSource) { g.onlineEventSource.close(); g.onlineEventSource = null; }
   Object.assign(g, { mode: null, onlineCode: null, onlineToken: null, onlineSlot: null, onlineBoardEntered: false, onlineFinished: false });
   showScreen('mode-select');
+}
+document.getElementById('btn-logo').addEventListener('click', goToMenu);
+
+// ─── Kopfzeilen-Menü (☰) ────────────────────────────────────────────────────
+
+function closeMenuDropdown() {
+  document.getElementById('menu-dropdown').classList.add('hidden');
+}
+document.getElementById('btn-menu-toggle').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('menu-dropdown').classList.toggle('hidden');
+});
+document.addEventListener('click', e => {
+  const dropdown = document.getElementById('menu-dropdown');
+  if (!dropdown.classList.contains('hidden') && !dropdown.contains(e.target) && e.target.id !== 'btn-menu-toggle') {
+    closeMenuDropdown();
+  }
 });
 
 // Closing the tab, navigating away, or reloading mid-game should forfeit
@@ -520,7 +550,7 @@ function updateStatus() {
   const sym   = g.current === 1 ? 'X' : 'O';
   document.getElementById('status-text').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
     <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block"></span>
-    ${sym} – Spieler ${g.current} ist dran
+    ${sym} ist dran
   </span>`;
 }
 
@@ -542,7 +572,10 @@ function updateStreakDisplay() {
   }
 }
 
-function showEndModal(icon, title, sub, extra, showReplay = true) {
+// The round result is shown as a banner inline above the board — not a
+// blocking popup — so the revealed solution underneath is visible right away
+// without needing to dismiss anything first.
+function showEndBanner(icon, title, sub, extra, showReplay = true) {
   document.getElementById('end-icon').textContent  = icon;
   document.getElementById('end-title').textContent = title;
   document.getElementById('end-sub').textContent   = sub;
@@ -550,30 +583,22 @@ function showEndModal(icon, title, sub, extra, showReplay = true) {
   const replayBtn = document.getElementById('end-new-game');
   replayBtn.classList.toggle('hidden', !showReplay);
   replayBtn.textContent = g.mode === 'online' ? '🔁 Revanche' : 'Nochmal spielen';
-  document.getElementById('end-modal').classList.remove('hidden');
+  document.getElementById('end-banner').classList.remove('hidden');
+}
+
+function hideEndBanner() {
+  document.getElementById('end-banner').classList.add('hidden');
 }
 
 document.getElementById('end-new-game').addEventListener('click', () => {
-  document.getElementById('end-modal').classList.add('hidden');
+  hideEndBanner();
   if (g.mode === 'solo') newSoloRound();
   else if (g.mode === 'local') newLocalRound();
   else if (g.mode === 'online') rematchOnline();
 });
 document.getElementById('end-menu').addEventListener('click', () => {
-  document.getElementById('end-modal').classList.add('hidden');
-  document.getElementById('btn-menu').click();
-});
-// Dismiss without leaving the round, so the revealed-solution board underneath
-// is actually visible (close button, backdrop click, or Escape).
-function closeEndModal() {
-  document.getElementById('end-modal').classList.add('hidden');
-}
-document.getElementById('end-close').addEventListener('click', closeEndModal);
-document.getElementById('end-modal').addEventListener('click', e => {
-  if (e.target.id === 'end-modal') closeEndModal();
-});
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeEndModal();
+  hideEndBanner();
+  goToMenu();
 });
 
 let timerInterval = null;
@@ -639,6 +664,7 @@ async function startLocal() {
 async function newLocalRound() {
   setStatus('Rätsel wird geladen…');
   stopTimer();
+  hideEndBanner();
   document.getElementById('board').innerHTML = '';
   document.getElementById('btn-give-up').disabled = false;
 
@@ -720,6 +746,10 @@ async function localSelectPlayer(pid, name, club, r, c) {
 
 async function endGameLocal() {
   stopTimer();
+  // The banner below now carries the result — the status bar just needs to
+  // stop showing a stale "X ist dran" from before the game ended (it used
+  // to sit unnoticed behind the old blocking modal).
+  setStatus('Runde beendet.');
   document.getElementById('btn-give-up').disabled = true;
   g.rows.forEach((_, r) => g.cols.forEach((__, c) => refreshCell(r, c)));
 
@@ -729,7 +759,7 @@ async function endGameLocal() {
   if (g.winner === 'draw') {
     stats.local.draws++;
     saveStats();
-    showEndModal('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`);
+    showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`);
   } else {
     stats.local.wins[g.winner] = (stats.local.wins[g.winner] || 0) + 1;
     if (stats.local.fastestWinSeconds == null || g.elapsedSeconds < stats.local.fastestWinSeconds) {
@@ -738,12 +768,12 @@ async function endGameLocal() {
     saveStats();
     fireConfetti();
     const gaveUp = g.winCells.length === 0;
-    showEndModal(
+    const winnerSym = g.winner === 1 ? 'X' : 'O';
+    const loserSym  = g.winner === 1 ? 'O' : 'X';
+    showEndBanner(
       g.winner === 1 ? '🔴' : '🔵',
-      `Spieler ${g.winner} gewinnt!`,
-      gaveUp
-        ? `Spieler ${g.winner === 1 ? 2 : 1} hat aufgegeben.`
-        : (g.winner === 1 ? 'X hat das Spiel gewonnen!' : 'O hat das Spiel gewonnen!'),
+      `${winnerSym} gewinnt!`,
+      gaveUp ? `${loserSym} hat aufgegeben.` : `${winnerSym} hat das Spiel gewonnen!`,
       `⏱ ${timeStr} · 🔥 Beste Serie: ${stats.local.bestStreak}`
     );
   }
@@ -762,6 +792,7 @@ async function startSolo() {
 async function newSoloRound() {
   setStatus('Rätsel wird geladen…');
   stopTimer();
+  hideEndBanner();
   document.getElementById('board').innerHTML = '';
   document.getElementById('btn-give-up').disabled = false;
 
@@ -835,7 +866,7 @@ async function endGameSolo() {
 
   const perfect = g.soloCorrect === 9;
   if (perfect) fireConfetti();
-  showEndModal(
+  showEndBanner(
     perfect ? '🏆' : '🧩',
     `${g.soloCorrect} / 9 richtig`,
     perfect ? 'Perfekte Runde!' : 'Runde beendet.',
@@ -976,6 +1007,7 @@ async function refreshOnlineState() {
 function enterOnlineBoard() {
   showScreen('board');
   updateModeChrome();
+  hideEndBanner();
   document.getElementById('btn-give-up').disabled = false;
   g.elapsedSeconds = 0;
   g.solution = null;
@@ -1008,7 +1040,7 @@ function applyOnlineState(data) {
   }
   if (isRematch) {
     g.onlineFinished = false;
-    document.getElementById('end-modal').classList.add('hidden');
+    hideEndBanner();
     enterOnlineBoard();
   }
   if (document.getElementById('screen-board').classList.contains('hidden')) return;
@@ -1058,25 +1090,26 @@ async function rematchOnline() {
   });
   if (!resp.ok) {
     alert('Revanche nicht möglich – Raum eventuell nicht mehr aktiv.');
-    document.getElementById('end-modal').classList.remove('hidden');
+    document.getElementById('end-banner').classList.remove('hidden');
   }
 }
 
 async function finishOnline() {
   stopTimer();
+  setStatus('Runde beendet.');
   stats.online.rounds++;
 
   const timeStr = formatTime(g.elapsedSeconds);
   if (g.winner === 'draw') {
     stats.online.draws++;
     saveStats();
-    showEndModal('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`, true);
+    showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`, true);
   } else {
     const youWon = g.winner === g.onlineSlot;
     if (youWon) stats.online.wins++; else stats.online.losses++;
     saveStats();
     if (youWon) fireConfetti();
-    showEndModal(
+    showEndBanner(
       youWon ? '🏆' : '💔',
       youWon ? 'Du gewinnst!' : 'Du verlierst',
       youWon ? 'Gut gespielt!' : 'Nächstes Mal klappt’s!',
@@ -1158,6 +1191,7 @@ function renderStats() {
 }
 
 document.getElementById('btn-stats').addEventListener('click', () => {
+  closeMenuDropdown();
   renderStats();
   document.getElementById('stats-modal').classList.remove('hidden');
 });
@@ -1174,19 +1208,15 @@ function setDifficulty(d) {
   difficulty = d;
   document.querySelectorAll('.diff-btn').forEach(btn => {
     const active = parseInt(btn.dataset.diff) === d;
-    btn.className = `diff-btn px-2.5 py-1 text-xs font-semibold transition-colors ${
-      active ? 'bg-yellow-400 text-slate-900' : 'bg-slate-700 text-slate-300 hover:text-white'
+    btn.className = `diff-btn flex-1 px-2.5 py-2 text-xs font-semibold transition-colors ${
+      active ? 'bg-yellow-400 text-slate-900' : 'bg-green-900/40 text-green-200 hover:text-white'
     }`;
-    if (btn.dataset.diff === '2') btn.classList.add('border-x', 'border-slate-600');
+    if (btn.dataset.diff === '2') btn.classList.add('border-x', 'border-green-600/40');
   });
 }
 
 document.querySelectorAll('.diff-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    setDifficulty(parseInt(btn.dataset.diff));
-    if (g.mode === 'solo') newSoloRound();
-    else if (g.mode === 'local') newLocalRound();
-  });
+  btn.addEventListener('click', () => setDifficulty(parseInt(btn.dataset.diff)));
 });
 
 // ─── Sonstige Event-Listener ───────────────────────────────────────────────────
