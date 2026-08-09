@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from pathlib import Path
 
 from src import multiplayer as mp
@@ -186,3 +187,39 @@ def test_public_state_shape(fixture_categories) -> None:
     assert state["yourSlot"] == 1
     assert state["playersConnected"] == 1
     assert state["winner"] is None
+
+
+def test_check_opponent_disconnected_is_false_before_the_timeout(fixture_categories) -> None:
+    room, creator_token = _room(fixture_categories)
+    _room2, joiner_token = mp.join_room(room.code)
+    room.mark_seen(2)  # slot 2 just made a request
+    assert room.check_opponent_disconnected(1) is False
+    assert room.winner is None
+
+
+def test_check_opponent_disconnected_forfeits_after_the_timeout(fixture_categories) -> None:
+    room, creator_token = _room(fixture_categories)
+    _room2, joiner_token = mp.join_room(room.code)
+    # Slot 2 was last seen well beyond the disconnect timeout.
+    room.last_seen[2] = time.monotonic() - (mp.DISCONNECT_TIMEOUT_SECONDS + 5)
+    assert room.check_opponent_disconnected(1) is True
+    assert room.winner == 1
+    assert room.win_cells == []
+
+    # Idempotent: calling again after the game is already decided is a no-op.
+    assert room.check_opponent_disconnected(1) is False
+
+
+def test_check_opponent_disconnected_is_false_when_opponent_never_joined(fixture_categories) -> None:
+    room, creator_token = _room(fixture_categories)
+    # Only slot 1 has ever joined — nothing to detect for slot 2.
+    assert room.check_opponent_disconnected(1) is False
+
+
+def test_check_opponent_disconnected_is_false_with_no_last_seen_record_yet(fixture_categories) -> None:
+    room, creator_token = _room(fixture_categories)
+    mp.join_room(room.code)
+    # Slot 2 joined but mark_seen(2) hasn't been called yet (e.g. their very
+    # first SSE connection hasn't ticked once) — must not be misread as a
+    # disconnect.
+    assert room.check_opponent_disconnected(1) is False

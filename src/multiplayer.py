@@ -12,6 +12,13 @@ _CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _CODE_LENGTH = 5
 ROOM_TTL_SECONDS = 2 * 60 * 60  # rooms idle this long are swept on the next create/join
 
+# How long a player can go without any request (SSE tick, state poll, or
+# move) before the opponent's own SSE loop treats them as gone and
+# auto-forfeits in the opponent's favor. Generous relative to the ~1s SSE
+# tick so a brief network blip or an EventSource auto-reconnect doesn't
+# falsely end the game — see Room.check_opponent_disconnected.
+DISCONNECT_TIMEOUT_SECONDS = 20
+
 WIN_LINES = [
     [(0, 0), (0, 1), (0, 2)], [(1, 0), (1, 1), (1, 2)], [(2, 0), (2, 1), (2, 2)],
     [(0, 0), (1, 0), (2, 0)], [(0, 1), (1, 1), (2, 1)], [(0, 2), (1, 2), (2, 2)],
@@ -43,13 +50,55 @@ class Room:
     version: int = 0
     created_at: float = field(default_factory=time.monotonic)
     last_activity: float = field(default_factory=time.monotonic)
+    last_seen: dict = field(default_factory=dict)  # slot (1|2) -> monotonic time of last request
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # Remembered from room creation (the creator's settings govern the whole
+    # room — see api_mp_create_room) so a rematch can generate a fresh
+    # puzzle with the same difficulty/league/exclusions without the client
+    # having to resend them (the joiner never had them to begin with).
+    difficulty: int = 3
+    league: Optional[str] = None
+    excluded_types: frozenset = field(default_factory=frozenset)
+    excluded_ids: frozenset = field(default_factory=frozenset)
 
     def touch(self) -> None:
         self.last_activity = time.monotonic()
 
     def is_stale(self) -> bool:
         return time.monotonic() - self.last_activity > ROOM_TTL_SECONDS
+
+    def mark_seen(self, slot: Optional[int]) -> None:
+        if slot is not None:
+            self.last_seen[slot] = time.monotonic()
+
+    def check_opponent_disconnected(self, slot: int) -> bool:
+        """Called periodically by `slot`'s own SSE loop — i.e. driven by
+        whichever player still has an open connection, since a player who
+        has actually left obviously can't report their own absence. If the
+        *other* seated player hasn't made any request (SSE tick, state poll,
+        move) in DISCONNECT_TIMEOUT_SECONDS, auto-forfeits them in this
+        player's favor. This is what makes "opponent closed the tab /
+        lost network / force-quit the app" actually resolve the game
+        instead of leaving the remaining player waiting forever — the
+        client can't be trusted to always fire a cooperative forfeit
+        request on its way out (see game.js's pagehide handler for the
+        cooperative half of this fix). Returns True if a forfeit was just
+        applied.
+        """
+        with self.lock:
+            if self.winner is not None:
+                return False
+            other = 2 if slot == 1 else 1
+            if other not in self.tokens.values():
+                return False  # opponent hasn't even joined yet — nothing to detect
+            last = self.last_seen.get(other)
+            if last is None or time.monotonic() - last <= DISCONNECT_TIMEOUT_SECONDS:
+                return False
+            self.winner = slot
+            self.win_cells = []
+            self.version += 1
+            self.touch()
+            return True
 
     def public_state(self, viewer_slot: Optional[int] = None, cat_display_fn: Optional[Callable] = None) -> dict:
         disp = cat_display_fn or (lambda c: {"id": c.id, "label": c.label})
@@ -82,18 +131,44 @@ def _sweep_stale_locked() -> None:
         _rooms.pop(code, None)
 
 
-def create_room(rows: list, cols: list) -> tuple[Room, str]:
+def create_room(
+    rows: list,
+    cols: list,
+    difficulty: int = 3,
+    league: Optional[str] = None,
+    excluded_types: frozenset = frozenset(),
+    excluded_ids: frozenset = frozenset(),
+) -> tuple[Room, str]:
     """Create a room and seat the creator as slot 1. Returns (room, creator_token)."""
     with _rooms_lock:
         _sweep_stale_locked()
         code = _new_code()
         while code in _rooms:
             code = _new_code()
-        room = Room(code=code, rows=rows, cols=cols)
+        room = Room(
+            code=code, rows=rows, cols=cols, difficulty=difficulty, league=league,
+            excluded_types=excluded_types, excluded_ids=excluded_ids,
+        )
         token = secrets.token_urlsafe(16)
         room.tokens[token] = 1
         _rooms[code] = room
         return room, token
+
+
+def reset_room(room: Room, rows: list, cols: list) -> None:
+    """Starts a fresh round with a newly generated puzzle in the same room —
+    same code, same two seated players/tokens — instead of making both
+    players leave and one create a brand new room and re-share the link."""
+    with room.lock:
+        room.rows = rows
+        room.cols = cols
+        room.board = [[None, None, None] for _ in range(3)]
+        room.current = 1
+        room.winner = None
+        room.win_cells = []
+        room.used_ids = set()
+        room.version += 1
+        room.touch()
 
 
 def get_room(code: str) -> Optional[Room]:
@@ -133,6 +208,7 @@ def apply_move(
         slot = room.tokens.get(token or "")
         if slot is None:
             return False, "not_in_room", None
+        room.mark_seen(slot)
         if room.winner is not None:
             return False, "game_over", None
         if slot != room.current:
