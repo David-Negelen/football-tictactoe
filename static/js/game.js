@@ -24,6 +24,8 @@ function esc(v) {
 
 const g = {
   mode: null,        // 'solo' | 'local' | 'online'
+  soloVariant: null,  // null | 'daily' | 'custom' — a solo round that isn't a plain random one
+  dailyDate: null,    // the server's date string for the currently-loaded daily grid
   rows: [], cols: [],
   board: [[null,null,null],[null,null,null],[null,null,null]],
   current: 1,         // whose turn (local/online); unused in solo
@@ -45,6 +47,9 @@ const g = {
   onlineEventSource: null,
   onlineBoardEntered: false,
   onlineFinished: false,
+  // editor:
+  editor: { row: [null, null, null], col: [null, null, null] },
+  editorSavedCode: null,
 };
 let difficulty = 3;
 
@@ -102,6 +107,8 @@ function showScreen(name) {
   document.getElementById('screen-mode-select').classList.toggle('hidden', name !== 'mode-select');
   document.getElementById('screen-setup').classList.toggle('hidden', name !== 'setup');
   document.getElementById('screen-online-lobby').classList.toggle('hidden', name !== 'online-lobby');
+  document.getElementById('screen-daily-done').classList.toggle('hidden', name !== 'daily-done');
+  document.getElementById('screen-editor').classList.toggle('hidden', name !== 'editor');
   document.getElementById('screen-board').classList.toggle('hidden', name !== 'board');
   closeMenuDropdown();
 }
@@ -507,6 +514,10 @@ function showEndBanner(icon, title, sub, extra, showReplay = true) {
   replayBtn.classList.toggle('hidden', !showReplay);
   replayBtn.disabled = false;
   replayBtn.textContent = g.mode === 'online' ? '🔁 Revanche' : 'Nochmal spielen';
+  // Only the daily-completion branch in endGameSolo shows this — reset it
+  // here so a stale "shown" state from an earlier daily round never leaks
+  // into a later solo/local/online banner.
+  document.getElementById('end-share').classList.add('hidden');
   document.getElementById('end-banner').classList.remove('hidden');
 }
 
@@ -519,8 +530,17 @@ function hideEndBanner() {
 // while the round is over. Solo/local restart immediately on click since
 // there's no one else to ask.
 document.getElementById('end-new-game').addEventListener('click', () => {
-  if (g.mode === 'solo') { hideEndBanner(); newSoloRound(); }
-  else if (g.mode === 'local') { hideEndBanner(); newLocalRound(); }
+  if (g.mode === 'solo' && g.soloVariant === 'custom') {
+    // Replay the exact same shared grid, not a new random one — matches
+    // what "Nochmal spielen" says (daily hides this button entirely, since
+    // it's already played for today; see endGameSolo).
+    hideEndBanner();
+    beginSoloRound();
+    finishSoloRoundSetup(g.rows, g.cols);
+  } else if (g.mode === 'solo') {
+    hideEndBanner();
+    newSoloRound();
+  } else if (g.mode === 'local') { hideEndBanner(); newLocalRound(); }
   else if (g.mode === 'online') rematchOnline();
 });
 document.getElementById('end-menu').addEventListener('click', () => {
@@ -711,38 +731,50 @@ async function endGameLocal() {
 
 async function startSolo() {
   g.mode = 'solo';
+  g.soloVariant = null;
   showScreen('board');
   updateModeChrome();
   await newSoloRound();
 }
 
-async function newSoloRound() {
+// Shared by plain solo, the daily grid, and a loaded/custom grid — all three
+// are mechanically identical (fill 9 cells alone, no opponent); they only
+// differ in where rows/cols come from and what happens once the round ends
+// (see endGameSolo's soloVariant branches). Split into a "clear the screen
+// and start loading" half and a "rows/cols are ready, build the board" half
+// so callers can fetch from wherever their puzzle actually comes from in
+// between.
+function beginSoloRound() {
   setStatus('Rätsel wird geladen…');
   stopTimer();
   hideEndBanner();
   document.getElementById('board').innerHTML = '';
   document.getElementById('btn-give-up').disabled = false;
+}
 
+function finishSoloRoundSetup(rows, cols) {
   Object.assign(g, {
-    rows: [], cols: [],
+    rows, cols,
     board: [[null,null,null],[null,null,null],[null,null,null]],
     current: 1, winner: null, usedIds: new Set(), activeCell: null, winCells: [],
     elapsedSeconds: 0, solution: null, soloAttempted: 0, soloCorrect: 0,
   });
   updateTimerDisplay();
+  renderBoard();
+  updateStatus();
+  startTimer();
+}
 
+async function newSoloRound() {
+  g.soloVariant = null;
+  beginSoloRound();
   const resp = await fetch(`/api/game/new?${genParams().toString()}`);
   if (!resp.ok) {
     setStatus('Kein Rätsel gefunden – bitte erneut versuchen.');
     return;
   }
   const data = await resp.json();
-  g.rows = data.rows;
-  g.cols = data.cols;
-
-  renderBoard();
-  updateStatus();
-  startTimer();
+  finishSoloRoundSetup(data.rows, data.cols);
 }
 
 async function soloSelectPlayer(pid, name, club, r, c) {
@@ -785,21 +817,319 @@ async function endGameSolo() {
   document.getElementById('btn-give-up').disabled = true;
   g.rows.forEach((_, r) => g.cols.forEach((__, c) => refreshCell(r, c)));
 
-  stats.solo.rounds++;
-  stats.solo.correct += g.soloCorrect;
-  stats.solo.cells += 9;
-  if (g.soloCorrect > stats.solo.bestCorrect) stats.solo.bestCorrect = g.soloCorrect;
-  saveStats();
-
   const perfect = g.soloCorrect === 9;
-  if (perfect) fireConfetti();
-  showEndBanner(
-    perfect ? '🏆' : '🧩',
-    `${g.soloCorrect} / 9 richtig`,
-    perfect ? 'Perfekte Runde!' : 'Runde beendet.',
-    `⏱ ${formatTime(g.elapsedSeconds)}`
-  );
+
+  if (g.soloVariant === 'daily') {
+    // Giving up still "completes" today's puzzle and keeps the streak alive
+    // — the streak is about showing up daily, not about getting a perfect
+    // score (getting all 9 right is much harder here than guessing a
+    // Wordle, so requiring perfection would make streaks nearly unreachable).
+    const daily = recordDailyCompletion(g.dailyDate, g.soloCorrect);
+    updateDailyCardBadge();
+    if (perfect) fireConfetti();
+    showEndBanner(
+      perfect ? '🏆' : '📅',
+      `${g.soloCorrect} / 9 richtig`,
+      `🔥 Streak: ${daily.currentStreak} Tag${daily.currentStreak === 1 ? '' : 'e'}`,
+      `⏱ ${formatTime(g.elapsedSeconds)} · Beste Serie: ${daily.bestStreak}`,
+      false // already played today — no "Nochmal spielen"
+    );
+    document.getElementById('end-share').classList.remove('hidden');
+  } else if (g.soloVariant === 'custom') {
+    // Doesn't count toward the "Solo" stats — a shared/custom grid is a
+    // different activity, not a random practice round.
+    if (perfect) fireConfetti();
+    showEndBanner(
+      perfect ? '🏆' : '🧩',
+      `${g.soloCorrect} / 9 richtig`,
+      perfect ? 'Perfekte Runde!' : 'Rätsel beendet.',
+      `⏱ ${formatTime(g.elapsedSeconds)}`
+    );
+  } else {
+    stats.solo.rounds++;
+    stats.solo.correct += g.soloCorrect;
+    stats.solo.cells += 9;
+    if (g.soloCorrect > stats.solo.bestCorrect) stats.solo.bestCorrect = g.soloCorrect;
+    saveStats();
+    if (perfect) fireConfetti();
+    showEndBanner(
+      perfect ? '🏆' : '🧩',
+      `${g.soloCorrect} / 9 richtig`,
+      perfect ? 'Perfekte Runde!' : 'Runde beendet.',
+      `⏱ ${formatTime(g.elapsedSeconds)}`
+    );
+  }
   await revealSolutions();
+}
+
+// ─── Modus: Tägliches Rätsel ────────────────────────────────────────────────
+// A daily grid the backend generates deterministically from the date (see
+// app.py's /api/daily/today) — everyone gets the same puzzle. The "once per
+// day" gate and the streak itself live entirely in localStorage, same as
+// every other bit of state in this app (stats, settings) — there's no
+// server-verified per-device identity anywhere here, and this matches how
+// Wordle itself actually works (also localStorage-gated, not server-
+// enforced).
+
+const DEFAULT_DAILY = { completed: {}, currentStreak: 0, bestStreak: 0 };
+
+function loadDailyState() {
+  try {
+    const raw = localStorage.getItem('ttt_daily');
+    if (!raw) return structuredClone(DEFAULT_DAILY);
+    const parsed = JSON.parse(raw);
+    return {
+      completed: (parsed.completed && typeof parsed.completed === 'object') ? parsed.completed : {},
+      currentStreak: Number.isFinite(parsed.currentStreak) ? parsed.currentStreak : 0,
+      bestStreak: Number.isFinite(parsed.bestStreak) ? parsed.bestStreak : 0,
+    };
+  } catch {
+    return structuredClone(DEFAULT_DAILY);
+  }
+}
+
+function saveDailyState(d) {
+  localStorage.setItem('ttt_daily', JSON.stringify(d));
+}
+
+// Both dates are the server's "YYYY-MM-DD" (UTC) strings — compared as UTC
+// midnight instants so this never drifts with the browser's local timezone.
+function isNextUtcDay(prevDateStr, nextDateStr) {
+  const prev = new Date(`${prevDateStr}T00:00:00Z`).getTime();
+  const next = new Date(`${nextDateStr}T00:00:00Z`).getTime();
+  return (next - prev) === 86400000;
+}
+
+function recordDailyCompletion(date, correct) {
+  const d = loadDailyState();
+  if (d.completed[date]) return d; // already recorded — idempotent guard
+  const priorDates = Object.keys(d.completed).sort();
+  const prevDate = priorDates.length ? priorDates[priorDates.length - 1] : null;
+  d.currentStreak = (prevDate && isNextUtcDay(prevDate, date)) ? d.currentStreak + 1 : 1;
+  d.bestStreak = Math.max(d.bestStreak, d.currentStreak);
+  d.completed[date] = { correct };
+  saveDailyState(d);
+  return d;
+}
+
+function updateDailyCardBadge() {
+  const d = loadDailyState();
+  const el = document.getElementById('daily-card-streak');
+  if (d.currentStreak > 0) {
+    el.classList.remove('hidden');
+    el.classList.add('flex');
+    document.getElementById('daily-streak-count').textContent = d.currentStreak;
+  } else {
+    el.classList.add('hidden');
+    el.classList.remove('flex');
+  }
+}
+
+async function startDaily() {
+  const resp = await fetch('/api/daily/today');
+  if (!resp.ok) {
+    alert('Tagesrätsel konnte nicht geladen werden.');
+    return;
+  }
+  const data = await resp.json();
+  g.dailyDate = data.date;
+
+  const daily = loadDailyState();
+  if (daily.completed[data.date]) {
+    showDailyAlreadyPlayed(daily, data.date);
+    return;
+  }
+
+  g.mode = 'solo';
+  g.soloVariant = 'daily';
+  showScreen('board');
+  updateModeChrome();
+  beginSoloRound();
+  finishSoloRoundSetup(data.rows, data.cols);
+}
+
+function showDailyAlreadyPlayed(dailyState, date) {
+  const result = dailyState.completed[date];
+  document.getElementById('daily-done-score').textContent = `${result.correct} / 9 richtig`;
+  document.getElementById('daily-done-streak').textContent = `🔥 ${dailyState.currentStreak} Tag${dailyState.currentStreak === 1 ? '' : 'e'} in Folge`;
+  document.getElementById('daily-done-best').textContent = `Beste Serie: ${dailyState.bestStreak}`;
+  showScreen('daily-done');
+}
+
+document.getElementById('daily-card').addEventListener('click', startDaily);
+document.getElementById('daily-done-menu').addEventListener('click', goToMenu);
+document.getElementById('end-share').addEventListener('click', () => {
+  const daily = loadDailyState();
+  const result = daily.completed[g.dailyDate];
+  if (!result) return;
+  const text = `⚽ Tiki-Taka-Toe Tagesrätsel ${g.dailyDate}\n${result.correct}/9 richtig · 🔥 ${daily.currentStreak} Tage Serie\n${location.origin}/game`;
+  copyToClipboard(text);
+  const btn = document.getElementById('end-share');
+  btn.textContent = '✅ Kopiert';
+  setTimeout(() => { btn.textContent = '📤 Teilen'; }, 1500);
+});
+
+// ─── Editor: eigenes Rätsel bauen, speichern & teilen, per Code laden ──────
+
+function goToEditor() {
+  showScreen('editor');
+  renderEditorSlots();
+}
+document.getElementById('btn-editor').addEventListener('click', () => {
+  closeMenuDropdown();
+  goToEditor();
+});
+document.getElementById('btn-editor-back').addEventListener('click', goToMenu);
+
+function renderEditorSlots() {
+  ['row', 'col'].forEach(side => {
+    [0, 1, 2].forEach(i => {
+      const btn = document.querySelector(`[data-editor-slot="${side}-${i}"]`);
+      const cat = g.editor[side][i];
+      btn.innerHTML = cat
+        ? `<span class="flex items-center gap-2 min-w-0">${categoryIconHtml(cat)}<span class="truncate">${esc(cat.label)}</span></span>`
+        : `<span class="text-green-200/60">Kategorie wählen</span>`;
+    });
+  });
+  const allFilled = [...g.editor.row, ...g.editor.col].every(Boolean);
+  document.getElementById('btn-editor-save').disabled = !allFilled;
+}
+
+document.querySelectorAll('[data-editor-slot]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const [side, idx] = btn.dataset.editorSlot.split('-');
+    openCategoryPicker(side, parseInt(idx));
+  });
+});
+
+let editorActiveSlot = null; // {side: 'row'|'col', index: 0|1|2}
+let categoryPickerTimer = null;
+
+function openCategoryPicker(side, index) {
+  editorActiveSlot = { side, index };
+  document.getElementById('category-picker-search').value = '';
+  document.getElementById('category-picker-modal').classList.remove('hidden');
+  document.getElementById('category-picker-search').focus();
+  searchEditorCategories('');
+}
+
+function closeCategoryPicker() {
+  document.getElementById('category-picker-modal').classList.add('hidden');
+  editorActiveSlot = null;
+}
+document.getElementById('category-picker-close').addEventListener('click', closeCategoryPicker);
+document.getElementById('category-picker-modal').addEventListener('click', e => {
+  if (e.target.id === 'category-picker-modal') closeCategoryPicker();
+});
+document.getElementById('category-picker-search').addEventListener('input', e => {
+  clearTimeout(categoryPickerTimer);
+  categoryPickerTimer = setTimeout(() => searchEditorCategories(e.target.value.trim()), 250);
+});
+
+async function searchEditorCategories(query) {
+  const resp = await fetch(`/api/categories?q=${encodeURIComponent(query)}&limit=30`);
+  const data = await resp.json();
+  const container = document.getElementById('category-picker-results');
+  if (!data.categories?.length) {
+    container.innerHTML = '<p class="text-slate-400 text-xs text-center py-2">Keine Treffer</p>';
+    return;
+  }
+  // A category already used in another slot can't be picked again — but the
+  // slot currently being edited should still show its own existing pick as
+  // selectable (re-clicking it is a no-op close, not a blocked click).
+  const activeCat = editorActiveSlot ? g.editor[editorActiveSlot.side][editorActiveSlot.index] : null;
+  const usedIds = new Set(
+    [...g.editor.row, ...g.editor.col].filter(c => c && c.id !== activeCat?.id).map(c => c.id)
+  );
+  container.innerHTML = data.categories.map(c => {
+    const used = usedIds.has(c.id);
+    return `<div class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm border border-transparent transition-colors ${used ? 'opacity-40 cursor-not-allowed bg-slate-50' : 'hover:bg-green-50 cursor-pointer'}" data-cat-id="${esc(c.id)}">
+      ${categoryIconHtml(c)}
+      <span class="min-w-0 truncate">${esc(c.label)}</span>
+    </div>`;
+  }).join('');
+  container.querySelectorAll('[data-cat-id]').forEach(el => {
+    if (usedIds.has(el.dataset.catId)) return;
+    el.addEventListener('click', () => {
+      const cat = data.categories.find(c => c.id === el.dataset.catId);
+      if (cat) selectEditorCategory(cat);
+    });
+  });
+}
+
+function selectEditorCategory(cat) {
+  if (!editorActiveSlot) return;
+  g.editor[editorActiveSlot.side][editorActiveSlot.index] = cat;
+  closeCategoryPicker();
+  renderEditorSlots();
+  document.getElementById('editor-share').classList.add('hidden');
+  document.getElementById('editor-error').classList.add('hidden');
+}
+
+document.getElementById('btn-editor-save').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  const errorEl = document.getElementById('editor-error');
+  errorEl.classList.add('hidden');
+  try {
+    const resp = await fetch('/api/grids', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        row_ids: g.editor.row.map(c => c.id),
+        col_ids: g.editor.col.map(c => c.id),
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errorEl.textContent = data.error || 'Rätsel konnte nicht gespeichert werden.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+    g.editorSavedCode = data.code;
+    document.getElementById('editor-share-code').textContent = data.code;
+    document.getElementById('editor-share').classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('btn-editor-copy-link').addEventListener('click', () => {
+  if (!g.editorSavedCode) return;
+  copyToClipboard(`${location.origin}/game?grid=${g.editorSavedCode}`);
+  const btn = document.getElementById('btn-editor-copy-link');
+  btn.textContent = '✅ Kopiert';
+  setTimeout(() => { btn.textContent = '🔗 Link kopieren'; }, 1500);
+});
+document.getElementById('btn-editor-play').addEventListener('click', () => {
+  if (g.editorSavedCode) loadAndStartCustomGrid(g.editorSavedCode);
+});
+
+document.getElementById('btn-editor-load').addEventListener('click', () => {
+  const code = document.getElementById('editor-load-code').value.trim();
+  if (code.length < 4) return;
+  loadAndStartCustomGrid(code);
+});
+document.getElementById('editor-load-code').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-editor-load').click();
+});
+
+async function loadAndStartCustomGrid(code) {
+  const errorEl = document.getElementById('editor-load-error');
+  errorEl.classList.add('hidden');
+  const resp = await fetch(`/api/grids/${encodeURIComponent(code)}`);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    errorEl.textContent = data.error || 'Rätsel nicht gefunden.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  g.mode = 'solo';
+  g.soloVariant = 'custom';
+  showScreen('board');
+  updateModeChrome();
+  beginSoloRound();
+  finishSoloRoundSetup(data.rows, data.cols);
 }
 
 // ─── Modus: 1v1 Online ──────────────────────────────────────────────────────────
@@ -1126,11 +1456,21 @@ document.addEventListener('click', e => {
 
 function renderStats() {
   const l = stats.local, s = stats.solo, o = stats.online;
+  const d = loadDailyState();
+  const daysPlayed = Object.keys(d.completed).length;
   const accuracy = (l.correct + l.wrong) ? Math.round((l.correct / (l.correct + l.wrong)) * 100) : 0;
   const fastest = l.fastestWinSeconds != null ? formatTime(l.fastestWinSeconds) : '–';
   const soloAccuracy = s.cells ? Math.round((s.correct / s.cells) * 100) : 0;
 
   document.getElementById('stats-body').innerHTML = `
+    <div>
+      <div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">📅 Tages-Rätsel</div>
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-base font-black text-slate-700">${daysPlayed}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Gespielt</div></div>
+        <div class="bg-amber-50 rounded-xl p-2.5"><div class="text-base font-black text-amber-600">${d.currentStreak} 🔥</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Serie</div></div>
+        <div class="bg-amber-50 rounded-xl p-2.5"><div class="text-base font-black text-amber-600">${d.bestStreak}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Beste Serie</div></div>
+      </div>
+    </div>
     <div>
       <div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">🛋️ 1v1 Lokal</div>
       <div class="grid grid-cols-2 gap-2 text-center">
@@ -1200,7 +1540,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 (function init() {
-  const joinCode = new URLSearchParams(location.search).get('join');
+  const params = new URLSearchParams(location.search);
+  const joinCode = params.get('join');
+  const gridCode = params.get('grid');
   if (joinCode) {
     g.mode = 'online';
     showScreen('online-lobby');
@@ -1208,7 +1550,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
     renderLobbyHome();
     history.replaceState({}, '', '/game');
     joinOnlineRoom(joinCode);
+  } else if (gridCode) {
+    history.replaceState({}, '', '/game');
+    loadAndStartCustomGrid(gridCode);
   } else {
     showScreen('mode-select');
   }
+  updateDailyCardBadge();
 })();
