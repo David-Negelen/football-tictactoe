@@ -496,21 +496,11 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
     if len(pool) < 6:
         return None, None
 
-    # Eligible-player-id sets are computed lazily and cached per category id,
-    # not eagerly for the whole pool up front. With ~7,000 dynamically
-    # generated categories in play, eagerly computing eligible_player_ids()
-    # for every one of them (most of which never get sampled) made a single
-    # /api/game/new request take several seconds — this only ever queries
-    # the categories that actually get drawn.
-    eligible_cache: dict[str, set[int]] = {}
-
-    def eligible_ids(cat) -> set[int]:
-        cached = eligible_cache.get(cat.id)
-        if cached is None:
-            cached = cat.eligible_player_ids(db)
-            eligible_cache[cat.id] = cached
-        return cached
-
+    # cat.eligible_player_ids(db) is cached on the category instance itself
+    # (see src/categories.py) and only ever computed for categories that
+    # actually get sampled — with ~7,000 dynamically generated categories in
+    # the pool, eagerly computing it for all of them up front would make
+    # every /api/game/new request pay for categories that never get drawn.
     if min_league_clubs > 0:
         league_clubs = [c for c in pool if c.type == CategoryType.CLUB]
         # LEAGUE/CONTINENT stay excluded (already-scoped clubs make a
@@ -523,7 +513,7 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
             if sampled is None:
                 return None, None
             rows, cols = sampled
-            counts = [len(eligible_ids(r) & eligible_ids(c)) for r in rows for c in cols]
+            counts = [len(r.eligible_player_ids(db) & c.eligible_player_ids(db)) for r in rows for c in cols]
             if all(min_players <= n <= max_players for n in counts):
                 return rows, cols
         return None, None
@@ -535,7 +525,7 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
         if sampled is None:
             return None, None
         rows, cols = sampled
-        counts = [len(eligible_ids(r) & eligible_ids(c)) for r in rows for c in cols]
+        counts = [len(r.eligible_player_ids(db) & c.eligible_player_ids(db)) for r in rows for c in cols]
         if all(min_players <= n <= max_players for n in counts):
             return rows, cols
     return None, None
@@ -705,34 +695,51 @@ def api_game_solve():
 
     db = get_db()
     try:
-        grid = []
-        for row_id in row_ids:
-            row_cat = cats[row_id]
-            row_sql, row_params = row_cat.sql_filter()
-            row_cells = []
-            for col_id in col_ids:
-                col_cat = cats[col_id]
-                col_sql, col_params = col_cat.sql_filter()
-                params = row_params + col_params
-                rows_db = db.execute(
-                    f"""SELECT p.id, p.name, p.current_club_name
-                        FROM players p
-                        WHERE {row_sql} AND {col_sql}
-                        ORDER BY (
-                            CASE
-                                WHEN p.market_value LIKE '%m'
-                                    THEN CAST(REPLACE(REPLACE(p.market_value, '€', ''), 'm', '') AS REAL) * 1000000
-                                WHEN p.market_value LIKE '%k'
-                                    THEN CAST(REPLACE(REPLACE(p.market_value, '€', ''), 'k', '') AS REAL) * 1000
-                                ELSE 0
-                            END
-                        ) DESC
-                        """,
-                    params,
-                ).fetchall()
-                count = len(rows_db)
-                row_cells.append({"count": count, "players": [dict(r) for r in rows_db]})
-            grid.append(row_cells)
+        # eligible_player_ids() is cached on each category instance (see
+        # src/categories.py) — by the time a round ends, the exact row/col
+        # categories being solved here already had it computed during
+        # /api/game/new's generation, so this is a set intersection in
+        # Python, not a fresh query. That replaces what used to be 9
+        # separate SQL queries (one per cell, each re-scanning the players
+        # table via row_sql AND col_sql) with at most 6 cached lookups plus
+        # one query for the union of matching player ids — this is what
+        # made the post-round solution reveal visibly lag (~0.5s).
+        cell_id_sets = [
+            [cats[row_id].eligible_player_ids(db) & cats[col_id].eligible_player_ids(db) for col_id in col_ids]
+            for row_id in row_ids
+        ]
+        union_ids = set().union(*[ids for row in cell_id_sets for ids in row])
+
+        players_by_id: dict[int, dict] = {}
+        order: list[int] = []
+        if union_ids:
+            placeholders = ",".join("?" * len(union_ids))
+            rows_db = db.execute(
+                f"""SELECT p.id, p.name, p.current_club_name
+                    FROM players p
+                    WHERE p.id IN ({placeholders})
+                    ORDER BY (
+                        CASE
+                            WHEN p.market_value LIKE '%m'
+                                THEN CAST(REPLACE(REPLACE(p.market_value, '€', ''), 'm', '') AS REAL) * 1000000
+                            WHEN p.market_value LIKE '%k'
+                                THEN CAST(REPLACE(REPLACE(p.market_value, '€', ''), 'k', '') AS REAL) * 1000
+                            ELSE 0
+                        END
+                    ) DESC
+                    """,
+                list(union_ids),
+            ).fetchall()
+            players_by_id = {row["id"]: dict(row) for row in rows_db}
+            order = [row["id"] for row in rows_db]
+
+        grid = [
+            [
+                {"count": len(ids), "players": [players_by_id[pid] for pid in order if pid in ids]}
+                for ids in row
+            ]
+            for row in cell_id_sets
+        ]
     finally:
         db.close()
     return jsonify({"grid": grid})

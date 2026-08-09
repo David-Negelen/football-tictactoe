@@ -25,12 +25,29 @@ class Category:
         self.type = type
         self.icon = icon
         self.difficulty = difficulty
+        self._eligible_ids_cache: Optional[set[int]] = None
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
         raise NotImplementedError
 
     def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
-        """Return the set of all player IDs that satisfy this category."""
+        """Return the set of all player IDs that satisfy this category.
+
+        Cached on the instance for the instance's whole lifetime: the player
+        data underneath a running server never changes (categories are built
+        once at Flask startup from a single DB snapshot — see app.py), so a
+        given category's answer set is fixed for as long as the process
+        lives. Before this cache, puzzle generation, the daily/editor grid
+        preview, and the post-round solution reveal each independently
+        re-ran the same (sometimes full-table-scan) query every single time
+        a category got touched — this is what made a "hard" difficulty
+        /api/game/new take 2-3s and made the solution reveal visibly lag.
+        """
+        if self._eligible_ids_cache is None:
+            self._eligible_ids_cache = self._compute_eligible_player_ids(conn)
+        return self._eligible_ids_cache
+
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         raise NotImplementedError
 
     def sql_filter(self) -> tuple[str, list]:
@@ -55,7 +72,7 @@ class ClubCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
             "SELECT DISTINCT player_id FROM career_stints WHERE club_name = ?",
             (self.club_name,),
@@ -89,7 +106,7 @@ class NationalityCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
             "SELECT id FROM players WHERE (' ' || nationality || ' ') LIKE ?",
             (f"% {self.nationality} %",),
@@ -120,7 +137,7 @@ class PositionCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
             "SELECT id FROM players WHERE position LIKE ?",
             (f"{self.position_prefix}%",),
@@ -158,7 +175,7 @@ class AwardCategory(Category):
             return False
         return self._strip_prefix(row[0]).lower() in self._lower_names
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         if not self._lower_names:
             return set()
         placeholders = ",".join("?" * len(self._lower_names))
@@ -199,7 +216,7 @@ class TrophyCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
             "SELECT DISTINCT player_id FROM player_trophies WHERE title = ?",
             (self.trophy_title,),
@@ -230,7 +247,7 @@ class LeagueCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
             f"SELECT DISTINCT player_id FROM career_stints WHERE club_name IN ({self._ph()})",
             self.club_names,
@@ -261,7 +278,7 @@ class ContinentCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
             f"SELECT DISTINCT player_id FROM career_stints WHERE club_name IN ({self._ph()})",
             self.club_names,
@@ -321,7 +338,7 @@ class InitialCategory(Category):
             return False
         return words[0][0].upper() == self.letter or words[-1][0].upper() == self.letter
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
             f"SELECT p.id FROM players p "
             f"WHERE UPPER(SUBSTR({_STRIPPED_NAME}, 1, 1)) = ? "
@@ -352,7 +369,7 @@ class ContainsLetterCategory(Category):
         ).fetchone()
         return row is not None and self.letter in row[0].upper()
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
             f"SELECT p.id FROM players p WHERE UPPER({_STRIPPED_NAME}) LIKE ?",
             (f"%{self.letter}%",),
@@ -391,7 +408,7 @@ class AgeCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         cond, params = self._conditions()
         rows = conn.execute(f"SELECT p.id FROM players p WHERE {cond}", params).fetchall()
         return {row[0] for row in rows}
@@ -432,7 +449,7 @@ class MarketValueCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         cond, params = self._conditions()
         rows = conn.execute(f"SELECT p.id FROM players p WHERE {cond}", params).fetchall()
         return {row[0] for row in rows}
@@ -482,7 +499,7 @@ class NonEuropeanNationalityCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         cond, params = self._condition()
         rows = conn.execute(f"SELECT p.id FROM players p WHERE {cond}", params).fetchall()
         return {row[0] for row in rows}
@@ -494,10 +511,12 @@ class NonEuropeanNationalityCategory(Category):
 class LeagueScopedCategory(Category):
     """Wraps another category, additionally requiring a career stint at one
     of a league's clubs — used for league-scoped game modes ("Bundesliga
-    only"). Each method independently re-derives the combined condition
-    rather than caching anything, so the check_player/eligible_player_ids/
-    sql_filter agreement invariant every other Category subclass already
-    guarantees holds for wrapped instances too, without special-casing.
+    only"). check_player()/sql_filter() independently re-derive the combined
+    condition every call (no caching of their own), so the check_player/
+    eligible_player_ids/sql_filter agreement invariant every other Category
+    subclass already guarantees holds for wrapped instances too, without
+    special-casing. eligible_player_ids() itself is cached — see the base
+    Category class — same as every other subclass.
     """
 
     def __init__(self, base: Category, league_club_names: list[str], id: str, label: str, icon: Optional[str] = None) -> None:
@@ -522,7 +541,7 @@ class LeagueScopedCategory(Category):
         ).fetchone()
         return row is not None
 
-    def eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         base_ids = self.base.eligible_player_ids(conn)
         if not base_ids:
             return set()
