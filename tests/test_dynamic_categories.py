@@ -10,11 +10,30 @@ from src.dynamic_categories import (
     LEGACY_CLUB_IDS,
     LEGACY_NATIONALITY_ENTRIES,
     LEGACY_TROPHY_IDS,
+    NON_PLAYABLE_NATIONALITIES,
+    PROMINENT_CLUB_NAMES,
     build_dynamic_clubs,
     build_dynamic_nationalities,
     build_dynamic_trophies,
     build_league_pools,
 )
+
+# The fixture roster below uses made-up club names to get precise control
+# over distinct-player counts for tier/reserve/youth-filter testing — none of
+# them are (or should be) in the real PROMINENT_CLUB_NAMES whitelist, so
+# tests that aren't specifically about prominence pass an explicit superset
+# that also allows these fixture names through, keeping "is this a legit
+# tier-3 club" and "is this club prominent enough to show by default"
+# independently testable. See test_default_prominence_whitelist_excludes_an_obscure_club
+# below for a test of the real, un-widened whitelist.
+FIXTURE_PROMINENT_CLUB_NAMES = PROMINENT_CLUB_NAMES | {
+    "Testville FC", "Testville FC U19", "Testville FC II", "Testville FC B",
+    "Willem II", "Small Rare FC", "Just Enough FC",
+}
+
+
+def _build_clubs(conn):
+    return build_dynamic_clubs(conn, prominent_names=FIXTURE_PROMINENT_CLUB_NAMES)
 
 
 def _add_career_stint(conn: sqlite3.Connection, player_name: str, club_name: str) -> None:
@@ -60,17 +79,17 @@ def dynamic_db_conn(fixture_db_path: Path):
 
 
 def test_status_placeholder_club_names_are_excluded(dynamic_db_conn) -> None:
-    clubs = build_dynamic_clubs(dynamic_db_conn)
+    clubs = _build_clubs(dynamic_db_conn)
     assert "Karriereende" not in {c.club_name for c in clubs}
 
 
 def test_youth_team_club_names_are_excluded(dynamic_db_conn) -> None:
-    clubs = build_dynamic_clubs(dynamic_db_conn)
+    clubs = _build_clubs(dynamic_db_conn)
     assert "Testville FC U19" not in {c.club_name for c in clubs}
 
 
 def test_reserve_team_club_names_are_excluded(dynamic_db_conn) -> None:
-    names = {c.club_name for c in build_dynamic_clubs(dynamic_db_conn)}
+    names = {c.club_name for c in _build_clubs(dynamic_db_conn)}
     assert "Testville FC II" not in names
     assert "Testville FC B" not in names
 
@@ -78,19 +97,19 @@ def test_reserve_team_club_names_are_excluded(dynamic_db_conn) -> None:
 def test_willem_ii_is_not_treated_as_a_reserve_team(dynamic_db_conn) -> None:
     # "Willem II" is a real club whose actual name ends in "II" — not a
     # reserve-team marker like "Testville FC II" above.
-    names = {c.club_name for c in build_dynamic_clubs(dynamic_db_conn)}
+    names = {c.club_name for c in _build_clubs(dynamic_db_conn)}
     assert "Willem II" in names
 
 
 def test_clubs_below_the_lowest_tier_threshold_are_dropped(dynamic_db_conn) -> None:
-    clubs = build_dynamic_clubs(dynamic_db_conn)
+    clubs = _build_clubs(dynamic_db_conn)
     names = {c.club_name for c in clubs}
     assert "Small Rare FC" not in names  # 3 players, below the floor of 5
     assert "Just Enough FC" in names     # exactly 5 players, right at the floor
 
 
 def test_club_difficulty_is_derived_from_player_count(dynamic_db_conn) -> None:
-    clubs = {c.club_name: c for c in build_dynamic_clubs(dynamic_db_conn)}
+    clubs = {c.club_name: c for c in _build_clubs(dynamic_db_conn)}
     assert clubs["Just Enough FC"].difficulty == 3  # 5 players: difficulty-3 tier only
     # Testville FC has all 13 fixture players via the pre-existing conftest roster + this fixture's extra stints
     assert clubs["Testville FC"].difficulty in (1, 2, 3)
@@ -101,12 +120,12 @@ def test_legacy_club_id_is_preserved_when_the_real_club_name_appears(dynamic_db_
     for name in players[:5]:  # clears the difficulty-3 floor of 5 distinct players
         _add_career_stint(dynamic_db_conn, name, "Bayern München")
     dynamic_db_conn.commit()
-    clubs = {c.club_name: c for c in build_dynamic_clubs(dynamic_db_conn)}
+    clubs = {c.club_name: c for c in _build_clubs(dynamic_db_conn)}
     assert clubs["Bayern München"].id == LEGACY_CLUB_IDS["Bayern München"] == "club_bay"
 
 
 def test_dynamic_club_gets_a_stable_generated_id_not_a_legacy_one(dynamic_db_conn) -> None:
-    clubs = {c.club_name: c for c in build_dynamic_clubs(dynamic_db_conn)}
+    clubs = {c.club_name: c for c in _build_clubs(dynamic_db_conn)}
     cat_id = clubs["Just Enough FC"].id
     assert cat_id.startswith("club_dyn_")
     assert cat_id not in LEGACY_CLUB_IDS.values()
@@ -115,8 +134,8 @@ def test_dynamic_club_gets_a_stable_generated_id_not_a_legacy_one(dynamic_db_con
 def test_building_clubs_twice_produces_identical_ids(dynamic_db_conn) -> None:
     """Ids must survive an app restart, or a saved excluded-category-id
     setting would silently stop matching anything."""
-    first = {c.club_name: c.id for c in build_dynamic_clubs(dynamic_db_conn)}
-    second = {c.club_name: c.id for c in build_dynamic_clubs(dynamic_db_conn)}
+    first = {c.club_name: c.id for c in _build_clubs(dynamic_db_conn)}
+    second = {c.club_name: c.id for c in _build_clubs(dynamic_db_conn)}
     assert first == second
 
 
@@ -185,6 +204,47 @@ def test_dynamic_trophy_applies_the_semantic_filter_and_legacy_ids(fixture_db_pa
     assert "Torschützenkönig" not in trophies  # individual award, filtered out
 
 
+def test_default_prominence_whitelist_excludes_an_obscure_club(dynamic_db_conn) -> None:
+    # No prominent_names override here — this is the real default whitelist.
+    # "Just Enough FC" clears the rarity tier threshold (5 players) but isn't
+    # a club anyone would recognize, which is exactly the gap the whitelist
+    # closes: rarity alone let obscure-but-real clubs through as "hard".
+    clubs = build_dynamic_clubs(dynamic_db_conn)
+    assert "Just Enough FC" not in {c.club_name for c in clubs}
+
+
+def test_default_prominence_whitelist_includes_a_known_club(dynamic_db_conn) -> None:
+    players = [r[0] for r in dynamic_db_conn.execute("SELECT name FROM players").fetchall()]
+    for name in players[:5]:
+        _add_career_stint(dynamic_db_conn, name, "Bayern München")
+    dynamic_db_conn.commit()
+    clubs = build_dynamic_clubs(dynamic_db_conn)
+    assert "Bayern München" in {c.club_name for c in clubs}
+
+
+def test_non_playable_nationalities_are_excluded_even_at_high_player_counts() -> None:
+    import tempfile
+
+    from src.db import Database
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "nat.db"
+        Database(db_path).initialize()
+        conn = sqlite3.connect(db_path)
+        now = datetime.now(timezone.utc).isoformat()
+        for name in NON_PLAYABLE_NATIONALITIES:
+            for i in range(150):  # comfortably clears every rarity tier
+                conn.execute(
+                    "INSERT INTO players (source_url, name, nationality, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    (f"https://example.test/nat/{name}/{i}", f"Player {name} {i}", name, now, now),
+                )
+        conn.commit()
+        nats = {n.nationality for n in build_dynamic_nationalities(conn)}
+        conn.close()
+
+    assert nats.isdisjoint(NON_PLAYABLE_NATIONALITIES)
+
+
 def test_league_pools_scope_clubs_to_the_leagues_own_club_list(dynamic_db_conn) -> None:
     from src.categories import LeagueCategory
 
@@ -196,7 +256,7 @@ def test_league_pools_scope_clubs_to_the_leagues_own_club_list(dynamic_db_conn) 
     league = LeagueCategory("league_test", "Test League", ["Bayern München"], difficulty=1)
     from src.dynamic_categories import DynamicCatalog
 
-    catalog = DynamicCatalog(clubs=build_dynamic_clubs(dynamic_db_conn))
+    catalog = DynamicCatalog(clubs=_build_clubs(dynamic_db_conn))
     pools = build_league_pools([league], catalog.clubs, catalog)
     pool_club_names = {c.club_name for c in pools["league_test"] if hasattr(c, "club_name")}
     assert pool_club_names == {"Bayern München"}  # Testville FC etc. excluded — not in this league

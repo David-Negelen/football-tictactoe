@@ -22,6 +22,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from .categories import Category, ClubCategory, NationalityCategory, TrophyCategory
+from .category_config import CONTINENT_CATEGORIES, LEAGUE_CATEGORIES
 from .countries import COUNTRY_BY_NAME, country_flag, parse_nationality_tokens
 from .trophy_rules import classify_trophy_title
 
@@ -35,7 +36,7 @@ CLUB_STATUS_DENYLIST = {"Karriereende", "Vereinslos", "Unbekannt", "pausiert"}
 # (U15-U23, "Jugend") rather than senior first teams — confusing/uninteresting
 # as a trivia category (e.g. "Inter U19" has 415 distinct players on its own).
 _YOUTH_CLUB_PATTERN = re.compile(
-    r"(?:^|\s)U1[5-9](?:$|\s)|(?:^|\s)U2[0-3](?:$|\s)|Jgd\.|Jugend|Junioren",
+    r"(?:^|\s)U1[5-9](?:$|\s)|(?:^|\s)U2[0-3](?:$|\s)|Jgd\.|Jugend|Junioren|Acad(?:emy|\.)",
     re.IGNORECASE,
 )
 
@@ -137,14 +138,46 @@ LEGACY_TROPHY_IDS: dict[str, str] = {
     "Leagues-Cup-Sieger": "trophy_leagues_cup",
 }
 
+# CLUB_TIER_THRESHOLDS above only measures rarity ("how many players have
+# this literal club_name"), not recognizability — a 5th-tier German amateur
+# club or a long-defunct English lower-league side can easily clear the
+# "hard" bar (5+ scraped players) just by having been one waypoint in an
+# otherwise-notable career, without being remotely guessable. Outside of
+# league mode (which already uses its own per-league club_names directly,
+# see build_league_pools) the general "club" pool needs an actual
+# prominence whitelist, not just a player-count floor. Reusing the clubs
+# that are already hand-picked and DB-verified elsewhere — the major-league
+# and continental "played in X" lists — avoids re-curating (and
+# re-risking-typos-on) an entirely new list from scratch.
+PROMINENT_CLUB_NAMES: set[str] = {
+    *(name for league in LEAGUE_CATEGORIES for name in league.club_names),
+    *(name for cont in CONTINENT_CATEGORIES for name in cont.club_names),
+    *LEGACY_CLUB_IDS.keys(),
+}
 
-def build_dynamic_clubs(conn: sqlite3.Connection) -> list[ClubCategory]:
+# Transfermarkt records a distinct "nationality" string per birthplace, which
+# includes places with no football team of their own to actually represent —
+# dissolved historical states and non-independent overseas departments/
+# territories whose players are internationally French (or otherwise their
+# parent state) for football purposes, not a "nationality" a casual player
+# could ever guess as a football category (e.g. "Französisch-Guayana").
+# Deliberately conservative: genuinely small-but-real football nations (San
+# Marino, Färöer, Kosovo, Curaçao, ...) stay in — "rare but real" is a fair
+# hard category, "not actually a football nationality" is not.
+NON_PLAYABLE_NATIONALITIES: set[str] = {
+    "Französisch-Guayana", "Guadeloupe", "Martinique", "Réunion", "Saint-Martin",
+    "DDR", "Jugoslawien (SFR)", "Jugoslawien (Bundesrepublik)", "Niederländische Antillen",
+    "Monaco",
+}
+
+
+def build_dynamic_clubs(conn: sqlite3.Connection, prominent_names: set[str] = PROMINENT_CLUB_NAMES) -> list[ClubCategory]:
     rows = conn.execute(
         "SELECT club_name, COUNT(DISTINCT player_id) AS n FROM career_stints GROUP BY club_name"
     ).fetchall()
     categories = []
     for club_name, n in rows:
-        if _is_junk_club(club_name):
+        if _is_junk_club(club_name) or club_name not in prominent_names:
             continue
         difficulty = _tier_difficulty(n, CLUB_TIER_THRESHOLDS)
         if difficulty is None:
@@ -165,7 +198,7 @@ def build_dynamic_nationalities(conn: sqlite3.Connection) -> list[NationalityCat
 
     categories = []
     for name, n in counts.items():
-        if name not in COUNTRY_BY_NAME:
+        if name not in COUNTRY_BY_NAME or name in NON_PLAYABLE_NATIONALITIES:
             continue
         difficulty = _tier_difficulty(n, NATIONALITY_TIER_THRESHOLDS)
         if difficulty is None:
