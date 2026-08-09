@@ -14,7 +14,10 @@ def _conn(db_path: Path) -> sqlite3.Connection:
 
 
 def _room(fixture_categories):
-    cats = list(fixture_categories.values())
+    # Sliced to the original six (see fixture_categories' docstring) —
+    # fixture_categories has grown two extra trailing club categories that
+    # aren't part of this fixed rows/cols split.
+    cats = list(fixture_categories.values())[:6]
     room, creator_token = mp.create_room(rows=cats[:3], cols=cats[3:])
     return room, creator_token
 

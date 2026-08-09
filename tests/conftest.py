@@ -23,10 +23,19 @@ from src.db import Database
 # intersection (not just some) needs to be non-empty.
 #
 # name, age, nationality, position, market_value, club, career_clubs, trophies
+#
+# Alan Adler and Carl Cole additionally carry stints at "Third FC" and
+# "Fourth United" — two extra clubs that exist purely so fixture_categories
+# below can offer 3 distinct club categories (t_club/t_club2/t_club3), all
+# with the same non-empty-overlap-against-every-broad-category guarantee as
+# t_club: between them, Alan (Testland/Defense/Testcup/U23) and Carl
+# (Testland/High-value/Testcup) already cover every one of the 5 broad
+# fixture categories, so any club the two of them share inherits full
+# coverage for free.
 PLAYERS = [
-    ("Alan Adler",     22, "Testland",             "Defense - Center Back", "€5.00m",  "Testville FC",  ["Testville FC"],                  ["Testcup"]),
+    ("Alan Adler",     22, "Testland",             "Defense - Center Back", "€5.00m",  "Testville FC",  ["Testville FC", "Third FC", "Fourth United"],  ["Testcup"]),
     ("Bella Bauer",    29, "Sampleland",            "Defense - Full Back",   "€25.00m", "Sample United", ["Sample United"],                  []),
-    ("Carl Cole",      31, "Testland",              "Midfield - Central",    "€15.00m", "Testville FC",  ["Testville FC", "Fixture Town"],   ["Testcup", "Samplecup"]),
+    ("Carl Cole",      31, "Testland",              "Midfield - Central",    "€15.00m", "Testville FC",  ["Testville FC", "Fixture Town", "Third FC", "Fourth United"],   ["Testcup", "Samplecup"]),
     ("Dana Diaz",      19, "Fixturia",              "Attack - Striker",      "€500k",   "Fixture Town",  ["Fixture Town"],                   []),
     ("Elan Evans",     35, "Sampleland",            "Goalkeeper",            "€1.00m",  "Demo Athletic", ["Demo Athletic"],                  ["Samplecup"]),
     ("Farid Fischer",  22, "Testland Sampleland",   "Midfield - Defensive",  "€20.00m", "Sample United", ["Sample United", "Testville FC"],  []),
@@ -87,10 +96,18 @@ def fixture_db_path(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def fixture_categories() -> dict[str, object]:
-    """Six categories with hand-verified, non-empty pairwise intersections
-    against PLAYERS — every one of the 15 possible pairs among these six has
-    at least one eligible player in common, so _generate_puzzle() can never
-    land on an impossible 3x3 split no matter how it randomly groups them."""
+    """Eight categories with hand-verified, non-empty pairwise intersections
+    against PLAYERS. The first six (t_club/t_nat/t_pos/t_mv/t_trophy/t_age)
+    are the original set — every one of their 15 possible pairs has at
+    least one eligible player in common. t_club2/t_club3 are appended after
+    them (not interleaved) so code that slices "the first N" of this dict
+    keeps seeing the original six in the original order (see
+    tests/test_multiplayer.py's _room() helper); each has the same
+    non-empty overlap against every one of the five non-club categories
+    (t_nat/t_pos/t_mv/t_trophy/t_age) as t_club — needed because
+    _sample_general_puzzle_categories (see app.py) requires 3 real clubs to
+    generate a general-pool puzzle at all, and always confines whichever 3
+    it draws to one whole side, so club x club overlap is never required."""
     cats = [
         ClubCategory("t_club", "Testville FC", "Testville FC", difficulty=1),
         NationalityCategory("t_nat", "Testland", "Testland", difficulty=1),
@@ -98,6 +115,8 @@ def fixture_categories() -> dict[str, object]:
         MarketValueCategory("t_mv", "High value", min_value=10_000_000, difficulty=1),
         TrophyCategory("t_trophy", "Testcup", "Testcup", difficulty=1),
         AgeCategory("t_age", "U23", max_age=23, difficulty=1),
+        ClubCategory("t_club2", "Third FC", "Third FC", difficulty=1),
+        ClubCategory("t_club3", "Fourth United", "Fourth United", difficulty=1),
     ]
     return {cat.id: cat for cat in cats}
 
