@@ -123,22 +123,22 @@
     .tt-icon-mono { filter: grayscale(1); opacity: .85; }
 
     /* Downloaded crest/flag artwork (categoryIconHtml's icon_image branch)
-       sits on a fixed light backdrop, not the dark card directly — a
-       predominantly dark crest (Tottenham's navy, Newcastle's black/white)
-       would otherwise be nearly invisible against the dark theme. White
-       works for every crest/flag regardless of its own palette; letter
-       badges and the grayscale ball fallback don't use this, they already
-       carry their own contrast. */
-    .tt-icon-crest {
-      background: #fff;
-      border-radius: 6px;
-      padding: 2px;
-      box-sizing: border-box;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+       gets a soft light outline instead of sitting directly on the dark
+       card — a predominantly dark crest (Tottenham's navy, Newcastle's
+       black/white) would otherwise be nearly invisible against the dark
+       theme. Stacked drop-shadows (CSS has no direct "outline" filter for
+       arbitrary transparent artwork) trace the image's own alpha
+       silhouette, so a dark crest gets a visible edge while an
+       already-bright one just gets a barely-noticeable halo — no boxy
+       backdrop behind crests that never needed one. Letter badges and the
+       grayscale ball fallback don't use this, they already carry their
+       own contrast. */
+    .tt-icon-crest-img {
+      filter:
+        drop-shadow(0 0 1px rgba(255, 255, 255, .85))
+        drop-shadow(0 0 1px rgba(255, 255, 255, .85))
+        drop-shadow(0 0 2px rgba(255, 255, 255, .5));
     }
-    .tt-icon-crest-img { width: 100%; height: 100%; object-fit: contain; }
 
     /* App-chrome icons (mode cards, daily card, header logo) — accent-
        colored line icons, replacing the old grayscale-filtered emoji so

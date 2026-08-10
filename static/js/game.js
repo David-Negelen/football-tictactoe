@@ -410,10 +410,14 @@ function categoryIconHtml(cat) {
     const onerror = `iconImgFallback(this, ${jsStr(cat.icon_letter || '')}, ${jsStr(cat.icon_color || '')})`;
     // A crest/flag's own palette can be almost entirely dark (Tottenham's
     // navy cockerel, Newcastle's black-and-white, ...) and disappear
-    // against the dark card behind it — a fixed light backdrop guarantees
-    // contrast regardless of what colors the image itself happens to use,
-    // instead of hoping every crest/flag contrasts with a dark theme.
-    return `<div class="tt-icon tt-icon-crest flex-shrink-0"><img src="${esc(cat.icon_image)}" alt="" class="tt-icon-crest-img" onerror="${esc(onerror)}"></div>`;
+    // against the dark card behind it. A boxed white backdrop fixed that
+    // but looked like a sticker sheet on every crest, including the ones
+    // that were already fine — a soft light outline that follows the
+    // image's own alpha silhouette (via stacked drop-shadows, since CSS
+    // has no direct "outline" for arbitrary transparent artwork) instead
+    // gives just enough separation for dark crests without boxing the
+    // ones that didn't need it.
+    return `<img src="${esc(cat.icon_image)}" alt="" class="tt-icon tt-icon-crest-img flex-shrink-0" onerror="${esc(onerror)}">`;
   }
   // Dynamically generated clubs without a hand-picked emoji (the vast
   // majority of ~6,500 clubs) carry icon_letter/icon_color instead of an
@@ -442,10 +446,7 @@ function iconImgFallback(img, letter, color) {
     div.className = 'tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center';
     div.innerHTML = svgIcon('ball', 22);
   }
-  // Replace the whole .tt-icon-crest wrapper (the light backdrop), not
-  // just the <img> inside it — otherwise the fallback badge/ball ends up
-  // double-boxed inside a now-empty light square.
-  (img.closest('.tt-icon-crest') || img).replaceWith(div);
+  img.replaceWith(div);
 }
 
 function headerCellHtml(cat) {
