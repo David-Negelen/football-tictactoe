@@ -399,7 +399,16 @@ function categoryIconHtml(cat) {
   // wins whenever available — looks far better than the emoji font or the
   // generic initial badge.
   if (cat.icon_image) {
-    return `<img src="${esc(cat.icon_image)}" alt="" class="tt-icon object-contain flex-shrink-0">`;
+    // Crest/flag downloads occasionally 404 (source removed the file, a
+    // scrape gap, etc.) — fall back to the same letter-badge/ball icon
+    // used when there's no image at all, instead of leaving a broken-image
+    // glyph in the cell.
+    // Single-quoted, hand-escaped JS string literals — the whole call then
+    // sits inside a double-quoted HTML attribute, so JSON.stringify's
+    // double quotes would collide with (and truncate) that attribute.
+    const jsStr = s => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+    const onerror = `iconImgFallback(this, ${jsStr(cat.icon_letter || '')}, ${jsStr(cat.icon_color || '')})`;
+    return `<img src="${esc(cat.icon_image)}" alt="" class="tt-icon object-contain flex-shrink-0" onerror="${esc(onerror)}">`;
   }
   // Dynamically generated clubs without a hand-picked emoji (the vast
   // majority of ~6,500 clubs) carry icon_letter/icon_color instead of an
@@ -413,6 +422,22 @@ function categoryIconHtml(cat) {
       style="font-size:clamp(18px,6vw,26px)">${cat.icon}</div>`;
   }
   return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon('ball', 22)}</div>`;
+}
+
+// Swaps a broken crest/flag <img> for the same letter-badge (or generic
+// ball icon) categoryIconHtml would have rendered had icon_image been
+// absent to begin with — called from the img's onerror handler.
+function iconImgFallback(img, letter, color) {
+  const div = document.createElement('div');
+  if (letter) {
+    div.className = 'tt-icon rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0';
+    div.style.background = color || 'var(--card-border)';
+    div.textContent = letter;
+  } else {
+    div.className = 'tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center';
+    div.innerHTML = svgIcon('ball', 22);
+  }
+  img.replaceWith(div);
 }
 
 function headerCellHtml(cat) {
@@ -847,7 +872,7 @@ async function startLocal() {
 }
 
 async function newLocalRound() {
-  setStatusLoading('Raster wird geladen…');
+  setStatusLoading('Grid wird geladen…');
   stopTimer();
   hideEndBanner();
   document.getElementById('board').innerHTML = '';
@@ -864,7 +889,7 @@ async function newLocalRound() {
 
   const resp = await fetch(`/api/game/new?${genParams().toString()}`);
   if (!resp.ok) {
-    setStatus('Kein Raster gefunden – bitte erneut versuchen.');
+    setStatus('Kein Grid gefunden – bitte erneut versuchen.');
     return;
   }
   const data = await resp.json();
@@ -983,7 +1008,7 @@ async function startSolo() {
 // so callers can fetch from wherever their puzzle actually comes from in
 // between.
 function beginSoloRound() {
-  setStatusLoading('Raster wird geladen…');
+  setStatusLoading('Grid wird geladen…');
   stopTimer();
   hideEndBanner();
   document.getElementById('board').innerHTML = '';
@@ -1008,7 +1033,7 @@ async function newSoloRound() {
   beginSoloRound();
   const resp = await fetch(`/api/game/new?${genParams().toString()}`);
   if (!resp.ok) {
-    setStatus('Kein Raster gefunden – bitte erneut versuchen.');
+    setStatus('Kein Grid gefunden – bitte erneut versuchen.');
     return;
   }
   const data = await resp.json();
@@ -1085,7 +1110,7 @@ async function endGameSolo() {
     showEndBanner(
       perfect ? 'trophy' : 'puzzle',
       `${g.soloCorrect} / 9 richtig`,
-      perfect ? 'Perfekte Runde!' : 'Raster beendet.'
+      perfect ? 'Perfekte Runde!' : 'Grid beendet.'
     );
   } else {
     stats.solo.rounds++;
@@ -1104,7 +1129,7 @@ async function endGameSolo() {
   await revealSolutions();
 }
 
-// ─── Modus: Tägliches Raster ────────────────────────────────────────────────
+// ─── Modus: Daily Grid ────────────────────────────────────────────────
 // A daily grid the backend generates deterministically from the date (see
 // app.py's /api/daily/today) — everyone gets the same puzzle. The "once per
 // day" gate and the streak itself live entirely in localStorage, same as
@@ -1211,7 +1236,7 @@ document.getElementById('end-share').addEventListener('click', () => {
   setTimeout(() => { btn.innerHTML = iconText('share', 'Teilen', { size: 15 }); }, 1500);
 });
 
-// ─── Editor: eigenes Raster bauen, speichern & teilen, per Code laden ──────
+// ─── Editor: eigenes Grid bauen, speichern & teilen, per Code laden ──────
 
 function goToEditor() {
   showScreen('editor');
@@ -1390,7 +1415,7 @@ document.getElementById('btn-editor-save').addEventListener('click', async e => 
     });
     const data = await resp.json();
     if (!resp.ok) {
-      errorEl.textContent = data.error || 'Raster konnte nicht gespeichert werden.';
+      errorEl.textContent = data.error || 'Grid konnte nicht gespeichert werden.';
       errorEl.classList.remove('hidden');
       return;
     }
@@ -1447,7 +1472,7 @@ async function loadAndStartCustomGrid(code, errorElId = 'editor-load-error', btn
     const resp = await fetch(`/api/grids/${encodeURIComponent(code)}`);
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      errorEl.textContent = data.error || 'Raster nicht gefunden.';
+      errorEl.textContent = data.error || 'Grid nicht gefunden.';
       errorEl.classList.remove('hidden');
       return;
     }
@@ -1800,7 +1825,7 @@ let statsResetConfirming = false;
 
 // Shared Wordle-style histogram renderer — one flat accent bar per score
 // bucket (0-9), length relative to the largest bucket, used for both the
-// Solo and Tages-Raster sections so "how much got solved" shows up as a
+// Solo and Daily Grid sections so "how much got solved" shows up as a
 // shape, not just one aggregate percentage.
 function distributionChartHtml(dist, emptyLabel) {
   const total = dist.reduce((a, b) => a + b, 0);
@@ -1835,7 +1860,7 @@ function renderStats() {
 
   document.getElementById('stats-body').innerHTML = `
     <div>
-      ${sectionLabel('calendar', 'Tages-Raster')}
+      ${sectionLabel('calendar', 'Daily Grid')}
       <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(iconText('fire', d.currentStreak, { size: 14, gap: 4 }), 'Serie', true)}
         ${tile(`${dailyAccuracy}%`, 'Trefferquote')}
