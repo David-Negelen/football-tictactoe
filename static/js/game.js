@@ -416,21 +416,22 @@ function cellHtml(r, c) {
     // A real name list overflows a mobile-width cell fast ("Mattia
     // Graffiedi, Marco Donadel, Cristian Brocchi +2 weitere" wraps to 4-5
     // lines and breaks the grid's rhythm) — so the cell itself only shows
-    // the most prominent answer (last name, same rule as a filled cell)
-    // plus a "+N" count for the rest, and tapping it opens the full list
-    // in a sheet (openSolutionSheet) for the detail. Single line, shrink-
-    // to-fit like a filled cell's name — never a name AND a count fighting
-    // for space via mid-word truncation.
+    // the most prominent answer (last name, same rule as a filled cell) on
+    // its own line, shrink-to-fit, and — only if there's more than one
+    // answer — a small "+N weitere" on a second line below it, rather than
+    // crowding both onto one line. Tapping the cell opens the full list in
+    // a sheet (openSolutionSheet) for the detail.
     const cellSol = g.solution[r][c];
     const count = cellSol.count || 0;
     const first = cellSol.players?.[0] ? esc(formatPlayerName(cellSol.players[0].name)) : '';
-    const summary = count === 0 ? '–' : count === 1 ? first : `${first} +${count - 1}`;
+    const more = count - 1;
     // No "LÖSUNG" caption — repeated on every one of these cells it was
     // just noise, and the muted color plus the checkmark on cells you did
     // answer (see above) already says "this one wasn't yours" on its own.
     return `
       <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-3 tt-slot text-center">
-        <div class="tt-cell-name" style="color:var(--text-dim)">${summary}</div>
+        <div class="tt-cell-name" style="color:var(--text-dim)">${count === 0 ? '–' : first}</div>
+        ${more > 0 ? `<div class="text-xs mt-0.5" style="color:var(--text-faint)">+${more} weitere</div>` : ''}
       </button>`;
   }
 
