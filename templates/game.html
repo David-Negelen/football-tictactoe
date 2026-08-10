@@ -122,34 +122,14 @@
        the palette. */
     .tt-icon-mono { filter: grayscale(1); opacity: .85; }
 
-    /* Downloaded crest/flag artwork (categoryIconHtml's icon_image branch)
-       gets a crisp light outline instead of sitting directly on the dark
-       card — a predominantly dark crest (Tottenham's navy, Newcastle's
-       black/white) would otherwise be nearly invisible against the dark
-       theme. CSS has no direct "outline" filter for arbitrary transparent
-       artwork, so this is faked with eight zero-blur drop-shadows offset
-       a fraction of a pixel in every direction — a thin traced line
-       around the image's own alpha silhouette, not a blur/glow. A dark
-       crest gets a visible edge while an already-bright one just gets a
-       barely-noticeable line — no boxy backdrop behind crests that never
-       needed one. object-fit:contain keeps the crest's real aspect ratio
-       within the fixed-size .tt-icon square instead of stretching it
-       (the browser's fill default otherwise squashes non-square crests
-       like SC Paderborn's circular badge into an oval). Letter badges and
-       the grayscale ball fallback don't use this, they already carry
-       their own contrast. */
-    .tt-icon-crest-img {
-      object-fit: contain;
-      filter:
-        drop-shadow(.6px 0 0 rgba(255, 255, 255, .8))
-        drop-shadow(-.6px 0 0 rgba(255, 255, 255, .8))
-        drop-shadow(0 .6px 0 rgba(255, 255, 255, .8))
-        drop-shadow(0 -.6px 0 rgba(255, 255, 255, .8))
-        drop-shadow(.6px .6px 0 rgba(255, 255, 255, .8))
-        drop-shadow(-.6px -.6px 0 rgba(255, 255, 255, .8))
-        drop-shadow(.6px -.6px 0 rgba(255, 255, 255, .8))
-        drop-shadow(-.6px .6px 0 rgba(255, 255, 255, .8));
-    }
+    /* Downloaded crest/flag artwork (categoryIconHtml's icon_image branch) —
+       object-fit:contain keeps the real aspect ratio within the fixed-size
+       .tt-icon square instead of stretching it (the browser's fill default
+       otherwise squashes non-square crests like SC Paderborn's circular
+       badge into an oval). No outline/contrast treatment beyond this —
+       tried a light outline for dark crests (Tottenham's navy, Newcastle's
+       black/white) but it wasn't wanted, removed. */
+    .tt-icon-img { object-fit: contain; }
 
     /* App-chrome icons (mode cards, daily card, header logo) — accent-
        colored line icons, replacing the old grayscale-filtered emoji so

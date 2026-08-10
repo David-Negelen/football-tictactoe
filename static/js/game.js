@@ -408,16 +408,7 @@ function categoryIconHtml(cat) {
     // double quotes would collide with (and truncate) that attribute.
     const jsStr = s => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
     const onerror = `iconImgFallback(this, ${jsStr(cat.icon_letter || '')}, ${jsStr(cat.icon_color || '')})`;
-    // A crest/flag's own palette can be almost entirely dark (Tottenham's
-    // navy cockerel, Newcastle's black-and-white, ...) and disappear
-    // against the dark card behind it. A boxed white backdrop fixed that
-    // but looked like a sticker sheet on every crest, including the ones
-    // that were already fine — a soft light outline that follows the
-    // image's own alpha silhouette (via stacked drop-shadows, since CSS
-    // has no direct "outline" for arbitrary transparent artwork) instead
-    // gives just enough separation for dark crests without boxing the
-    // ones that didn't need it.
-    return `<img src="${esc(cat.icon_image)}" alt="" class="tt-icon tt-icon-crest-img flex-shrink-0" onerror="${esc(onerror)}">`;
+    return `<img src="${esc(cat.icon_image)}" alt="" class="tt-icon tt-icon-img flex-shrink-0" onerror="${esc(onerror)}">`;
   }
   // Dynamically generated clubs without a hand-picked emoji (the vast
   // majority of ~6,500 clubs) carry icon_letter/icon_color instead of an
