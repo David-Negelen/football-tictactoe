@@ -1,3 +1,48 @@
+// ─── Icons ──────────────────────────────────────────────────────────────────
+
+// One small hand-authored line-icon set replacing every decorative emoji in
+// the app (system emoji renders in fixed, uncontrollable multi-color glyphs
+// that clash with the rest of the flat, single-accent design language — see
+// the earlier header-menu icon pass). Every icon uses currentColor, so the
+// wrapping element's `color` decides whether it reads as neutral chrome or
+// picks up the accent — no separate color parameter needed here.
+// Flags (real content, not decoration) and plain typographic glyphs (✓ ✕ ☰)
+// are intentionally left alone — see CLAUDE.md-adjacent design notes in
+// earlier commits on why those are exempt.
+const ICON_PATHS = {
+  fire: `<path d="M12 2c.5 3-2.5 4.5-2.5 8a2.5 2.5 0 0 0 5 0c0-1-.5-1.8-.9-2.5 1.4 1 2.4 3 2.4 5a4.5 4.5 0 0 1-9 0c0-4 2-6.5 3-7.5.3 1.5 1 2 1.5 1.5-.2-1.7 0-3 .5-4.5Z"/>`,
+  trophy: `<path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M8 5H5a2 2 0 0 0 0 4h1.5"/><path d="M16 5h3a2 2 0 0 1 0 4h-1.5"/><path d="M10 15v3"/><path d="M14 15v3"/><path d="M9 21h6"/>`,
+  handshake: `<path d="M12 3v18"/><path d="M5 8l-3 6a4 4 0 0 0 8 0l-3-6Z"/><path d="M19 8l-3 6a4 4 0 0 0 8 0l-3-6Z"/><path d="M5 8h14"/><path d="M8 21h8"/>`,
+  loss: `<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6"/><path d="m15 9-6 6"/>`,
+  check: `<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>`,
+  link: `<path d="M9 15 15 9"/><path d="M11 6l1.5-1.5a4 4 0 0 1 5.5 5.5L16.5 11.5"/><path d="M13 18l-1.5 1.5a4 4 0 0 1-5.5-5.5L7.5 12.5"/>`,
+  share: `<path d="M12 15V4"/><path d="m8 8 4-4 4 4"/><path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>`,
+  rematch: `<path d="M17 2l4 4-4 4"/><path d="M21 6H8a4 4 0 0 0-4 4v1"/><path d="M7 22l-4-4 4-4"/><path d="M3 18h13a4 4 0 0 0 4-4v-1"/>`,
+  calendar: `<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>`,
+  puzzle: `<path d="M4 7h4a1 1 0 0 0 1-1 2 2 0 1 1 4 0 1 1 0 0 0 1 1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1 2 2 0 1 0 0 4 1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1 2 2 0 1 0-4 0 1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1 2 2 0 1 0 0-4 1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/>`,
+  couch: `<path d="M4 18v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5"/><path d="M2 18h20v2H2z"/><path d="M4 13V9a2 2 0 0 1 2-2h1v4"/><path d="M20 13V9a2 2 0 0 0-2-2h-1v4"/>`,
+  globe: `<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>`,
+  chart: `<line x1="6" y1="20" x2="6" y2="12"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="18" y1="20" x2="18" y2="4"/>`,
+  controller: `<rect x="2" y="8" width="20" height="10" rx="5"/><path d="M7 11v4"/><path d="M5 13h4"/><circle cx="16" cy="11" r="1"/><circle cx="18" cy="14" r="1"/>`,
+  ball: `<circle cx="12" cy="12" r="9"/><path d="M12 8l3 2-1 4H10l-1-4Z"/><path d="M12 3v5"/><path d="M6 8l3.5 2.5"/><path d="M18 8l-3.5 2.5"/><path d="M8 20l2-6"/><path d="M16 20l-2-6"/>`,
+  play: `<path d="M6 4l13 8-13 8V4Z"/>`,
+  clock: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>`,
+};
+const ICON_FILLED = new Set(['fire', 'play']);
+
+function svgIcon(name, size = 18) {
+  const attrs = ICON_FILLED.has(name)
+    ? `fill="currentColor" stroke="none"`
+    : `fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" ${attrs} style="flex-shrink:0">${ICON_PATHS[name]}</svg>`;
+}
+
+// Icon + text inline, for the many places an emoji used to sit directly in
+// front of a label (banners, buttons, status text).
+function iconText(name, text, { size = 16, gap = 6 } = {}) {
+  return `<span style="display:inline-flex;align-items:center;gap:${gap}px">${svgIcon(name, size)}<span>${text}</span></span>`;
+}
+
 // ─── SVG & badges ───────────────────────────────────────────────────────────
 
 function shirtSvg() {
@@ -355,8 +400,11 @@ function categoryIconHtml(cat) {
     return `<div class="tt-icon rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0"
       style="background:${esc(cat.icon_color || 'var(--card-border)')}">${esc(cat.icon_letter)}</div>`;
   }
-  return `<div class="tt-icon-mono tt-icon leading-none flex-shrink-0 flex items-center justify-center"
-    style="font-size:clamp(18px,6vw,26px)">${cat.icon || '⚽'}</div>`;
+  if (cat.icon) {
+    return `<div class="tt-icon-mono tt-icon leading-none flex-shrink-0 flex items-center justify-center"
+      style="font-size:clamp(18px,6vw,26px)">${cat.icon}</div>`;
+  }
+  return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon('ball', 22)}</div>`;
 }
 
 function headerCellHtml(cat) {
@@ -661,7 +709,7 @@ function updateStreakDisplay() {
   if (s >= 2 && !g.winner) {
     el.classList.remove('hidden');
     el.classList.add('flex');
-    el.textContent = `🔥 ${s}`;
+    el.innerHTML = iconText('fire', s, { size: 14, gap: 4 });
   } else {
     el.classList.add('hidden');
     el.classList.remove('flex');
@@ -676,15 +724,15 @@ function updateStreakDisplay() {
 // the revealed board underneath stays fully visible and tappable the whole
 // time (see openSolutionSheet).
 function showEndBanner(icon, title, sub, extra, showReplay = true) {
-  document.getElementById('status-text').textContent = `${icon} ${title}`;
+  document.getElementById('status-text').innerHTML = iconText(icon, title);
   const subEl = document.getElementById('end-banner');
-  subEl.textContent = extra ? `${sub} · ${extra}` : sub;
+  subEl.innerHTML = extra ? `${sub} · ${extra}` : sub;
   subEl.classList.remove('hidden');
 
   const replayBtn = document.getElementById('end-new-game');
   replayBtn.classList.toggle('hidden', !showReplay);
   replayBtn.disabled = false;
-  replayBtn.textContent = g.mode === 'online' ? '🔁 Revanche' : 'Nochmal spielen';
+  replayBtn.innerHTML = g.mode === 'online' ? iconText('rematch', 'Revanche', { size: 14 }) : 'Nochmal spielen';
   // Only the daily-completion branch in endGameSolo shows this — reset it
   // here so a stale "shown" state from an earlier daily round never leaks
   // into a later solo/local/online banner.
@@ -883,7 +931,7 @@ async function endGameLocal() {
   if (g.winner === 'draw') {
     stats.local.draws++;
     saveStats();
-    showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.');
+    showEndBanner('handshake', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.');
   } else {
     stats.local.wins[g.winner] = (stats.local.wins[g.winner] || 0) + 1;
     if (stats.local.fastestWinSeconds == null || g.elapsedSeconds < stats.local.fastestWinSeconds) {
@@ -895,10 +943,10 @@ async function endGameLocal() {
     const winnerSym = g.winner === 1 ? 'X' : 'O';
     const loserSym  = g.winner === 1 ? 'O' : 'X';
     showEndBanner(
-      '🏆',
+      'trophy',
       `${winnerSym} gewinnt!`,
       gaveUp ? `${loserSym} hat aufgegeben.` : `${winnerSym} hat das Spiel gewonnen!`,
-      `🔥 Beste Serie: ${stats.local.bestStreak}`
+      iconText('fire', `Beste Serie: ${stats.local.bestStreak}`, { size: 13 })
     );
   }
   await revealSolutions();
@@ -1010,9 +1058,9 @@ async function endGameSolo() {
     updateDailyCardBadge();
     if (perfect) fireConfetti();
     showEndBanner(
-      perfect ? '🏆' : '📅',
+      perfect ? 'trophy' : 'calendar',
       `${g.soloCorrect} / 9 richtig`,
-      `🔥 Streak: ${daily.currentStreak} Tag${daily.currentStreak === 1 ? '' : 'e'}`,
+      iconText('fire', `Streak: ${daily.currentStreak} Tag${daily.currentStreak === 1 ? '' : 'e'}`, { size: 13 }),
       `Beste Serie: ${daily.bestStreak}`,
       false // already played today — no "Nochmal spielen"
     );
@@ -1022,7 +1070,7 @@ async function endGameSolo() {
     // different activity, not a random practice round.
     if (perfect) fireConfetti();
     showEndBanner(
-      perfect ? '🏆' : '🧩',
+      perfect ? 'trophy' : 'puzzle',
       `${g.soloCorrect} / 9 richtig`,
       perfect ? 'Perfekte Runde!' : 'Rätsel beendet.'
     );
@@ -1035,7 +1083,7 @@ async function endGameSolo() {
     saveStats();
     if (perfect) fireConfetti();
     showEndBanner(
-      perfect ? '🏆' : '🧩',
+      perfect ? 'trophy' : 'puzzle',
       `${g.soloCorrect} / 9 richtig`,
       perfect ? 'Perfekte Runde!' : 'Runde beendet.'
     );
@@ -1132,7 +1180,7 @@ async function startDaily() {
 function showDailyAlreadyPlayed(dailyState, date) {
   const result = dailyState.completed[date];
   document.getElementById('daily-done-score').textContent = `${result.correct} / 9 richtig`;
-  document.getElementById('daily-done-streak').textContent = `🔥 ${dailyState.currentStreak} Tag${dailyState.currentStreak === 1 ? '' : 'e'} in Folge`;
+  document.getElementById('daily-done-streak').innerHTML = iconText('fire', `${dailyState.currentStreak} Tag${dailyState.currentStreak === 1 ? '' : 'e'} in Folge`);
   document.getElementById('daily-done-best').textContent = `Beste Serie: ${dailyState.bestStreak}`;
   showScreen('daily-done');
 }
@@ -1146,8 +1194,8 @@ document.getElementById('end-share').addEventListener('click', () => {
   const text = `⚽ Tiki-Taka-Toe Tagesrätsel ${g.dailyDate}\n${result.correct}/9 richtig · 🔥 ${daily.currentStreak} Tage Serie\n${location.origin}/game`;
   copyToClipboard(text);
   const btn = document.getElementById('end-share');
-  btn.textContent = '✅ Kopiert';
-  setTimeout(() => { btn.textContent = '📤 Teilen'; }, 1500);
+  btn.innerHTML = iconText('check', 'Kopiert', { size: 15 });
+  setTimeout(() => { btn.innerHTML = iconText('share', 'Teilen', { size: 15 }); }, 1500);
 });
 
 // ─── Editor: eigenes Rätsel bauen, speichern & teilen, per Code laden ──────
@@ -1345,8 +1393,8 @@ document.getElementById('btn-editor-copy-link').addEventListener('click', () => 
   if (!g.editorSavedCode) return;
   copyToClipboard(`${location.origin}/game?grid=${g.editorSavedCode}`);
   const btn = document.getElementById('btn-editor-copy-link');
-  btn.textContent = '✅ Kopiert';
-  setTimeout(() => { btn.textContent = '🔗 Link kopieren'; }, 1500);
+  btn.innerHTML = iconText('check', 'Kopiert', { size: 14 });
+  setTimeout(() => { btn.innerHTML = iconText('link', 'Link kopieren', { size: 14 }); }, 1500);
 });
 document.getElementById('btn-editor-play').addEventListener('click', () => {
   if (g.editorSavedCode) loadAndStartCustomGrid(g.editorSavedCode);
@@ -1384,7 +1432,7 @@ async function loadAndStartCustomGrid(code) {
 function renderLobbyHome() {
   document.getElementById('online-lobby-body').innerHTML = `
     <div class="tt-card p-6 flex flex-col gap-4 items-center text-center">
-      <div class="text-3xl tt-icon-mono">🌐</div>
+      <svg class="tt-icon-app" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg>
       <button id="btn-create-room" class="tt-btn-accent w-full text-sm px-4 py-2.5 rounded-xl">Raum erstellen</button>
       <div class="text-xs" style="color:var(--text-dim)">— oder —</div>
       <div class="w-full flex gap-2">
@@ -1434,7 +1482,7 @@ function execCommandCopy(text) {
   try {
     document.execCommand('copy');
   } catch (_) {
-    // Nothing more we can do — the button's "✅ Kopiert" feedback still
+    // Nothing more we can do — the button's "Kopiert" feedback still
     // fires, but that's a pre-existing tradeoff, not something new here.
   }
   document.body.removeChild(el);
@@ -1446,7 +1494,7 @@ function renderLobbyWaiting(code) {
     <div class="tt-card p-6 flex flex-col gap-3 items-center text-center">
       <div class="text-sm" style="color:var(--text-dim)">Warte auf Gegner…</div>
       <div class="text-4xl font-black tracking-[0.3em]" style="color:var(--accent)">${esc(code)}</div>
-      <button id="btn-copy-link" class="tt-btn-neutral text-xs px-3 py-1.5 rounded-lg">🔗 Link kopieren</button>
+      <button id="btn-copy-link" class="tt-btn-neutral text-xs px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5">${iconText('link', 'Link kopieren', { size: 14 })}</button>
       <div class="flex items-center gap-2 text-xs mt-2" style="color:var(--text-dim)">
         <span class="inline-block w-2 h-2 rounded-full animate-pulse" style="background:var(--accent)"></span>
         Sobald dein Freund beitritt, geht's los
@@ -1456,8 +1504,8 @@ function renderLobbyWaiting(code) {
     copyToClipboard(link);
     const btn = document.getElementById('btn-copy-link');
     if (!btn) return;
-    btn.textContent = '✅ Kopiert';
-    setTimeout(() => { btn.textContent = '🔗 Link kopieren'; }, 1500);
+    btn.innerHTML = iconText('check', 'Kopiert', { size: 14 });
+    setTimeout(() => { btn.innerHTML = iconText('link', 'Link kopieren', { size: 14 }); }, 1500);
   });
 }
 
@@ -1591,13 +1639,13 @@ function updateRematchButtonState(requested) {
   const oppRequested = requested.some(s => s !== g.onlineSlot);
   if (youRequested) {
     btn.disabled = true;
-    btn.textContent = '⏳ Warte auf Gegner…';
+    btn.innerHTML = iconText('clock', 'Warte auf Gegner…', { size: 14 });
   } else if (oppRequested) {
     btn.disabled = false;
-    btn.textContent = '✅ Revanche annehmen';
+    btn.innerHTML = iconText('check', 'Revanche annehmen', { size: 14 });
   } else {
     btn.disabled = false;
-    btn.textContent = '🔁 Revanche';
+    btn.innerHTML = iconText('rematch', 'Revanche', { size: 14 });
   }
 }
 
@@ -1651,7 +1699,7 @@ async function finishOnline() {
     stats.online.draws++;
     stats.online.streak = 0;
     saveStats();
-    showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', '', true);
+    showEndBanner('handshake', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', '', true);
   } else {
     const youWon = g.winner === g.onlineSlot;
     if (youWon) {
@@ -1665,7 +1713,7 @@ async function finishOnline() {
     saveStats();
     if (youWon) fireConfetti();
     showEndBanner(
-      youWon ? '🏆' : '💔',
+      youWon ? 'trophy' : 'loss',
       youWon ? 'Du gewinnst!' : 'Du verlierst',
       youWon ? 'Gut gespielt!' : 'Nächstes Mal klappt’s!',
       '',
@@ -1744,16 +1792,19 @@ function renderStats() {
   const tile = (value, label, accented) => `
     <div class="tt-card p-2.5"><div class="text-base font-black" style="color:${accented ? 'var(--accent)' : 'var(--text)'}">${value}</div><div class="tt-label">${label}</div></div>`;
 
+  const sectionLabel = (iconName, text) =>
+    `<div class="tt-label mb-2 flex items-center gap-1.5">${svgIcon(iconName, 13)}${text}</div>`;
+
   document.getElementById('stats-body').innerHTML = `
     <div>
-      <div class="tt-label mb-2">📅 Tages-Rätsel</div>
+      ${sectionLabel('calendar', 'Tages-Rätsel')}
       <div class="grid grid-cols-2 gap-2 text-center">
-        ${tile(`${d.currentStreak} 🔥`, 'Serie', true)}
+        ${tile(iconText('fire', d.currentStreak, { size: 14, gap: 4 }), 'Serie', true)}
         ${tile(`${dailyAccuracy}%`, 'Trefferquote')}
       </div>
     </div>
     <div>
-      <div class="tt-label mb-2">🧩 Solo</div>
+      ${sectionLabel('puzzle', 'Solo')}
       <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(s.rounds, 'Runden')}
         ${tile(`${s.bestCorrect}/9`, 'Bestes Ergebnis', true)}
@@ -1765,7 +1816,7 @@ function renderStats() {
       </div>
     </div>
     <div>
-      <div class="tt-label mb-2">🌐 1v1 Online</div>
+      ${sectionLabel('globe', '1v1 Online')}
       <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(o.rounds, 'Spiele')}
         ${tile(`${onlineWinRate}%`, 'Gewinnrate', true)}
