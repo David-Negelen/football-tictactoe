@@ -119,6 +119,39 @@ LEAGUE_CATEGORIES: list[LeagueCategory] = [
     ], difficulty=2),
 ]
 
+# Big non-top-4 leagues, as ordinary selectable categories (same idea as
+# CONTINENT_CATEGORIES) — deliberately NOT part of LEAGUE_CATEGORIES above,
+# which is specifically the 4 leagues with a full club roster used for the
+# "Liga" filter-mode picker (see app.py's LEAGUE_POOLS comment). These exist
+# so a handful of individually-famous foreign clubs (Boca Juniors, Flamengo,
+# Al-Hilal, Ajax, ...) surface as "played in the Argentine/Brazilian/Saudi/
+# Dutch league" instead of requiring recognition of one specific foreign
+# club by name — the league itself is often the more recognizable thing.
+# Only leagues with enough individually-famous clubs to form a real category
+# (≥2) get one; a lone famous club per league (Paris SG/Ligue 1, Jeonbuk
+# Hyundai/K-League, GZ Evergrande/CSL) stays an individual club category
+# instead of a fake one-club "league" — see CLUB_FAME_TIER_1/2 in
+# dynamic_categories.py, which is where those live.
+FOREIGN_LEAGUE_CATEGORIES: list[LeagueCategory] = [
+    LeagueCategory("league_bra", "Brasilianische Serie A", [
+        "Flamengo", "Corinthians", "Palmeiras", "FC Santos", "FC São Paulo",
+        "Fluminense", "Grêmio", "Internacional",
+    ], difficulty=2),
+    LeagueCategory("league_arg", "Argentinische Liga", [
+        "Boca Juniors", "River Plate", "Independiente", "Racing Club",
+        "Estudiantes LP", "San Lorenzo",
+    ], difficulty=2),
+    LeagueCategory("league_ksa", "Saudi Pro League", [
+        "Al-Hilal", "Al-Nassr", "Al-Ittihad", "Al-Ahli",
+    ], difficulty=2),
+    LeagueCategory("league_ere", "Eredivisie", [
+        "Ajax", "PSV",
+    ], difficulty=3),
+    LeagueCategory("league_jup", "J-League", [
+        "Urawa Reds", "Kashima Antlers", "Vissel Kobe",
+    ], difficulty=3),
+]
+
 CONTINENT_CATEGORIES: list[ContinentCategory] = [
     ContinentCategory("cont_sam", "In Südamerika gespielt", [
         # Brazil
@@ -180,6 +213,7 @@ ALL_CATEGORIES: list[Category] = [
     *NON_EUROPEAN_CATEGORIES,
     *POSITION_CATEGORIES,
     *LEAGUE_CATEGORIES,
+    *FOREIGN_LEAGUE_CATEGORIES,
     *CONTINENT_CATEGORIES,
     *INITIAL_CATEGORIES,
     *CONTAINS_LETTER_CATEGORIES,

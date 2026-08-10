@@ -189,10 +189,15 @@ CLUB_FAME_TIER_1: frozenset[str] = frozenset({
     # Serie A
     "Juventus", "Milan", "Inter", "SSC Neapel", "AS Rom", "Lazio Rom",
     "Atalanta", "AC Florenz", "AC Parma",
-    # South America
-    "Boca Juniors", "River Plate", "Flamengo", "Corinthians",
     # Other Europe (from LEGACY_CLUB_IDS, no whitelisted league of their own)
-    "Ajax", "Paris SG",
+    # — Paris SG stays individual: Ligue 1 has no other fame-tiered club, so
+    # a one-club "league" category would be a worse, less recognizable
+    # wrapper than just naming PSG directly (see FOREIGN_LEAGUE_CATEGORIES
+    # in category_config.py for the leagues that DID get grouped this way —
+    # Boca Juniors/River Plate/Flamengo/Corinthians/Ajax used to be listed
+    # here too, before being folded into Argentinische Liga/Brasilianische
+    # Serie A/Eredivisie).
+    "Paris SG",
 })
 
 CLUB_FAME_TIER_2: frozenset[str] = frozenset({
@@ -206,19 +211,21 @@ CLUB_FAME_TIER_2: frozenset[str] = frozenset({
     "Celta Vigo", "Rayo Vallecano", "Esp. Barcelona", "Dep. La Coruña",
     # Serie A
     "FC Turin", "FC Bologna", "Genua CFC", "Udinese",
-    # South America
-    "Palmeiras", "FC Santos", "FC São Paulo", "Independiente",
-    "Fluminense", "Peñarol", "Grêmio", "Internacional", "Racing Club",
-    "Estudiantes LP", "San Lorenzo", "Nacional", "Atl. Nacional",
-    # Africa
+    # South America — Uruguay/Colombia don't have enough fame-tiered clubs
+    # of their own for a FOREIGN_LEAGUE_CATEGORIES entry (unlike Brazil/
+    # Argentina, folded into Brasilianische Serie A/Argentinische Liga
+    # above), so these stay individual.
+    "Peñarol", "Nacional", "Atl. Nacional",
+    # Africa — spans 5 different countries' leagues (Tunisia, Morocco,
+    # Egypt, South Africa, DR Congo), so there's no single "league" to
+    # group these under the way Brazil/Argentina/Saudi Arabia got one.
     "Esperance", "Wydad AC", "Raja Casablanca", "Zamalek", "Kaizer Chiefs",
     "Sundowns", "TP Mazembe",
-    # Asia — Saudi Pro League's globally-covered signings, and the
-    # historically biggest J-League/K-League/CSL names
-    "Al-Hilal", "Al-Nassr", "Al-Ittihad", "Al-Ahli", "Urawa Reds",
-    "Kashima Antlers", "GZ Evergrande", "Jeonbuk Hyundai", "Vissel Kobe",
-    # Other Europe
-    "PSV",
+    # Asia — GZ Evergrande (China) and Jeonbuk Hyundai (South Korea) are
+    # each the only fame-tiered club in their league, same reasoning as
+    # Paris SG above; Saudi Pro League and J-League had enough (4 and 3) to
+    # become their own FOREIGN_LEAGUE_CATEGORIES entries instead.
+    "GZ Evergrande", "Jeonbuk Hyundai",
 })
 
 PROMINENT_CLUB_NAMES: set[str] = {
