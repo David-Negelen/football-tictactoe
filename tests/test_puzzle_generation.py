@@ -213,7 +213,7 @@ def test_sample_league_puzzle_categories_never_splits_nationalities_across_sides
     nationalities = [NationalityCategory(f"nat_{i}", f"Nat {i}", f"Nat {i}") for i in range(10)]
 
     for _ in range(50):
-        rows, cols = app_module._sample_league_puzzle_categories(league_clubs, nationalities, min_clubs=4)
+        rows, cols = app_module._sample_league_puzzle_categories(league_clubs, nationalities, n_clubs_target=4)
         assert rows is not None
         sample = rows + cols
         assert len(sample) == 6
@@ -234,7 +234,7 @@ def test_sample_league_puzzle_categories_never_splits_trophies_across_sides() ->
 
     saw_award = False
     for _ in range(50):
-        rows, cols = app_module._sample_league_puzzle_categories(league_clubs, trophies, min_clubs=4)
+        rows, cols = app_module._sample_league_puzzle_categories(league_clubs, trophies, n_clubs_target=4)
         assert rows is not None
         sample = rows + cols
         assert len(sample) == 6

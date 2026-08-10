@@ -375,20 +375,32 @@ GENERAL_MAX_AWARD = 1
 # pool above, two clubs *within the same league* commonly do share a
 # transferred player, so league mode allows clubs mixed freely across both
 # sides rather than confining them to one (see _sample_league_puzzle_categories).
-LEAGUE_MIN_CLUBS = 4
+#
+# The exact club count is picked once per puzzle from LEAGUE_CLUB_LAYOUTS
+# below, not re-randomized on every retry attempt inside the sampler. That
+# was the original design (a random 4-6 draw per attempt) and it looked
+# varied on paper but wasn't in practice: a broad category ANDed with
+# "played in this league" has a much thinner player pool than a plain club
+# category, so broad-inclusive attempts fail the caller's min/max_players
+# bounds check far more often and get discarded, while all-club attempts (6
+# clubs, zero broad) succeed almost immediately and dominate the returned
+# puzzles by sheer speed, not genuine randomness — empirically puzzles were
+# all-club ~17/18 times sampled. Committing to one target club count for the
+# whole retry loop (only the specific clubs/categories get re-rolled each
+# attempt, not the shape) removes that bias: a "3 clubs" puzzle keeps
+# retrying as a 3-club puzzle until it clears bounds, or the caller's
+# fallback ladder loosens min/max_players instead.
+LEAGUE_MIN_CLUBS = 3
 
-# Used to originally allow up to 6 (i.e. every cell a club, zero broad
-# categories) — in practice puzzles landed there almost every time, not just
-# "sometimes": a broad category ANDed with "played in this league" has a much
-# thinner player pool than a plain club category, so broad-inclusive draws
-# fail the caller's min/max_players bounds check far more often and get
-# discarded by the retry loop, while all-club draws succeed almost
-# immediately and return first. The random 4-6 draw looked varied on paper
-# but the *actual* outcomes skewed almost entirely to 6. Capping at 4 (equal
-# to LEAGUE_MIN_CLUBS) removes that bias by construction — every league
-# puzzle always has exactly 2 broad (non-club) categories, not "usually 0
-# because those attempts kept losing the retry race."
-LEAGUE_MAX_CLUBS = 4
+# Layouts range from 3 clubs (half the grid broad) up to 6 (every cell a
+# club) — not lower than 3: the grid splits 3-and-3 across two sides, and
+# _sample_league_puzzle_categories keeps same-typed broad categories (all
+# nationality, or all trophy) together as one group on a single side, so
+# more than 3 broad slots risks a group that structurally can't fit either
+# side. One layout is picked per puzzle via random.choice, so some puzzles
+# are club-heavy and some are more mixed, instead of every puzzle having the
+# identical shape.
+LEAGUE_CLUB_LAYOUTS = (3, 4, 5, 6)
 
 
 def _sample_general_puzzle_categories(
@@ -479,34 +491,34 @@ def _sample_general_puzzle_categories(
     return (chosen_clubs, chosen_broad) if rng.random() < 0.5 else (chosen_broad, chosen_clubs)
 
 
-def _sample_league_puzzle_categories(league_clubs: list, broad: list, min_clubs: int, rng=random) -> tuple[list, list] | None:
-    """League mode: `min_clubs` to LEAGUE_MAX_CLUBS real clubs from the
-    selected league among the 6 categories — but, unlike the general sparse-
-    type cap, mixed freely across rows/cols rather than confined to one whole
-    side. Within a single league, two clubs are far more likely to share a
-    transferred player than two random clubs from the entire catalog (moves
-    within the same league are common), so club x club cells are safe to
-    allow here — keeping clubs pinned to one solid side every time made every
-    league puzzle the same rigid shape ("league's clubs" vs "everything
-    else"). Non-club categories fill the rest, trophies included — a trophy
-    doesn't need to be specific to the selected league (e.g. "Ballon d'Or"
-    showing up in a Bundesliga puzzle is fine). The thinness risk of a rare
-    trophy ANDed with "played in this league" is handled structurally rather
-    than by exclusion: exactly 2 broad slots exist per puzzle (see
-    LEAGUE_MAX_CLUBS for why this is fixed, not a range up to 6), the trophy
-    group is kept whole on one side (below) so trophy x trophy cells never
-    occur, and the caller's bounds check + retry loop rejects any sample
-    that comes out too thin anyway.
+def _sample_league_puzzle_categories(league_clubs: list, broad: list, n_clubs_target: int, rng=random) -> tuple[list, list] | None:
+    """League mode: `n_clubs_target` real clubs from the selected league
+    among the 6 categories (the caller picks this once per puzzle from
+    LEAGUE_CLUB_LAYOUTS, see there for why it's fixed per-call rather than
+    re-randomized here) — but, unlike the general sparse-type cap, mixed
+    freely across rows/cols rather than confined to one whole side. Within a
+    single league, two clubs are far more likely to share a transferred
+    player than two random clubs from the entire catalog (moves within the
+    same league are common), so club x club cells are safe to allow here —
+    keeping clubs pinned to one solid side every time made every league
+    puzzle the same rigid shape ("league's clubs" vs "everything else").
+    Non-club categories fill the rest, trophies included — a trophy doesn't
+    need to be specific to the selected league (e.g. "Ballon d'Or" showing up
+    in a Bundesliga puzzle is fine). The thinness risk of a rare trophy ANDed
+    with "played in this league" is handled structurally rather than by
+    exclusion: at most 3 broad slots exist per puzzle (LEAGUE_CLUB_LAYOUTS'
+    floor of 3 clubs), the trophy group is kept whole on one side (below) so
+    trophy x trophy cells never occur, and the caller's bounds check + retry
+    loop rejects any sample that comes out too thin anyway.
     """
-    max_clubs = min(LEAGUE_MAX_CLUBS, len(league_clubs))
-    if max_clubs < min_clubs:
+    n_clubs = min(n_clubs_target, len(league_clubs))
+    if n_clubs <= 0:
         return None
-    n_clubs = rng.randint(min_clubs, max_clubs)
     n_broad = 6 - n_clubs
     if len(broad) < n_broad:
         n_broad = len(broad)
-        n_clubs = min(max_clubs, 6 - n_broad)
-        if n_clubs < min_clubs:
+        n_clubs = min(len(league_clubs), 6 - n_broad)
+        if n_clubs <= 0:
             return None
 
     chosen_clubs = rng.sample(league_clubs, n_clubs)
@@ -552,8 +564,13 @@ def _generate_puzzle(db: sqlite3.Connection, max_difficulty: int = 3, min_player
         # or irrelevant); AWARD (trophies) is allowed — see
         # _sample_league_puzzle_categories' docstring.
         broad = [c for c in pool if c.type not in (CategoryType.CLUB, CategoryType.LEAGUE, CategoryType.CONTINENT)]
+        # Picked once for the whole retry loop, not re-rolled per attempt —
+        # see LEAGUE_CLUB_LAYOUTS for why re-rolling the shape every attempt
+        # defeated the point of having several of them.
+        layouts = [n for n in LEAGUE_CLUB_LAYOUTS if n >= min_league_clubs]
+        n_clubs_target = rng.choice(layouts or [min_league_clubs])
         for _ in range(max_attempts):
-            sampled = _sample_league_puzzle_categories(league_clubs, broad, min_league_clubs, rng=rng)
+            sampled = _sample_league_puzzle_categories(league_clubs, broad, n_clubs_target, rng=rng)
             if sampled is None:
                 return None, None
             rows, cols = sampled
