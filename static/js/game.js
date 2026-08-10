@@ -69,7 +69,12 @@ function getDeviceId() {
 
 const DEFAULT_STATS = {
   local: { gamesPlayed: 0, wins: { 1: 0, 2: 0 }, draws: 0, correct: 0, wrong: 0, bestStreak: 0, fastestWinSeconds: null },
-  solo: { rounds: 0, correct: 0, cells: 0, bestCorrect: 0 },
+  // streak/bestStreak: consecutive correct guesses in a row, across every
+  // solo round (daily/custom/random alike) — resets on any miss, same
+  // "hot streak" idea as local mode's per-player streak. scoreDistribution:
+  // count of random-practice rounds ending with each score 0-9, for the
+  // Wordle-style histogram in the stats modal.
+  solo: { rounds: 0, correct: 0, cells: 0, bestCorrect: 0, streak: 0, bestStreak: 0, scoreDistribution: new Array(10).fill(0) },
   online: { rounds: 0, wins: 0, losses: 0, draws: 0 },
 };
 
@@ -959,11 +964,15 @@ async function soloSelectPlayer(pid, name, club, r, c) {
   if (data.valid) {
     g.board[r][c] = { status: 'correct', player: 1, id: pid, name, club };
     g.soloCorrect++;
+    stats.solo.streak++;
+    if (stats.solo.streak > stats.solo.bestStreak) stats.solo.bestStreak = stats.solo.streak;
     refreshFilledCells();
   } else {
     g.board[r][c] = { status: 'missed' };
+    stats.solo.streak = 0;
     refreshCell(r, c);
   }
+  saveStats();
   updateStatus();
   if (g.soloAttempted >= 9) {
     g.winner = 'complete';
@@ -1019,6 +1028,7 @@ async function endGameSolo() {
     stats.solo.correct += g.soloCorrect;
     stats.solo.cells += 9;
     if (g.soloCorrect > stats.solo.bestCorrect) stats.solo.bestCorrect = g.soloCorrect;
+    stats.solo.scoreDistribution[g.soloCorrect]++;
     saveStats();
     if (perfect) fireConfetti();
     showEndBanner(
@@ -1687,6 +1697,10 @@ document.addEventListener('click', e => {
 
 // ─── Statistik-Anzeige ─────────────────────────────────────────────────────────
 
+// Same inline two-step confirm pattern as giveUpConfirming (see the
+// "Aufgeben" button) — click once to arm, click again to actually reset.
+let statsResetConfirming = false;
+
 function renderStats() {
   const l = stats.local, s = stats.solo, o = stats.online;
   const d = loadDailyState();
@@ -1697,6 +1711,22 @@ function renderStats() {
 
   const tile = (value, label, accented) => `
     <div class="tt-card p-2.5"><div class="text-base font-black" style="color:${accented ? 'var(--accent)' : 'var(--text)'}">${value}</div><div class="tt-label">${label}</div></div>`;
+
+  // Wordle-style histogram of how many random-practice rounds ended with
+  // each score (0-9 correct) — "how much got solved", not just an overall
+  // percentage. One flat accent bar per row, length relative to the
+  // largest bucket so the shape of the distribution is visible at a glance.
+  const maxBucket = Math.max(1, ...s.scoreDistribution);
+  const distribution = s.rounds === 0
+    ? `<div class="text-xs text-center py-1" style="color:var(--text-faint)">Noch keine Runden gespielt</div>`
+    : s.scoreDistribution.map((count, score) => `
+        <div class="flex items-center gap-2">
+          <div class="w-3 text-xs text-right font-bold" style="color:var(--text-dim)">${score}</div>
+          <div class="flex-1 rounded-full overflow-hidden" style="background:var(--card-border);height:12px;">
+            <div class="h-full rounded-full" style="width:${count ? Math.max(6, Math.round((count / maxBucket) * 100)) : 0}%;background:var(--accent);"></div>
+          </div>
+          <div class="w-5 text-xs text-right" style="color:var(--text-dim)">${count}</div>
+        </div>`).join('');
 
   document.getElementById('stats-body').innerHTML = `
     <div>
@@ -1723,7 +1753,13 @@ function renderStats() {
       <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(s.rounds, 'Runden')}
         ${tile(`${s.bestCorrect}/9`, 'Bestes Ergebnis', true)}
+        ${tile(`${s.streak} 🔥`, 'Serie', true)}
+        ${tile(`${s.bestStreak} 🔥`, 'Beste Serie', true)}
         <div class="tt-card p-2.5 col-span-2"><div class="text-base font-black" style="color:var(--text)">${soloAccuracy}%</div><div class="tt-label">Trefferquote gesamt</div></div>
+      </div>
+      <div class="tt-card p-3 mt-2 flex flex-col gap-1.5">
+        <div class="tt-label mb-0.5">Ergebnisverteilung</div>
+        ${distribution}
       </div>
     </div>
     <div>
@@ -1733,8 +1769,41 @@ function renderStats() {
         ${tile(o.wins, 'Siege', true)}
         ${tile(o.losses, 'Niederlagen')}
       </div>
+    </div>
+    <div class="pt-3" style="border-top:1px solid var(--card-border);">
+      <button id="btn-stats-reset" class="tt-btn-neutral w-full text-xs px-4 py-2.5 rounded-xl">Statistik zurücksetzen</button>
     </div>`;
+
+  statsResetConfirming = false;
+  document.getElementById('btn-stats-reset').addEventListener('click', e => {
+    // Same inline two-step confirm as "Aufgeben" — no browser confirm()
+    // popup — so a stray tap can never wipe every stat by accident.
+    if (!statsResetConfirming) {
+      statsResetConfirming = true;
+      e.currentTarget.textContent = 'Wirklich zurücksetzen?';
+      e.currentTarget.classList.remove('tt-btn-neutral');
+      e.currentTarget.classList.add('tt-btn-accent-outline');
+      return;
+    }
+    stats = structuredClone(DEFAULT_STATS);
+    saveStats();
+    saveDailyState(structuredClone(DEFAULT_DAILY));
+    updateDailyCardBadge();
+    renderStats();
+  });
 }
+
+document.addEventListener('click', e => {
+  if (statsResetConfirming && e.target.id !== 'btn-stats-reset') {
+    statsResetConfirming = false;
+    const btn = document.getElementById('btn-stats-reset');
+    if (btn) {
+      btn.textContent = 'Statistik zurücksetzen';
+      btn.classList.remove('tt-btn-accent-outline');
+      btn.classList.add('tt-btn-neutral');
+    }
+  }
+});
 
 document.getElementById('btn-stats').addEventListener('click', () => {
   closeMenuDropdown();
