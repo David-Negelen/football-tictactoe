@@ -690,7 +690,7 @@ def api_game_new():
     finally:
         db.close()
     if rows is None:
-        return jsonify({"error": "Kein gültiges Rätsel gefunden"}), 500
+        return jsonify({"error": "Kein gültiges Raster gefunden"}), 500
     return jsonify({"rows": [_cat_display(c) for c in rows], "cols": [_cat_display(c) for c in cols]})
 
 
@@ -808,7 +808,7 @@ def api_game_validate():
     return jsonify({"valid": valid, "player": dict(player) if player else None})
 
 
-# ─── Tägliches Rätsel (daily curated grid + streak) ────────────────────────
+# ─── Tägliches Raster (daily curated grid + streak) ────────────────────────
 # The "once per day" gate and streak itself live entirely client-side (see
 # game.js), matching this app's existing trust model — nothing else here
 # (stats, settings) has ever had server-verified per-user state, and
@@ -939,12 +939,12 @@ def api_get_grid(code):
     try:
         result = grid_store.get_saved_grid(db, code)
         if result is None:
-            return jsonify({"error": "Rätsel nicht gefunden"}), 404
+            return jsonify({"error": "Raster nicht gefunden"}), 404
         row_ids, col_ids = result
         rows = [CATEGORY_BY_ID.get(i) for i in row_ids]
         cols = [CATEGORY_BY_ID.get(i) for i in col_ids]
         if None in rows or None in cols:
-            return jsonify({"error": "Rätsel enthält veraltete Kategorien"}), 410
+            return jsonify({"error": "Raster enthält veraltete Kategorien"}), 410
     finally:
         db.close()
     return jsonify({
@@ -978,7 +978,7 @@ def api_mp_create_room():
     finally:
         db.close()
     if rows is None:
-        return jsonify({"error": "Kein gültiges Rätsel gefunden"}), 500
+        return jsonify({"error": "Kein gültiges Raster gefunden"}), 500
     room, token = mp.create_room(
         rows, cols, difficulty=difficulty, league=league,
         excluded_types=frozenset(excluded_types), excluded_ids=frozenset(excluded_ids),
@@ -1100,7 +1100,7 @@ def api_mp_rematch(code):
     finally:
         db.close()
     if rows is None:
-        return jsonify({"error": "Kein gültiges Rätsel gefunden"}), 500
+        return jsonify({"error": "Kein gültiges Raster gefunden"}), 500
 
     mp.reset_room(room, rows, cols)
     return jsonify({"ok": True, "started": True})

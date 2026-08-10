@@ -223,8 +223,8 @@
         <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>
       </svg>
       <div class="flex-1 min-w-0">
-        <div class="font-bold" style="color:var(--text)">Tägliches Rätsel</div>
-        <div class="text-xs" style="color:var(--text-dim)">Ein neues Rätsel jeden Tag – für alle gleich</div>
+        <div class="font-bold" style="color:var(--text)">Tägliches Raster</div>
+        <div class="text-xs" style="color:var(--text-dim)">Ein neues Raster jeden Tag – für alle gleich</div>
       </div>
       <div id="daily-card-streak" class="hidden flex-shrink-0 text-right">
         <div class="text-lg font-black whitespace-nowrap flex items-center gap-1 justify-end" style="color:var(--accent)">
@@ -261,7 +261,7 @@
     </div>
   </div>
 
-  <!-- Rätsel einstellen (Schwierigkeit & Liga) -->
+  <!-- Raster einstellen (Schwierigkeit & Liga) -->
   <div id="screen-setup" class="hidden w-full max-w-md flex flex-col items-center gap-6 py-8">
     <div class="tt-card w-full p-5 flex flex-col gap-5">
       <div>
@@ -286,6 +286,24 @@
       </div>
     </div>
     <button id="btn-setup-continue" class="tt-btn-accent w-full text-sm px-4 py-3 rounded-xl">Los geht's →</button>
+
+    <!-- Loading a shared/custom grid by code always starts a solo round
+         (see loadAndStartCustomGrid) — only shown when that's actually
+         what's being set up, not for 1v1 Lokal/Online (setupLoadGrid in
+         game.js toggles this alongside the rest of enterSetupScreen). -->
+    <div id="setup-load-grid" class="hidden w-full flex flex-col items-center gap-3">
+      <div class="text-xs" style="color:var(--text-dim)">— oder —</div>
+      <div class="tt-card w-full p-4">
+        <div class="text-sm font-bold mb-2" style="color:var(--text)">Raster per Code laden</div>
+        <div class="flex gap-2">
+          <input id="setup-load-code" maxlength="6" placeholder="CODE" autocomplete="off"
+            class="tt-input flex-1 uppercase tracking-widest text-center rounded-lg px-3 py-2 text-sm font-bold">
+          <button id="btn-setup-load" class="tt-btn-neutral text-sm px-4 py-2 rounded-lg">Laden</button>
+        </div>
+        <p id="setup-load-error" class="text-xs mt-2 hidden" style="color:var(--accent)"></p>
+      </div>
+    </div>
+
     <button id="btn-setup-back" class="text-xs font-semibold transition-colors" style="color:var(--text-dim)">← Zurück</button>
   </div>
 
@@ -294,7 +312,7 @@
     <div id="online-lobby-body" class="w-full"></div>
   </div>
 
-  <!-- Tägliches Rätsel bereits gespielt -->
+  <!-- Tägliches Raster bereits gespielt -->
   <div id="screen-daily-done" class="hidden w-full max-w-md flex flex-col items-center gap-4 py-8 text-center">
     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>
@@ -305,16 +323,16 @@
       <div id="daily-done-streak" class="font-semibold" style="color:var(--accent)"></div>
       <div id="daily-done-best" class="text-xs" style="color:var(--text-dim)"></div>
     </div>
-    <p class="text-xs" style="color:var(--text-dim)">Komm morgen wieder für ein neues Rätsel.</p>
+    <p class="text-xs" style="color:var(--text-dim)">Komm morgen wieder für ein neues Raster.</p>
     <button id="daily-done-menu" class="text-xs font-semibold transition-colors" style="color:var(--text-dim)">← Zurück zum Menü</button>
   </div>
 
-  <!-- Editor: eigenes Rätsel bauen, speichern & teilen, per Code laden -->
+  <!-- Editor: eigenes Raster bauen, speichern & teilen, per Code laden -->
   <div id="screen-editor" class="hidden w-full max-w-2xl flex flex-col gap-5 py-8">
     <h2 class="tt-title">Editor</h2>
 
     <div class="tt-card p-5">
-      <div class="text-sm font-bold mb-1" style="color:var(--text)">Eigenes Rätsel bauen</div>
+      <div class="text-sm font-bold mb-1" style="color:var(--text)">Eigenes Raster bauen</div>
       <p class="text-xs mb-3" style="color:var(--text-dim)">Tippe auf ein Feld am Rand, um eine Kategorie zu wählen. Sobald Zeile und Spalte feststehen, zeigt das Feld die Anzahl möglicher Spieler.</p>
       <div id="editor-grid" class="grid gap-2 w-full" style="grid-template-columns: repeat(4, 1fr);"></div>
       <button id="btn-editor-save" disabled class="tt-btn-accent mt-4 w-full text-sm px-4 py-2.5 rounded-xl">
@@ -337,7 +355,7 @@
     </div>
 
     <div class="tt-card p-5">
-      <div class="text-sm font-bold mb-3" style="color:var(--text)">Rätsel per Code laden</div>
+      <div class="text-sm font-bold mb-3" style="color:var(--text)">Raster per Code laden</div>
       <div class="flex gap-2">
         <input id="editor-load-code" maxlength="6" placeholder="CODE" autocomplete="off"
           class="tt-input flex-1 uppercase tracking-widest text-center rounded-lg px-3 py-2 text-sm font-bold">
@@ -361,7 +379,7 @@
     <div class="tt-card w-full max-w-3xl overflow-hidden">
       <div id="status-bar" class="flex items-center justify-between gap-3 text-sm px-4 py-2.5"
         style="border-bottom:1px solid var(--card-border);">
-        <span id="status-text" class="font-bold" style="color:var(--text)">Rätsel wird geladen…</span>
+        <span id="status-text" class="font-bold" style="color:var(--text)">Raster wird geladen…</span>
         <span class="flex items-center gap-3 flex-shrink-0">
           <span id="streak-display" class="hidden items-center gap-1 text-xs font-bold" style="color:var(--accent)"></span>
           <span id="timer-display" class="text-xs font-medium" style="color:var(--text-dim)">0:00</span>

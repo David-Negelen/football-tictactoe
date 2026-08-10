@@ -212,6 +212,11 @@ document.querySelectorAll('[data-mode]').forEach(btn => {
 function enterSetupScreen(pendingMode) {
   g.pendingMode = pendingMode;
   document.getElementById('btn-setup-continue').disabled = false;
+  // Loading a grid by code always starts a solo round — only relevant
+  // (and only shown) when solo is actually what's being set up.
+  document.getElementById('setup-load-grid').classList.toggle('hidden', pendingMode !== 'solo');
+  document.getElementById('setup-load-error').classList.add('hidden');
+  document.getElementById('setup-load-code').value = '';
   showScreen('setup');
 }
 
@@ -837,7 +842,7 @@ async function startLocal() {
 }
 
 async function newLocalRound() {
-  setStatus('Rätsel wird geladen…');
+  setStatus('Raster wird geladen…');
   stopTimer();
   hideEndBanner();
   document.getElementById('board').innerHTML = '';
@@ -854,7 +859,7 @@ async function newLocalRound() {
 
   const resp = await fetch(`/api/game/new?${genParams().toString()}`);
   if (!resp.ok) {
-    setStatus('Kein Rätsel gefunden – bitte erneut versuchen.');
+    setStatus('Kein Raster gefunden – bitte erneut versuchen.');
     return;
   }
   const data = await resp.json();
@@ -973,7 +978,7 @@ async function startSolo() {
 // so callers can fetch from wherever their puzzle actually comes from in
 // between.
 function beginSoloRound() {
-  setStatus('Rätsel wird geladen…');
+  setStatus('Raster wird geladen…');
   stopTimer();
   hideEndBanner();
   document.getElementById('board').innerHTML = '';
@@ -998,7 +1003,7 @@ async function newSoloRound() {
   beginSoloRound();
   const resp = await fetch(`/api/game/new?${genParams().toString()}`);
   if (!resp.ok) {
-    setStatus('Kein Rätsel gefunden – bitte erneut versuchen.');
+    setStatus('Kein Raster gefunden – bitte erneut versuchen.');
     return;
   }
   const data = await resp.json();
@@ -1075,7 +1080,7 @@ async function endGameSolo() {
     showEndBanner(
       perfect ? 'trophy' : 'puzzle',
       `${g.soloCorrect} / 9 richtig`,
-      perfect ? 'Perfekte Runde!' : 'Rätsel beendet.'
+      perfect ? 'Perfekte Runde!' : 'Raster beendet.'
     );
   } else {
     stats.solo.rounds++;
@@ -1094,7 +1099,7 @@ async function endGameSolo() {
   await revealSolutions();
 }
 
-// ─── Modus: Tägliches Rätsel ────────────────────────────────────────────────
+// ─── Modus: Tägliches Raster ────────────────────────────────────────────────
 // A daily grid the backend generates deterministically from the date (see
 // app.py's /api/daily/today) — everyone gets the same puzzle. The "once per
 // day" gate and the streak itself live entirely in localStorage, same as
@@ -1201,7 +1206,7 @@ document.getElementById('end-share').addEventListener('click', () => {
   setTimeout(() => { btn.innerHTML = iconText('share', 'Teilen', { size: 15 }); }, 1500);
 });
 
-// ─── Editor: eigenes Rätsel bauen, speichern & teilen, per Code laden ──────
+// ─── Editor: eigenes Raster bauen, speichern & teilen, per Code laden ──────
 
 function goToEditor() {
   showScreen('editor');
@@ -1380,7 +1385,7 @@ document.getElementById('btn-editor-save').addEventListener('click', async e => 
     });
     const data = await resp.json();
     if (!resp.ok) {
-      errorEl.textContent = data.error || 'Rätsel konnte nicht gespeichert werden.';
+      errorEl.textContent = data.error || 'Raster konnte nicht gespeichert werden.';
       errorEl.classList.remove('hidden');
       return;
     }
@@ -1406,19 +1411,31 @@ document.getElementById('btn-editor-play').addEventListener('click', () => {
 document.getElementById('btn-editor-load').addEventListener('click', () => {
   const code = document.getElementById('editor-load-code').value.trim();
   if (code.length < 4) return;
-  loadAndStartCustomGrid(code);
+  loadAndStartCustomGrid(code, 'editor-load-error');
 });
 document.getElementById('editor-load-code').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('btn-editor-load').click();
 });
 
-async function loadAndStartCustomGrid(code) {
-  const errorEl = document.getElementById('editor-load-error');
+// Same load-by-code affordance as the editor, surfaced directly on the
+// solo setup screen too — the editor's own copy is one menu layer deeper
+// and easy to miss for someone who just has a code, not a grid to build.
+document.getElementById('btn-setup-load').addEventListener('click', () => {
+  const code = document.getElementById('setup-load-code').value.trim();
+  if (code.length < 4) return;
+  loadAndStartCustomGrid(code, 'setup-load-error');
+});
+document.getElementById('setup-load-code').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-setup-load').click();
+});
+
+async function loadAndStartCustomGrid(code, errorElId = 'editor-load-error') {
+  const errorEl = document.getElementById(errorElId);
   errorEl.classList.add('hidden');
   const resp = await fetch(`/api/grids/${encodeURIComponent(code)}`);
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    errorEl.textContent = data.error || 'Rätsel nicht gefunden.';
+    errorEl.textContent = data.error || 'Raster nicht gefunden.';
     errorEl.classList.remove('hidden');
     return;
   }
@@ -1765,7 +1782,7 @@ let statsResetConfirming = false;
 
 // Shared Wordle-style histogram renderer — one flat accent bar per score
 // bucket (0-9), length relative to the largest bucket, used for both the
-// Solo and Tages-Rätsel sections so "how much got solved" shows up as a
+// Solo and Tages-Raster sections so "how much got solved" shows up as a
 // shape, not just one aggregate percentage.
 function distributionChartHtml(dist, emptyLabel) {
   const total = dist.reduce((a, b) => a + b, 0);
@@ -1800,7 +1817,7 @@ function renderStats() {
 
   document.getElementById('stats-body').innerHTML = `
     <div>
-      ${sectionLabel('calendar', 'Tages-Rätsel')}
+      ${sectionLabel('calendar', 'Tages-Raster')}
       <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(iconText('fire', d.currentStreak, { size: 14, gap: 4 }), 'Serie', true)}
         ${tile(`${dailyAccuracy}%`, 'Trefferquote')}
