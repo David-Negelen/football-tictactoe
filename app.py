@@ -711,7 +711,7 @@ def api_game_search():
     db = get_db()
     try:
         rows_db = db.execute(
-            f"SELECT p.id, p.name, p.current_club_name, p.nationality "
+            f"SELECT p.id, p.name, p.current_club_name, p.nationality, p.age "
             f"FROM players p {where} ORDER BY p.name LIMIT 20",
             params,
         ).fetchall()

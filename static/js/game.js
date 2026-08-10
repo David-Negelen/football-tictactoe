@@ -484,16 +484,26 @@ async function doSearch(q) {
     return;
   }
 
+  // The club used to be shown here as a second line, but it was mostly
+  // noise (the guess is the player's name, not their club) — dropped, but
+  // still carried via data-club so the filled cell can still record it.
+  // The one case a second line actually helps: two results with the exact
+  // same name are otherwise indistinguishable, so those (only those) show
+  // age instead, as a disambiguator.
+  const nameCounts = {};
+  data.players.forEach(p => { nameCounts[p.name] = (nameCounts[p.name] || 0) + 1; });
+
   container.innerHTML = data.players.map(p => {
     const used = g.usedIds.has(p.id);
+    const isDup = nameCounts[p.name] > 1;
     return `
       <div class="tt-row-hover flex items-center justify-between rounded-lg px-3 py-2 text-sm ${used ? 'is-disabled' : 'cursor-pointer'}"
            style="color:var(--text)"
            data-pid="${p.id}" data-name="${esc(p.name)}" data-club="${esc(p.current_club_name || '')}">
         <div class="min-w-0">
           <span class="font-semibold">${esc(p.name)}</span>
-          ${p.current_club_name
-            ? `<span class="text-xs ml-1 truncate" style="color:var(--text-dim)">${esc(p.current_club_name)}</span>`
+          ${isDup && p.age
+            ? `<span class="text-xs ml-1" style="color:var(--text-dim)">${p.age} Jahre</span>`
             : ''}
         </div>
         ${used ? '<span class="text-xs ml-2 flex-shrink-0" style="color:var(--text-faint)">bereits gespielt</span>' : ''}
