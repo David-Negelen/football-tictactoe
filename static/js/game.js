@@ -710,6 +710,11 @@ function setStatus(msg) {
   document.getElementById('status-text').textContent = msg;
 }
 
+function setStatusLoading(msg) {
+  document.getElementById('status-text').innerHTML =
+    `<span style="display:inline-flex;align-items:center;gap:8px;"><span class="tt-spinner"></span>${msg}</span>`;
+}
+
 function updateStreakDisplay() {
   const el = document.getElementById('streak-display');
   if (g.mode !== 'local') { el.classList.add('hidden'); el.classList.remove('flex'); return; }
@@ -842,7 +847,7 @@ async function startLocal() {
 }
 
 async function newLocalRound() {
-  setStatus('Raster wird geladen…');
+  setStatusLoading('Raster wird geladen…');
   stopTimer();
   hideEndBanner();
   document.getElementById('board').innerHTML = '';
@@ -978,7 +983,7 @@ async function startSolo() {
 // so callers can fetch from wherever their puzzle actually comes from in
 // between.
 function beginSoloRound() {
-  setStatus('Raster wird geladen…');
+  setStatusLoading('Raster wird geladen…');
   stopTimer();
   hideEndBanner();
   document.getElementById('board').innerHTML = '';
@@ -1411,7 +1416,7 @@ document.getElementById('btn-editor-play').addEventListener('click', () => {
 document.getElementById('btn-editor-load').addEventListener('click', () => {
   const code = document.getElementById('editor-load-code').value.trim();
   if (code.length < 4) return;
-  loadAndStartCustomGrid(code, 'editor-load-error');
+  loadAndStartCustomGrid(code, 'editor-load-error', 'btn-editor-load');
 });
 document.getElementById('editor-load-code').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('btn-editor-load').click();
@@ -1423,28 +1428,41 @@ document.getElementById('editor-load-code').addEventListener('keydown', e => {
 document.getElementById('btn-setup-load').addEventListener('click', () => {
   const code = document.getElementById('setup-load-code').value.trim();
   if (code.length < 4) return;
-  loadAndStartCustomGrid(code, 'setup-load-error');
+  loadAndStartCustomGrid(code, 'setup-load-error', 'btn-setup-load');
 });
 document.getElementById('setup-load-code').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('btn-setup-load').click();
 });
 
-async function loadAndStartCustomGrid(code, errorElId = 'editor-load-error') {
+async function loadAndStartCustomGrid(code, errorElId = 'editor-load-error', btnId = null) {
   const errorEl = document.getElementById(errorElId);
   errorEl.classList.add('hidden');
-  const resp = await fetch(`/api/grids/${encodeURIComponent(code)}`);
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    errorEl.textContent = data.error || 'Raster nicht gefunden.';
-    errorEl.classList.remove('hidden');
-    return;
+  const btn = btnId ? document.getElementById(btnId) : null;
+  const btnLabel = btn ? btn.textContent : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;"><span class="tt-spinner"></span>Laden…</span>`;
   }
-  g.mode = 'solo';
-  g.soloVariant = 'custom';
-  showScreen('board');
-  updateModeChrome();
-  beginSoloRound();
-  finishSoloRoundSetup(data.rows, data.cols);
+  try {
+    const resp = await fetch(`/api/grids/${encodeURIComponent(code)}`);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      errorEl.textContent = data.error || 'Raster nicht gefunden.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+    g.mode = 'solo';
+    g.soloVariant = 'custom';
+    showScreen('board');
+    updateModeChrome();
+    beginSoloRound();
+    finishSoloRoundSetup(data.rows, data.cols);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = btnLabel;
+    }
+  }
 }
 
 // ─── Modus: 1v1 Online ──────────────────────────────────────────────────────────
