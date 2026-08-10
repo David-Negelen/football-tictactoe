@@ -373,10 +373,22 @@ GENERAL_MAX_AWARD = 1
 # League-scoped puzzles (see _resolve_pool/LEAGUE_POOLS): the whole point of
 # picking a league is to see that league's own clubs. Unlike the general
 # pool above, two clubs *within the same league* commonly do share a
-# transferred player, so league mode allows a variable 4-6 clubs mixed
-# freely across both sides rather than confining them to one (see
-# _sample_league_puzzle_categories).
+# transferred player, so league mode allows clubs mixed freely across both
+# sides rather than confining them to one (see _sample_league_puzzle_categories).
 LEAGUE_MIN_CLUBS = 4
+
+# Used to originally allow up to 6 (i.e. every cell a club, zero broad
+# categories) — in practice puzzles landed there almost every time, not just
+# "sometimes": a broad category ANDed with "played in this league" has a much
+# thinner player pool than a plain club category, so broad-inclusive draws
+# fail the caller's min/max_players bounds check far more often and get
+# discarded by the retry loop, while all-club draws succeed almost
+# immediately and return first. The random 4-6 draw looked varied on paper
+# but the *actual* outcomes skewed almost entirely to 6. Capping at 4 (equal
+# to LEAGUE_MIN_CLUBS) removes that bias by construction — every league
+# puzzle always has exactly 2 broad (non-club) categories, not "usually 0
+# because those attempts kept losing the retry race."
+LEAGUE_MAX_CLUBS = 4
 
 
 def _sample_general_puzzle_categories(
@@ -468,24 +480,25 @@ def _sample_general_puzzle_categories(
 
 
 def _sample_league_puzzle_categories(league_clubs: list, broad: list, min_clubs: int, rng=random) -> tuple[list, list] | None:
-    """League mode: at least `min_clubs` real clubs from the selected league
-    among the 6 categories — but, unlike the general sparse-type cap, mixed
-    freely across rows/cols rather than confined to one whole side. Within a
-    single league, two clubs are far more likely to share a transferred
-    player than two random clubs from the entire catalog (moves within the
-    same league are common), so club x club cells are safe to allow here —
-    keeping clubs pinned to one solid side every time made every league
-    puzzle the same rigid shape ("league's clubs" vs "everything else").
-    Non-club categories fill the rest, trophies included — a trophy doesn't
-    need to be specific to the selected league (e.g. "Ballon d'Or" showing up
-    in a Bundesliga puzzle is fine). The thinness risk of a rare trophy ANDed
-    with "played in this league" is handled structurally rather than by
-    exclusion: at most 2 broad slots exist per puzzle (min_clubs=4 of 6), the
-    trophy group is kept whole on one side (below) so trophy x trophy cells
-    never occur, and the caller's bounds check + retry loop rejects any
-    sample that comes out too thin anyway.
+    """League mode: `min_clubs` to LEAGUE_MAX_CLUBS real clubs from the
+    selected league among the 6 categories — but, unlike the general sparse-
+    type cap, mixed freely across rows/cols rather than confined to one whole
+    side. Within a single league, two clubs are far more likely to share a
+    transferred player than two random clubs from the entire catalog (moves
+    within the same league are common), so club x club cells are safe to
+    allow here — keeping clubs pinned to one solid side every time made every
+    league puzzle the same rigid shape ("league's clubs" vs "everything
+    else"). Non-club categories fill the rest, trophies included — a trophy
+    doesn't need to be specific to the selected league (e.g. "Ballon d'Or"
+    showing up in a Bundesliga puzzle is fine). The thinness risk of a rare
+    trophy ANDed with "played in this league" is handled structurally rather
+    than by exclusion: exactly 2 broad slots exist per puzzle (see
+    LEAGUE_MAX_CLUBS for why this is fixed, not a range up to 6), the trophy
+    group is kept whole on one side (below) so trophy x trophy cells never
+    occur, and the caller's bounds check + retry loop rejects any sample
+    that comes out too thin anyway.
     """
-    max_clubs = min(6, len(league_clubs))
+    max_clubs = min(LEAGUE_MAX_CLUBS, len(league_clubs))
     if max_clubs < min_clubs:
         return None
     n_clubs = rng.randint(min_clubs, max_clubs)
