@@ -28,7 +28,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from .categories import Category, ClubCategory, NationalityCategory, TrophyCategory
-from .category_config import CONTINENT_CATEGORIES, LEAGUE_CATEGORIES
+from .category_config import LEAGUE_CATEGORIES
 from .countries import COUNTRY_BY_NAME, country_flag, parse_nationality_tokens
 from .trophy_rules import classify_trophy_title
 
@@ -136,28 +136,26 @@ LEGACY_TROPHY_IDS: dict[str, str] = {
     "Leagues-Cup-Sieger": "trophy_leagues_cup",
 }
 
-# A club's player count only measures rarity ("how many players have this
-# literal club_name"), not recognizability — a 5th-tier German amateur club
-# or a long-defunct English lower-league side can easily clear a rarity bar
-# just by having been one waypoint in an otherwise-notable career, without
-# being remotely guessable. Outside of league mode (which already uses its
-# own per-league club_names directly, see build_league_pools) the general
-# "club" pool needs an actual prominence whitelist, not just a player-count
-# floor. Reusing the clubs that are already hand-picked and DB-verified
-# elsewhere — the major-league and continental "played in X" lists — avoids
-# re-curating (and re-risking-typos-on) an entirely new list from scratch.
-PROMINENT_CLUB_NAMES: set[str] = {
-    *(name for league in LEAGUE_CATEGORIES for name in league.club_names),
-    *(name for cont in CONTINENT_CATEGORIES for name in cont.club_names),
-    *LEGACY_CLUB_IDS.keys(),
-}
-
-# Being on the whitelist above only answers "may this club appear at all" —
-# every one of these ~160 clubs is wildly different in actual fame (Bayern
-# München vs. SC Paderborn vs. Como). This answers "how hard is it": bigger,
-# more famous clubs are always easier, because a casual player actually
-# knows their squad. Criteria — would a casual football fan recognize the
-# club and name two of its players, based on the club's fame across its
+# Individual club categories ("played for Bayern München") are restricted
+# much harder than the continent-aggregate ones ("played in Asia" — see
+# CONTINENT_CATEGORIES): naming a SPECIFIC club by name only works as a fair
+# category if a casual player would actually recognize that exact club, not
+# just "some club from that continent". A club earns a spot here one of two
+# ways: it plays in one of the four whitelisted top leagues (LEAGUE_CATEGORIES
+# — Bundesliga/Premier League/La Liga/Serie A, all individually recognizable
+# just from being in a major league a casual fan follows), or it's fame-tiered
+# below regardless of league/continent (Boca Juniors, Al-Hilal, Kaizer Chiefs
+# — genuinely globally known despite not being in a top-4 league). Every
+# other whitelisted-but-untiered club that used to leak in here via the
+# continental "played in X" lists (Chennaiyin FC, GZ Evergrande's Asian
+# neighbors that never made fame tier 2, most of the Africa/South America
+# lists) is deliberately excluded — those lists exist for their own
+# continent-aggregate category, not to seed the general club pool.
+#
+# Being on the whitelist below only answers "may this club appear at all" —
+# CLUB_FAME_TIER_1/2 (defined first, since this set is built from them)
+# answer "how hard is it". Criteria — would a casual football fan recognize
+# the club and name two of its players, based on the club's fame across its
 # *whole* history, not just this season (e.g. Hamburger SV and FC Schalke 04
 # are tier 1 despite currently playing in the second division)?
 #   Tier 1: Champions-League/continental-final regulars, multiple major
@@ -166,9 +164,9 @@ PROMINENT_CLUB_NAMES: set[str] = {
 #   Tier 2: established, nationally/regionally well-known clubs — not
 #     continental regulars, but a real name with at least one household
 #     player.
-#   Tier 3 (default, not enumerated below): everything else — most of the
-#     smaller top-flight clubs and most of the Asia/Africa/smaller-South-
-#     America continental whitelist.
+#   Tier 3 (default, not enumerated below): every top-4-league club not
+#     listed above — smaller top-flight clubs that are in the whitelist
+#     purely by virtue of playing in a major league, not by individual fame.
 #
 # Every name below must match career_stints.club_name byte-for-byte (see the
 # "Man City" vs "Manchester City" note on LEGACY_CLUB_IDS above for the kind
@@ -222,6 +220,12 @@ CLUB_FAME_TIER_2: frozenset[str] = frozenset({
     # Other Europe
     "PSV",
 })
+
+PROMINENT_CLUB_NAMES: set[str] = {
+    *(name for league in LEAGUE_CATEGORIES for name in league.club_names),
+    *CLUB_FAME_TIER_1,
+    *CLUB_FAME_TIER_2,
+}
 
 DEFAULT_CLUB_DIFFICULTY = 3  # unlisted above (or a name typo) -> hardest tier
 
