@@ -20,7 +20,7 @@ const ICON_PATHS = {
   rematch: `<path d="M17 2l4 4-4 4"/><path d="M21 6H8a4 4 0 0 0-4 4v1"/><path d="M7 22l-4-4 4-4"/><path d="M3 18h13a4 4 0 0 0 4-4v-1"/>`,
   calendar: `<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>`,
   puzzle: `<path d="M4 7h4a1 1 0 0 0 1-1 2 2 0 1 1 4 0 1 1 0 0 0 1 1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1 2 2 0 1 0 0 4 1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1 2 2 0 1 0-4 0 1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1 2 2 0 1 0 0-4 1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/>`,
-  couch: `<path d="M4 18v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5"/><path d="M2 18h20v2H2z"/><path d="M4 13V9a2 2 0 0 1 2-2h1v4"/><path d="M20 13V9a2 2 0 0 0-2-2h-1v4"/>`,
+  users: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`,
   globe: `<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>`,
   chart: `<line x1="6" y1="20" x2="6" y2="12"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="18" y1="20" x2="18" y2="4"/>`,
   controller: `<rect x="2" y="8" width="20" height="10" rx="5"/><path d="M7 11v4"/><path d="M5 13h4"/><circle cx="16" cy="11" r="1"/><circle cx="18" cy="14" r="1"/>`,
@@ -28,7 +28,10 @@ const ICON_PATHS = {
   play: `<path d="M6 4l13 8-13 8V4Z"/>`,
   clock: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>`,
 };
-const ICON_FILLED = new Set(['fire', 'play']);
+// "play" stays filled — a solid triangle is the universal play-button
+// convention, not an emoji-like exception. Every other icon, fire
+// included, is an outline to match the rest of the icon system.
+const ICON_FILLED = new Set(['play']);
 
 function svgIcon(name, size = 18) {
   const attrs = ICON_FILLED.has(name)
