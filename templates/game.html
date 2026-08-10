@@ -25,9 +25,9 @@
       --text: #eef1ef;
       --text-dim: #8b948f;
       --text-faint: #5c645f;
-      --accent: #f97316;
+      --accent: #ff7a1a;
       --accent-ink: #180f08;
-      --accent-dim: rgba(249, 115, 22, .14);
+      --accent-dim: rgba(255, 122, 26, .14);
     }
 
     html { background: var(--bg); height: 100%; }
@@ -50,6 +50,29 @@
        cause of the lopsided, near-illegible header column seen on real
        phones. min-width:0 makes every column honor the same 1fr share. */
     #board > * { min-width: 0; }
+
+    /* Header icon (crest/flag/badge): scales down with the slot on narrow
+       phones so long category labels get more of the cell's height to
+       wrap into, instead of being squeezed by a fixed-size icon. */
+    .tt-icon { width: clamp(22px, 7vw, 34px); height: clamp(22px, 7vw, 34px); }
+
+    /* Category label: font shrinks a little on narrow phones, and gets 3
+       lines instead of 2 to wrap into — real category names ("Bor.
+       M'gladbach", "FC Bayern München") were still hitting the clamp and
+       ellipsizing mid-word at 2 lines. */
+    .tt-cat-label {
+      font-size: clamp(9px, 2.6vw, 11px);
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden; overflow-wrap: anywhere;
+    }
+
+    /* Secondary cell text (club under a filled name, the answer summary
+       in a "Lösung" cell): wraps to 2 lines instead of ellipsizing a
+       single line mid-word. */
+    .tt-cell-sub {
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; overflow-wrap: anywhere;
+    }
 
     /* ── Type scale: distinct roles instead of "everything bold+uppercase" ── */
     .tt-title { font-size: 1.375rem; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; color: var(--text); }
@@ -77,7 +100,7 @@
     .tt-icon-mono { filter: grayscale(1); opacity: .85; }
 
     .tt-btn-accent { background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: background-color .12s; }
-    .tt-btn-accent:hover { background: #fb8b3f; }
+    .tt-btn-accent:hover { background: #ff9142; }
     .tt-btn-accent:disabled { opacity: .35; cursor: not-allowed; }
     .tt-btn-accent-outline { background: transparent; border: 1.5px solid var(--accent); color: var(--accent); font-weight: 700; }
 
@@ -136,7 +159,7 @@
     </div>
   </header>
 
-  <div class="flex flex-col items-center justify-center py-5 px-4 flex-1 w-full">
+  <div class="flex flex-col items-center py-5 px-4 flex-1 w-full">
 
   <!-- Modus-Auswahl -->
   <div id="screen-mode-select" class="w-full max-w-3xl flex flex-col items-center gap-6 py-8">

@@ -285,32 +285,32 @@ function categoryIconHtml(cat) {
   // wins whenever available — looks far better than the emoji font or the
   // generic initial badge.
   if (cat.icon_image) {
-    return `<img src="${esc(cat.icon_image)}" alt="" class="w-8 h-8 object-contain flex-shrink-0">`;
+    return `<img src="${esc(cat.icon_image)}" alt="" class="tt-icon object-contain flex-shrink-0">`;
   }
   // Dynamically generated clubs without a hand-picked emoji (the vast
   // majority of ~6,500 clubs) carry icon_letter/icon_color instead of an
   // icon string — render a small badge in that club's own color.
   if (!cat.icon && cat.icon_letter) {
-    return `<div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0"
+    return `<div class="tt-icon rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0"
       style="background:${esc(cat.icon_color || 'var(--card-border)')}">${esc(cat.icon_letter)}</div>`;
   }
-  return `<div class="tt-icon-mono text-2xl leading-none flex-shrink-0">${cat.icon || '⚽'}</div>`;
+  return `<div class="tt-icon-mono tt-icon leading-none flex-shrink-0 flex items-center justify-center"
+    style="font-size:clamp(18px,6vw,26px)">${cat.icon || '⚽'}</div>`;
 }
 
 function headerCellHtml(cat) {
   // The icon (crest/flag/emoji) carries the primary identification — the
-  // label only needs to back it up, so it clamps to 2 lines, wrapping at
-  // word boundaries like normal text. overflow-wrap:anywhere is a fallback
-  // for the rare single "word" (a long club name with no spaces) that
-  // still can't fit, not the default behavior — forcing every label to
-  // break letter-by-letter is what made real narrow-phone headers
-  // illegible ("A", "C", "F.").
+  // label backs it up, wrapping at word boundaries (overflow-wrap:anywhere
+  // is only a fallback for the rare single "word" — a long club name with
+  // no spaces — that still can't fit on its own line). Font size and icon
+  // size both scale down on narrow phones (.tt-icon, .tt-cat-label) so a
+  // name like "Bor. M'gladbach" gets enough room across 3 lines instead of
+  // being cut mid-word at 2.
   return `
-    <div class="tt-cell flex flex-col items-center justify-center p-2 tt-slot overflow-hidden gap-1"
+    <div class="tt-cell flex flex-col items-center justify-center p-2.5 tt-slot overflow-hidden gap-1"
          title="${esc(cat.label)}">
       ${categoryIconHtml(cat)}
-      <div class="font-semibold text-center leading-snug px-1"
-           style="font-size:10.5px;color:var(--text-dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;">
+      <div class="tt-cat-label font-semibold text-center leading-snug" style="color:var(--text-dim)">
         ${esc(cat.label)}
       </div>
     </div>`;
@@ -327,19 +327,28 @@ function cellHtml(r, c) {
   // the one accent color, flat, no glow/animation.
   if (entry && entry.status === 'missed') {
     return `
-      <div class="tt-cell flex flex-col items-center justify-center tt-slot">
+      <div class="tt-cell flex flex-col items-center justify-center p-2 tt-slot">
         <div class="text-2xl mb-1" style="color:var(--text-dim)">✕</div>
         <div class="tt-label">Falsch</div>
       </div>`;
   }
 
   if (entry) {
+    // Correct answers need a clear "you got this" signal — everywhere but
+    // solo, the X/O badge already implies it (a missed guess never reaches
+    // this branch, it's the 'missed' one above). Solo suppresses that
+    // badge, which left correct cells looking like plain bold text with
+    // no marker at all — easy to mistake for a "Lösung" reveal cell at a
+    // glance. A small accent checkmark closes that gap.
+    const badge = g.mode === 'solo'
+      ? `<span class="text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="border:1.5px solid var(--accent);color:var(--accent)">✓</span>`
+      : markBadge(entry.player);
     return `
       <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot"
            data-cell="${r},${c}">
-        ${g.mode !== 'solo' ? `<div class="flex justify-end w-full mb-1">${markBadge(entry.player)}</div>` : ''}
-        <div class="font-bold text-center leading-tight px-1 text-sm" style="color:var(--text)">${esc(entry.name)}</div>
-        <div class="text-xs mt-1 truncate max-w-full px-1" style="color:var(--text-dim)">${esc(entry.club || '')}</div>
+        <div class="flex justify-end w-full mb-1">${badge}</div>
+        <div class="font-bold text-center leading-tight" style="color:var(--text)">${esc(entry.name)}</div>
+        <div class="tt-cell-sub text-xs mt-1 text-center" style="color:var(--text-dim)">${esc(entry.club || '')}</div>
       </div>`;
   }
 
@@ -354,9 +363,9 @@ function cellHtml(r, c) {
     const first = cellSol.players?.[0] ? esc(cellSol.players[0].name) : '';
     const summary = count === 0 ? '–' : count === 1 ? first : `${first} +${count - 1}`;
     return `
-      <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-2 tt-slot text-center">
+      <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-2.5 tt-slot text-center">
         <div class="tt-label mb-1">Lösung</div>
-        <div class="text-[11px] leading-snug px-1 truncate max-w-full" style="color:var(--text-dim)">${summary}</div>
+        <div class="tt-cell-sub text-[11px] leading-snug" style="color:var(--text-dim)">${summary}</div>
       </button>`;
   }
 
@@ -372,7 +381,7 @@ function cellHtml(r, c) {
   const isActive = !disabled && g.activeCell && g.activeCell.r === r && g.activeCell.c === c;
   return `
     <button ${disabled ? 'disabled' : ''} data-cell="${r},${c}"
-      class="tt-cell ${isActive ? 'is-active' : ''} flex flex-col items-center justify-center tt-slot w-full">
+      class="tt-cell ${isActive ? 'is-active' : ''} flex flex-col items-center justify-center px-2 tt-slot w-full">
       ${shirtSvg()}
       <span class="tt-label mt-1">Spieler wählen</span>
     </button>`;
