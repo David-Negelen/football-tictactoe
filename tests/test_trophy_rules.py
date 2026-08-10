@@ -9,10 +9,11 @@ INCLUDED_TITLES = [
     "UEFA Champions League-Sieger",
     "Spanischer Meister",
     "Deutscher Pokalsieger",
-    "Englischer Superpokalsieger",
-    "Englischer Ligapokalsieger",
     "Europa-League-Sieger",
+    "Conference League-Sieger",
     "Copa Libertadores-Sieger",
+    "Afrikameister",
+    "AFC-Champions-League-Sieger",
     "U20-Weltmeister",  # international youth NATIONAL TEAM tournament — legitimate
     "U19-Europameister",
     "Europapokal-der-Landesmeister-Sieger",  # old name for the European Cup — must not be
@@ -25,6 +26,7 @@ EXCLUDED_TITLES = [
     "Torschützenkönig",  # individual top-scorer award, not a team trophy
     "Fußballer des Jahres",
     "FIFA-Puskás-Preis",
+    "Gewinner Ballon d'Or",  # individual award, not a team trophy
     "Deutscher Zweitligameister",  # lower division
     "Italienischer Drittligameister (A)",
     "Meister Serie C2 (D)",  # boundary case: "serie c" pattern must match "Serie C2" too
@@ -35,6 +37,28 @@ EXCLUDED_TITLES = [
     "Gewinner des Viareggio",
     "Southeast Asian Games - Zweiter",  # runner-up, not a win
     "Meister Regionalliga Nord (GER)",
+    # A domestic Super Cup is a single exhibition match, not a competition
+    # — every country's has the same low-prestige reputation as England's
+    # Community Shield ("Superpokalsieger"), regardless of what it's called.
+    "Englischer Superpokalsieger",
+    "Deutscher Superpokalsieger",
+    "Spanischer Superpokalsieger",
+    # A League Cup is real silverware, but a clear notch below the national
+    # cup everywhere the two coexist — only the one "major cup" per country
+    # is kept.
+    "Englischer Ligapokalsieger",
+    "Deutscher Ligapokalsieger",
+    # Second-tier continental club competitions — each confederation's
+    # Europa-League-equivalent, not its Champions-League-equivalent (which
+    # *is* kept, e.g. AFC-Champions-League-Sieger above).
+    "Copa Sudamericana-Sieger",
+    "AFC Cup-Sieger",
+    "CONCACAF League-Sieger",
+    "CAF-Confederation-Cup-Sieger",
+    # Nations Leagues and regional multi-sport games are a tier below the
+    # actual continental championship / the Olympics.
+    "Sieger UEFA Nations League",
+    "Asian Games Goldmedaille",
 ]
 
 

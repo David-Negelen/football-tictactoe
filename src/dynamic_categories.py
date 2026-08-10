@@ -389,93 +389,104 @@ def build_dynamic_nationalities(
 # player would actually recognize, tiered by fame — not derived from count.
 #
 # Tier 1: major international team trophies, the biggest continental club
-#   competitions, and the league + primary cup of the biggest football
-#   nations (the same nations in NATIONALITY_FAME_TIER_1, plus their
-#   domestic league-cup/super-cup where one exists).
-# Tier 2: the same idea for NATIONALITY_FAME_TIER_2's nations, plus
-#   continental competitions/youth internationals a step below tier 1.
+#   competitions, and the league + one major cup of the biggest football
+#   nations (the same nations in NATIONALITY_FAME_TIER_1). Super Cups and
+#   League Cups are never whitelisted here regardless of nation — see
+#   trophy_rules.classify_trophy_title, which now excludes them outright
+#   (a Super Cup is a single exhibition match, not a competition; a League
+#   Cup is real silverware but a clear notch below the national cup
+#   wherever the two coexist) — so listing them here would be dead weight.
+# Tier 2: the same idea for NATIONALITY_FAME_TIER_2's nations, plus each
+#   confederation's top continental club competition and top national-team
+#   championship a step below tier 1's biggest (UEFA's three tiers of club
+#   competition are the one exception, all three in tier 1/tier 2 above).
 # Unlisted trophies simply don't appear at all (unlike clubs/nationalities,
 # there's no "real but hard" tier 3 default here — a trophy nobody's ever
 # heard of isn't a harder question, it's an unrecognizable one).
 TROPHY_FAME_TIER_1: frozenset[str] = frozenset({
-    # Major international team trophies + the one individual award already
-    # legacy-curated (see LEGACY_TROPHY_IDS).
+    # Major international team trophies.
     "Weltmeister", "Europameister", "Copa América-Sieger", "Afrikameister",
-    "Olympiasieger", "Gewinner Ballon d'Or",
-    # Major continental/global club trophies.
-    "UEFA Champions League-Sieger", "Europa-League-Sieger", "UEFA-Supercup-Sieger",
-    "FIFA-Klub-Weltmeister", "Weltpokalsieger", "Copa Libertadores-Sieger",
-    "Europapokal-der-Landesmeister-Sieger", "Europapokal-der-Pokalsieger-Sieger",
-    # Domestic league/cup/super-cup for NATIONALITY_FAME_TIER_1's nations.
+    "Asienmeister", "Olympiasieger",
+    # Major continental/global club trophies (including old/renamed
+    # variants of the same competition — see trophy_rules.py).
+    "UEFA Champions League-Sieger", "Europapokal-der-Landesmeister-Sieger",
+    "Europa-League-Sieger", "Uefa-Cup-Sieger",
+    "FIFA-Klub-Weltmeister", "Weltpokalsieger", "FIFA Interkontinental-Pokal-Sieger",
+    "Copa Libertadores-Sieger",
+    # Domestic league + one major cup for NATIONALITY_FAME_TIER_1's nations.
     "Argentinischer Meister", "Argentinischer Pokalsieger",
-    "Belgischer Ligapokalsieger", "Belgischer Meister", "Belgischer Pokalsieger", "Belgischer Superpokalsieger",
-    "Brasilianischer Meister", "Brasilianischer Pokalsieger", "Brasilianischer Superpokalsieger",
-    "Chilenischer Meister", "Chilenischer Pokalsieger", "Chilenischer Supercupsieger",
-    "Deutscher Ligapokalsieger", "Deutscher Meister", "Deutscher Pokalsieger", "Deutscher Superpokalsieger",
+    "Belgischer Meister", "Belgischer Pokalsieger",
+    "Brasilianischer Meister", "Brasilianischer Pokalsieger",
+    "Chilenischer Meister", "Chilenischer Pokalsieger",
+    "Deutscher Meister", "Deutscher Pokalsieger",
     "Dänischer Meister", "Dänischer Pokalsieger",
-    "Englischer Ligapokalsieger", "Englischer Meister", "Englischer Pokalsieger", "Englischer Superpokalsieger",
-    "Französischer Ligapokalsieger", "Französischer Meister", "Französischer Pokalsieger", "Französischer Superpokalsieger",
-    "Italienischer Meister", "Italienischer Pokalsieger", "Italienischer Superpokalsieger",
-    "Japanischer Ligapokalsieger", "Japanischer Meister", "Japanischer Pokalsieger", "Japanischer Superpokalsieger",
-    "Kolumbianischer Meister", "Kolumbianischer Pokalsieger", "Kolumbianischer Superpokalsieger",
-    "Kroatischer Meister", "Kroatischer Pokalsieger", "Kroatischer Superpokalsieger",
+    "Englischer Meister", "Englischer Pokalsieger",
+    "Französischer Meister", "Französischer Pokalsieger",
+    "Italienischer Meister", "Italienischer Pokalsieger",
+    "Japanischer Meister", "Japanischer Pokalsieger",
+    "Kolumbianischer Meister", "Kolumbianischer Pokalsieger",
+    "Kroatischer Meister", "Kroatischer Pokalsieger",
     "Marokkanischer Meister", "Marokkanischer Pokalsieger",
     "Mexikanischer Meister", "Mexikanischer Meister Apertura", "Mexikanischer Meister Clausura",
     "Mexikanischer Pokalsieger", "Mexikanischer Pokalsieger Apertura", "Mexikanischer Pokalsieger Clausura",
-    "Mexikanischer Supercupsieger",
-    "Niederländischer Meister", "Niederländischer Pokalsieger", "Niederländischer Superpokalsieger",
+    "Niederländischer Meister", "Niederländischer Pokalsieger",
     "Nigerianischer Meister", "Nigerianischer Pokalsieger",
-    "Norwegischer Meister", "Norwegischer Pokalsieger", "Norwegischer Superpokalsieger",
-    "Polnischer Meister", "Polnischer Pokalsieger", "Polnischer Superpokalsieger",
-    "Portugiesischer Ligapokalsieger", "Portugiesischer Meister", "Portugiesischer Pokalsieger", "Portugiesischer Superpokalsieger",
-    "Schottischer Ligapokalsieger", "Schottischer Meister", "Schottischer Pokalsieger",
-    "Schwedischer Meister", "Schwedischer Pokalsieger", "Schwedischer Superpokalsieger",
-    "Schweizer Cupsieger", "Schweizer Ligapokalsieger", "Schweizer Meister", "Schweizer Supercupsieger",
+    "Norwegischer Meister", "Norwegischer Pokalsieger",
+    "Polnischer Meister", "Polnischer Pokalsieger",
+    "Portugiesischer Meister", "Portugiesischer Pokalsieger",
+    "Schottischer Meister", "Schottischer Pokalsieger",
+    "Schwedischer Meister", "Schwedischer Pokalsieger",
+    "Schweizer Cupsieger", "Schweizer Meister",
     "Senegalesischer Meister",
-    "Spanischer Ligapokalsieger", "Spanischer Meister", "Spanischer Pokalsieger", "Spanischer Superpokalsieger",
-    "Südkoreanischer Ligapokalsieger", "Südkoreanischer Meister", "Südkoreanischer Pokalsieger", "Südkoreanischer Superpokalsieger",
-    "Türkischer Meister", "Türkischer Pokalsieger", "Türkischer Superpokalsieger",
+    "Spanischer Meister", "Spanischer Pokalsieger",
+    "Südkoreanischer Meister", "Südkoreanischer Pokalsieger",
+    "Türkischer Meister", "Türkischer Pokalsieger",
     "Uruguayischer Meister", "Uruguayischer Pokalsieger",
     "Walisischer Meister",
-    "Ägyptischer Ligapokalsieger", "Ägyptischer Meister", "Ägyptischer Pokalsieger", "Ägyptischer Superpokalsieger",
+    "Ägyptischer Meister", "Ägyptischer Pokalsieger",
     "Österreichischer Cupsieger", "Österreichischer Meister",
 })
 
 TROPHY_FAME_TIER_2: frozenset[str] = frozenset({
-    # Continental competitions and youth internationals a step below tier 1.
+    # Continental club/national-team competitions a step below tier 1 —
+    # each confederation's top trophy in the confederations not already
+    # fully covered by tier 1's global honors.
     "Confederations-Cup-Sieger", "U20-Weltmeister",
-    "Copa Sudamericana-Sieger", "Recopa Sudamericana-Sieger", "Conference League-Sieger",
-    "CAF-Champions-League-Sieger", "AFC-Champions-League-Sieger", "CONCACAF-Champions-League-Sieger",
-    "MLS Cup Champion", "Leagues-Cup-Sieger", "Sieger UEFA Nations League", "Gold-Cup-Sieger",
-    "US Open Cup Winner",
-    # Domestic league/cup/super-cup for NATIONALITY_FAME_TIER_2's nations.
-    "Algerischer Ligapokalsieger", "Algerischer Meister", "Algerischer Pokalsieger", "Algerischer Supercupsieger",
+    "Conference League-Sieger",
+    "CAF-Champions-League-Sieger",
+    "AFC-Champions-League-Sieger",
+    "CONCACAF-Champions-League-Sieger", "CONCACAF-Champions-Cup-Sieger",
+    "Gold-Cup-Sieger", "CONCACAF-Championship-Sieger",
+    "OFC-Champions-League-Sieger", "OFC-Nationen-Pokal-Sieger",
+    "MLS Cup Champion", "US Open Cup Winner",
+    # Domestic league + one major cup for NATIONALITY_FAME_TIER_2's nations.
+    "Algerischer Meister", "Algerischer Pokalsieger",
     "Australischer Meister", "Australischer Pokalsieger",
-    "Bosnisch-Herzegowinischer Meister", "Bosnisch-Herzegowinischer Pokalsieger", "Bosnisch-Herzegowinischer Superpokalsieger",
+    "Bosnisch-Herzegowinischer Meister", "Bosnisch-Herzegowinischer Pokalsieger",
     "Costa-Ricanischer Meister", "Costa-Ricanischer Meister Invierno", "Costa-Ricanischer Meister Verano",
-    "Costa-Ricanischer Pokalsieger", "Costa-Ricanischer Superpokalsieger",
+    "Costa-Ricanischer Pokalsieger",
     "Ecuadorianischer Meister",
     "Ghanaischer Meister",
-    "Griechischer Meister", "Griechischer Pokalsieger", "Griechischer Superpokalsieger",
-    "Iranischer Meister", "Iranischer Pokalsieger", "Iranischer Supercup-Sieger",
-    "Irischer Ligapokalsieger", "Irischer Meister", "Irischer Pokalsieger",
-    "Isländischer Ligapokalsieger", "Isländischer Meister", "Isländischer Pokalsieger", "Isländischer Superpokalsieger",
+    "Griechischer Meister", "Griechischer Pokalsieger",
+    "Iranischer Meister", "Iranischer Pokalsieger",
+    "Irischer Meister", "Irischer Pokalsieger",
+    "Isländischer Meister", "Isländischer Pokalsieger",
     "Kanadischer Meister", "Kanadischer Pokalsieger",
-    "Nordirischer Ligapokalsieger", "Nordirischer Meister", "Nordirischer Pokalsieger",
+    "Nordirischer Meister", "Nordirischer Pokalsieger",
     "Paraguayischer Meister", "Paraguayischer Meister Apertura", "Paraguayischer Meister Clausura",
-    "Peruanischer Meister", "Peruanischer Pokalsieger", "Peruanischer Superpokalsieger",
-    "Rumänischer Ligapokalsieger", "Rumänischer Meister", "Rumänischer Pokalsieger", "Rumänischer Superpokalsieger",
-    "Russischer Meister", "Russischer Pokalsieger", "Russischer Superpokalsieger",
+    "Peruanischer Meister", "Peruanischer Pokalsieger",
+    "Rumänischer Meister", "Rumänischer Pokalsieger",
+    "Russischer Meister", "Russischer Pokalsieger",
     "Serbischer Meister", "Serbischer Pokalsieger",
     "Südafrikanischer Meister", "Südafrikanischer Pokalsieger",
     "Tschechischer Meister", "Tschechischer Pokalsieger",
-    "Tunesischer Meister", "Tunesischer Pokalsieger", "Tunesischer Superpokalsieger",
+    "Tunesischer Meister", "Tunesischer Pokalsieger",
     # Two distinct data-scraped variants of the same real title (one with a
     # trailing space) — both need whitelisting or the space-variant would
     # silently vanish despite being the identical trophy.
     "Ukrainischer Meister", "Ukrainischer Meister ",
-    "Ukrainischer Pokalsieger", "Ukrainischer Superpokalsieger",
-    "Ungarischer Ligapokalsieger", "Ungarischer Meister", "Ungarischer Pokalsieger",
+    "Ukrainischer Pokalsieger",
+    "Ungarischer Meister", "Ungarischer Pokalsieger",
 })
 
 PROMINENT_TROPHY_TITLES: frozenset[str] = TROPHY_FAME_TIER_1 | TROPHY_FAME_TIER_2
