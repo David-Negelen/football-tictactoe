@@ -244,6 +244,30 @@ window.addEventListener('pagehide', () => {
 
 // ─── Spielfeld rendern (gemeinsam für alle Modi) ───────────────────────────────
 
+// Shrinks el's font-size, starting from whatever its CSS (usually a
+// clamp()) already resolved to, down to `min` — one step at a time — until
+// its content actually fits. `axis: 'width'` is for single-line text where
+// text-overflow:ellipsis is the fallback (player names); `axis: 'height'`
+// is for the multi-line line-clamped labels, where the clamp's own
+// ellipsis is the fallback. Either way, shrinking to fit is the default
+// behavior and truncation only kicks in if `min` itself still overflows.
+function shrinkFontToFit(el, axis, min, step = 0.5) {
+  el.style.fontSize = '';
+  let size = parseFloat(getComputedStyle(el).fontSize);
+  const overflows = axis === 'width'
+    ? () => el.scrollWidth > el.clientWidth + 0.5
+    : () => el.scrollHeight > el.clientHeight + 0.5;
+  while (overflows() && size > min) {
+    size -= step;
+    el.style.fontSize = size + 'px';
+  }
+}
+
+function fitBoardText(root) {
+  root.querySelectorAll('.tt-cell-name').forEach(el => shrinkFontToFit(el, 'width', 8));
+  root.querySelectorAll('.tt-cat-label').forEach(el => shrinkFontToFit(el, 'height', 7));
+}
+
 function renderBoard() {
   const board = document.getElementById('board');
   const cells = [];
@@ -262,6 +286,7 @@ function renderBoard() {
       handleCellClick(r, c);
     });
   });
+  fitBoardText(board);
 }
 
 // Filled/missed cells have nothing to do on tap; an empty cell before the
@@ -277,17 +302,30 @@ function handleCellClick(r, c) {
   openCell(r, c);
 }
 
-// Board cells are too narrow for full names at readable font sizes without
-// either mid-word ellipsis or unpredictable wrapping ("Alexand" / "er..").
-// Compacting to "first initial + full last name" sidesteps both: it's
-// short enough to fit on one line in virtually every real case, and the
-// part that actually identifies the player (the surname) is never the
-// part that gets cut. Mononyms (Neymar, Pelé, Ronaldinho) pass through
-// unchanged since there's nothing to compact.
+function lastName(name) {
+  const parts = (name || '').trim().split(/\s+/);
+  return parts[parts.length - 1] || name || '';
+}
+
+// Last name alone identifies a player and is far shorter than the full
+// name — that's the default everywhere on the board. The only time it's
+// genuinely ambiguous is if two different filled cells on this board
+// happen to resolve to the same last name; only then do both get a
+// first-initial prefix back, to stay distinguishable. Mononyms (Neymar,
+// Pelé, Ronaldinho) have no "last name" to strip, so they pass through
+// unchanged either way.
 function formatPlayerName(name) {
   const parts = (name || '').trim().split(/\s+/);
   if (parts.length < 2) return name || '';
-  return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+  const ln = parts[parts.length - 1];
+  const collisions = {};
+  g.board.forEach(row => row.forEach(entry => {
+    if (entry && entry.name) {
+      const otherLn = lastName(entry.name);
+      collisions[otherLn] = (collisions[otherLn] || 0) + 1;
+    }
+  }));
+  return collisions[ln] > 1 ? `${parts[0][0]}. ${ln}` : ln;
 }
 
 function categoryIconHtml(cat) {
@@ -380,15 +418,19 @@ function cellHtml(r, c) {
     // lines and breaks the grid's rhythm) — so the cell itself only shows
     // a short summary, and tapping it opens the full list in a sheet
     // (openSolutionSheet) instead of cramming it in.
+    // A name AND a count don't both fit this space legibly, so pick one:
+    // a single answer is shown by name (last name only, same rule as a
+    // filled cell); more than one is shown as a plain count — "8 Spieler"
+    // — rather than a truncated name plus "+N", which read as neither a
+    // real name nor a clear count.
     const cellSol = g.solution[r][c];
     const count = cellSol.count || 0;
-    const first = cellSol.players?.[0] ? esc(formatPlayerName(cellSol.players[0].name)) : '';
-    const summary = count === 0 ? '–' : count === 1 ? first : `${first} +${count - 1}`;
+    const summary = count === 0 ? '–'
+      : count === 1 ? esc(formatPlayerName(cellSol.players[0].name))
+      : `${count} Spieler`;
     // No "LÖSUNG" caption — repeated on every one of these cells it was
     // just noise, and the muted color plus the checkmark on cells you did
     // answer (see above) already says "this one wasn't yours" on its own.
-    // Same "F. Lastname" compacting as filled cells (formatPlayerName) so
-    // the two states read as one consistent grid, not two different rules.
     return `
       <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-3 tt-slot text-center">
         <div class="tt-cell-sub text-xs leading-snug" style="color:var(--text-dim)">${summary}</div>
@@ -422,9 +464,20 @@ function refreshCell(r, c) {
   tmp.innerHTML = cellHtml(r, c);
   const newEl = tmp.firstElementChild;
   existing.replaceWith(newEl);
+  fitBoardText(newEl);
   if (!g.board[r][c]) {
     newEl.addEventListener('click', () => handleCellClick(r, c));
   }
+}
+
+// A newly-filled cell can turn a previously-unambiguous last name into a
+// collision with this one (see formatPlayerName) — refresh every filled
+// cell, not just the one that just changed, so an earlier cell picks up
+// its disambiguating initial too instead of only the new cell getting it.
+function refreshFilledCells() {
+  g.board.forEach((row, r) => row.forEach((entry, c) => {
+    if (entry && entry.status !== 'missed') refreshCell(r, c);
+  }));
 }
 
 async function revealSolutions() {
@@ -778,7 +831,7 @@ function placeLocal(r, c, playerId, name, club) {
   saveStats();
 
   checkWinnerLocal();
-  refreshCell(r, c);
+  refreshFilledCells();
   if (g.winner) { endGameLocal(); return; }
   g.current = g.current === 1 ? 2 : 1;
   updateStatus();
@@ -908,10 +961,11 @@ async function soloSelectPlayer(pid, name, club, r, c) {
   if (data.valid) {
     g.board[r][c] = { status: 'correct', player: 1, id: pid, name, club };
     g.soloCorrect++;
+    refreshFilledCells();
   } else {
     g.board[r][c] = { status: 'missed' };
+    refreshCell(r, c);
   }
-  refreshCell(r, c);
   updateStatus();
   if (g.soloAttempted >= 9) {
     g.winner = 'complete';
