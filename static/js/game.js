@@ -75,7 +75,10 @@ const DEFAULT_STATS = {
   // count of random-practice rounds ending with each score 0-9, for the
   // Wordle-style histogram in the stats modal.
   solo: { rounds: 0, correct: 0, cells: 0, bestCorrect: 0, streak: 0, bestStreak: 0, scoreDistribution: new Array(10).fill(0) },
-  online: { rounds: 0, wins: 0, losses: 0, draws: 0 },
+  // streak/bestStreak here: consecutive round *wins*, not guesses — a
+  // draw or a loss both break it, matching how a match-based mode's
+  // "streak" is usually understood.
+  online: { rounds: 0, wins: 0, losses: 0, draws: 0, streak: 0, bestStreak: 0 },
 };
 
 function loadStats() {
@@ -1646,11 +1649,19 @@ async function finishOnline() {
 
   if (g.winner === 'draw') {
     stats.online.draws++;
+    stats.online.streak = 0;
     saveStats();
     showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', '', true);
   } else {
     const youWon = g.winner === g.onlineSlot;
-    if (youWon) stats.online.wins++; else stats.online.losses++;
+    if (youWon) {
+      stats.online.wins++;
+      stats.online.streak++;
+      if (stats.online.streak > stats.online.bestStreak) stats.online.bestStreak = stats.online.streak;
+    } else {
+      stats.online.losses++;
+      stats.online.streak = 0;
+    }
     saveStats();
     if (youWon) fireConfetti();
     showEndBanner(
@@ -1701,51 +1712,53 @@ document.addEventListener('click', e => {
 // "Aufgeben" button) — click once to arm, click again to actually reset.
 let statsResetConfirming = false;
 
+// Shared Wordle-style histogram renderer — one flat accent bar per score
+// bucket (0-9), length relative to the largest bucket, used for both the
+// Solo and Tages-Rätsel sections so "how much got solved" shows up as a
+// shape, not just one aggregate percentage.
+function distributionChartHtml(dist, emptyLabel) {
+  const total = dist.reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    return `<div class="text-xs text-center py-1" style="color:var(--text-faint)">${emptyLabel}</div>`;
+  }
+  const maxBucket = Math.max(1, ...dist);
+  return dist.map((count, score) => `
+    <div class="flex items-center gap-2">
+      <div class="w-3 text-xs text-right font-bold" style="color:var(--text-dim)">${score}</div>
+      <div class="flex-1 rounded-full overflow-hidden" style="background:var(--card-border);height:12px;">
+        <div class="h-full rounded-full" style="width:${count ? Math.max(6, Math.round((count / maxBucket) * 100)) : 0}%;background:var(--accent);"></div>
+      </div>
+      <div class="w-5 text-xs text-right" style="color:var(--text-dim)">${count}</div>
+    </div>`).join('');
+}
+
 function renderStats() {
-  const l = stats.local, s = stats.solo, o = stats.online;
+  const s = stats.solo, o = stats.online;
   const d = loadDailyState();
-  const daysPlayed = Object.keys(d.completed).length;
-  const accuracy = (l.correct + l.wrong) ? Math.round((l.correct / (l.correct + l.wrong)) * 100) : 0;
-  const fastest = l.fastestWinSeconds != null ? formatTime(l.fastestWinSeconds) : '–';
+  const dailyScores = Object.values(d.completed).map(v => v.correct);
+  const daysPlayed = dailyScores.length;
+  const dailyAccuracy = daysPlayed
+    ? Math.round((dailyScores.reduce((a, b) => a + b, 0) / (daysPlayed * 9)) * 100) : 0;
+  const dailyDistribution = new Array(10).fill(0);
+  dailyScores.forEach(c => { if (c >= 0 && c <= 9) dailyDistribution[c]++; });
   const soloAccuracy = s.cells ? Math.round((s.correct / s.cells) * 100) : 0;
+  const onlineWinRate = o.rounds ? Math.round((o.wins / o.rounds) * 100) : 0;
 
   const tile = (value, label, accented) => `
     <div class="tt-card p-2.5"><div class="text-base font-black" style="color:${accented ? 'var(--accent)' : 'var(--text)'}">${value}</div><div class="tt-label">${label}</div></div>`;
 
-  // Wordle-style histogram of how many random-practice rounds ended with
-  // each score (0-9 correct) — "how much got solved", not just an overall
-  // percentage. One flat accent bar per row, length relative to the
-  // largest bucket so the shape of the distribution is visible at a glance.
-  const maxBucket = Math.max(1, ...s.scoreDistribution);
-  const distribution = s.rounds === 0
-    ? `<div class="text-xs text-center py-1" style="color:var(--text-faint)">Noch keine Runden gespielt</div>`
-    : s.scoreDistribution.map((count, score) => `
-        <div class="flex items-center gap-2">
-          <div class="w-3 text-xs text-right font-bold" style="color:var(--text-dim)">${score}</div>
-          <div class="flex-1 rounded-full overflow-hidden" style="background:var(--card-border);height:12px;">
-            <div class="h-full rounded-full" style="width:${count ? Math.max(6, Math.round((count / maxBucket) * 100)) : 0}%;background:var(--accent);"></div>
-          </div>
-          <div class="w-5 text-xs text-right" style="color:var(--text-dim)">${count}</div>
-        </div>`).join('');
-
   document.getElementById('stats-body').innerHTML = `
     <div>
       <div class="tt-label mb-2">📅 Tages-Rätsel</div>
-      <div class="grid grid-cols-3 gap-2 text-center">
-        ${tile(daysPlayed, 'Gespielt')}
-        ${tile(`${d.currentStreak} 🔥`, 'Serie', true)}
-        ${tile(d.bestStreak, 'Beste Serie', true)}
-      </div>
-    </div>
-    <div>
-      <div class="tt-label mb-2">🛋️ 1v1 Lokal</div>
       <div class="grid grid-cols-2 gap-2 text-center">
-        ${tile(l.gamesPlayed, 'Spiele')}
-        ${tile(`${l.bestStreak} 🔥`, 'Beste Serie', true)}
-        ${tile(l.wins[1], 'Siege X')}
-        ${tile(l.wins[2], 'Siege O')}
-        ${tile(`${accuracy}%`, 'Trefferquote')}
-        ${tile(fastest, 'Schnellster Sieg')}
+        ${tile(daysPlayed, 'Gespielt')}
+        ${tile(`${dailyAccuracy}%`, 'Trefferquote')}
+        ${tile(`${d.currentStreak} 🔥`, 'Serie', true)}
+        ${tile(`${d.bestStreak} 🔥`, 'Beste Serie', true)}
+      </div>
+      <div class="tt-card p-3 mt-2 flex flex-col gap-1.5">
+        <div class="tt-label mb-0.5">Ergebnisverteilung</div>
+        ${distributionChartHtml(dailyDistribution, 'Noch kein Tagesrätsel gespielt')}
       </div>
     </div>
     <div>
@@ -1759,15 +1772,19 @@ function renderStats() {
       </div>
       <div class="tt-card p-3 mt-2 flex flex-col gap-1.5">
         <div class="tt-label mb-0.5">Ergebnisverteilung</div>
-        ${distribution}
+        ${distributionChartHtml(s.scoreDistribution, 'Noch keine Runden gespielt')}
       </div>
     </div>
     <div>
       <div class="tt-label mb-2">🌐 1v1 Online</div>
-      <div class="grid grid-cols-3 gap-2 text-center">
+      <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(o.rounds, 'Spiele')}
+        ${tile(`${onlineWinRate}%`, 'Gewinnrate', true)}
+        ${tile(`${o.streak} 🔥`, 'Serie', true)}
+        ${tile(`${o.bestStreak} 🔥`, 'Beste Serie', true)}
         ${tile(o.wins, 'Siege', true)}
         ${tile(o.losses, 'Niederlagen')}
+        <div class="tt-card p-2.5 col-span-2"><div class="text-base font-black" style="color:var(--text)">${o.draws}</div><div class="tt-label">Unentschieden</div></div>
       </div>
     </div>
     <div class="pt-3" style="border-top:1px solid var(--card-border);">
