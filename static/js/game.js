@@ -246,7 +246,7 @@ function renderBoard() {
   const board = document.getElementById('board');
   const cells = [];
 
-  cells.push(`<div class="h-32"></div>`);
+  cells.push(`<div class="tt-slot"></div>`);
   g.cols.forEach(cat => cells.push(headerCellHtml(cat)));
   g.rows.forEach((rowCat, r) => {
     cells.push(headerCellHtml(rowCat));
@@ -257,9 +257,22 @@ function renderBoard() {
   board.querySelectorAll('[data-cell]').forEach(el => {
     el.addEventListener('click', () => {
       const [r, c] = el.dataset.cell.split(',').map(Number);
-      openCell(r, c);
+      handleCellClick(r, c);
     });
   });
+}
+
+// Filled/missed cells have nothing to do on tap; an empty cell before the
+// round ends opens the player search; an empty cell after the round ends
+// (once solutions are loaded) opens the full-answer sheet instead — same
+// data-cell wiring either way, the state at click time decides.
+function handleCellClick(r, c) {
+  if (g.board[r][c]) return;
+  if (g.winner !== null) {
+    if (g.solution) openSolutionSheet(r, c);
+    return;
+  }
+  openCell(r, c);
 }
 
 function categoryIconHtml(cat) {
@@ -285,12 +298,19 @@ function categoryIconHtml(cat) {
 }
 
 function headerCellHtml(cat) {
+  // The icon (crest/flag/emoji) carries the primary identification — the
+  // label only needs to back it up, so it clamps to 2 lines, wrapping at
+  // word boundaries like normal text. overflow-wrap:anywhere is a fallback
+  // for the rare single "word" (a long club name with no spaces) that
+  // still can't fit, not the default behavior — forcing every label to
+  // break letter-by-letter is what made real narrow-phone headers
+  // illegible ("A", "C", "F.").
   return `
-    <div class="tt-cell flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2"
+    <div class="tt-cell flex flex-col items-center justify-center p-2 tt-slot overflow-hidden gap-1"
          title="${esc(cat.label)}">
       ${categoryIconHtml(cat)}
       <div class="font-semibold text-center leading-snug px-1"
-           style="font-size:11px;color:var(--text-dim);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
+           style="font-size:10.5px;color:var(--text-dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;">
         ${esc(cat.label)}
       </div>
     </div>`;
@@ -307,7 +327,7 @@ function cellHtml(r, c) {
   // the one accent color, flat, no glow/animation.
   if (entry && entry.status === 'missed') {
     return `
-      <div class="tt-cell flex flex-col items-center justify-center h-32">
+      <div class="tt-cell flex flex-col items-center justify-center tt-slot">
         <div class="text-2xl mb-1" style="color:var(--text-dim)">✕</div>
         <div class="tt-label">Falsch</div>
       </div>`;
@@ -315,7 +335,7 @@ function cellHtml(r, c) {
 
   if (entry) {
     return `
-      <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 h-32"
+      <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot"
            data-cell="${r},${c}">
         ${g.mode !== 'solo' ? `<div class="flex justify-end w-full mb-1">${markBadge(entry.player)}</div>` : ''}
         <div class="font-bold text-center leading-tight px-1 text-sm" style="color:var(--text)">${esc(entry.name)}</div>
@@ -324,14 +344,20 @@ function cellHtml(r, c) {
   }
 
   if (gone && g.solution) {
+    // A real name list overflows a mobile-width cell fast ("Mattia
+    // Graffiedi, Marco Donadel, Cristian Brocchi +2 weitere" wraps to 4-5
+    // lines and breaks the grid's rhythm) — so the cell itself only shows
+    // a short summary, and tapping it opens the full list in a sheet
+    // (openSolutionSheet) instead of cramming it in.
     const cellSol = g.solution[r][c];
-    const names = (cellSol.players || []).slice(0, 3).map(p => esc(p.name)).join(', ');
+    const count = cellSol.count || 0;
+    const first = cellSol.players?.[0] ? esc(cellSol.players[0].name) : '';
+    const summary = count === 0 ? '–' : count === 1 ? first : `${first} +${count - 1}`;
     return `
-      <div class="tt-cell flex flex-col items-center justify-center p-2 h-32 text-center">
+      <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-2 tt-slot text-center">
         <div class="tt-label mb-1">Lösung</div>
-        <div class="text-[11px] leading-snug px-1" style="color:var(--text-dim)">${names || '–'}</div>
-        ${cellSol.count > 3 ? `<div class="text-[9px] mt-1" style="color:var(--text-faint)">+${cellSol.count - 3} weitere</div>` : ''}
-      </div>`;
+        <div class="text-[11px] leading-snug px-1 truncate max-w-full" style="color:var(--text-dim)">${summary}</div>
+      </button>`;
   }
 
   // Online mode: names can only be entered on your own turn — the server
@@ -346,7 +372,7 @@ function cellHtml(r, c) {
   const isActive = !disabled && g.activeCell && g.activeCell.r === r && g.activeCell.c === c;
   return `
     <button ${disabled ? 'disabled' : ''} data-cell="${r},${c}"
-      class="tt-cell ${isActive ? 'is-active' : ''} flex flex-col items-center justify-center h-32 w-full">
+      class="tt-cell ${isActive ? 'is-active' : ''} flex flex-col items-center justify-center tt-slot w-full">
       ${shirtSvg()}
       <span class="tt-label mt-1">Spieler wählen</span>
     </button>`;
@@ -362,7 +388,7 @@ function refreshCell(r, c) {
   const newEl = tmp.firstElementChild;
   existing.replaceWith(newEl);
   if (!g.board[r][c]) {
-    newEl.addEventListener('click', () => openCell(r, c));
+    newEl.addEventListener('click', () => handleCellClick(r, c));
   }
 }
 
@@ -380,6 +406,27 @@ async function revealSolutions() {
     // Reveal is a nice-to-have; a network hiccup here shouldn't disrupt anything else.
   }
 }
+
+// The full answer list for a cell the player never filled — opened from
+// the compact "Lösung" summary in the cell itself (see cellHtml).
+function openSolutionSheet(r, c) {
+  const cellSol = g.solution?.[r]?.[c];
+  if (!cellSol) return;
+  document.getElementById('solution-modal-title').textContent = `${g.rows[r].label} × ${g.cols[c].label}`;
+  const names = (cellSol.players || []).map(p => esc(p.name));
+  document.getElementById('solution-modal-body').innerHTML = names.length
+    ? names.map(n => `<div class="tt-row-hover rounded-lg px-3 py-2.5 text-sm" style="color:var(--text)">${n}</div>`).join('')
+    : `<p class="text-xs text-center py-2" style="color:var(--text-faint)">Keine Spieler gefunden</p>`;
+  document.getElementById('solution-modal').classList.remove('hidden');
+}
+
+function closeSolutionSheet() {
+  document.getElementById('solution-modal').classList.add('hidden');
+}
+document.getElementById('solution-modal-close').addEventListener('click', closeSolutionSheet);
+document.getElementById('solution-modal').addEventListener('click', e => {
+  if (e.target.id === 'solution-modal') closeSolutionSheet();
+});
 
 // ─── Zell-Interaktion (gemeinsam) ──────────────────────────────────────────────
 
@@ -476,8 +523,10 @@ function updateStatus() {
   updateStreakDisplay();
   if (g.winner) return;
   if (g.mode === 'solo') {
+    // A running score (correct answers so far) instead of an attempt
+    // counter — "0/9" reads instantly, no "Zelle N von 9" framing needed.
     document.getElementById('status-text').innerHTML =
-      `Zelle <span style="color:var(--accent)">${g.soloAttempted + 1}</span> von 9`;
+      `<span style="color:var(--accent)">${g.soloCorrect}</span> / 9`;
     return;
   }
   if (g.mode === 'online') {
@@ -537,6 +586,13 @@ function showEndBanner(icon, title, sub, extra, showReplay = true) {
 function hideEndBanner() {
   document.getElementById('end-banner').classList.add('hidden');
 }
+
+// Tapping the backdrop dismisses the results sheet without leaving the
+// board screen, so the revealed solutions underneath are reachable (each
+// still tappable for its full answer list — see openSolutionSheet).
+document.getElementById('end-banner').addEventListener('click', e => {
+  if (e.target.id === 'end-banner') hideEndBanner();
+});
 
 // Online rematches need both players' agreement — see updateRematchButtonState,
 // which keeps this button in sync (waiting / accept / ask) on every poll
@@ -1002,7 +1058,7 @@ function editorSlotHtml(side, i) {
   const cat = g.editor[side][i];
   if (cat) {
     return `
-      <div class="tt-cell tt-card-hover flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2 cursor-pointer"
+      <div class="tt-cell tt-card-hover flex flex-col items-center justify-center p-3 tt-slot overflow-hidden gap-2 cursor-pointer"
            data-editor-slot="${side}-${i}" title="${esc(cat.label)}">
         ${categoryIconHtml(cat)}
         <div class="font-semibold text-center leading-snug px-1"
@@ -1012,7 +1068,7 @@ function editorSlotHtml(side, i) {
       </div>`;
   }
   return `
-    <div class="tt-cell tt-card-hover flex items-center justify-center h-32 text-xs font-semibold text-center px-2 cursor-pointer"
+    <div class="tt-cell tt-card-hover flex items-center justify-center tt-slot text-xs font-semibold text-center px-2 cursor-pointer"
          style="color:var(--text-faint)" data-editor-slot="${side}-${i}">
       + Kategorie
     </div>`;
@@ -1020,15 +1076,15 @@ function editorSlotHtml(side, i) {
 
 function editorCountCellHtml(r, c) {
   if (!g.editor.row[r] || !g.editor.col[c]) {
-    return `<div class="h-32"></div>`;
+    return `<div class="tt-slot"></div>`;
   }
   const count = g.editorCounts ? g.editorCounts[r][c] : undefined;
   if (count === undefined || count === null) {
-    return `<div class="tt-cell flex items-center justify-center h-32 text-xs" style="color:var(--text-faint)">…</div>`;
+    return `<div class="tt-cell flex items-center justify-center tt-slot text-xs" style="color:var(--text-faint)">…</div>`;
   }
   const empty = count === 0;
   return `
-    <div class="tt-cell flex flex-col items-center justify-center h-32" style="${empty ? '' : 'border-color:var(--accent)'}">
+    <div class="tt-cell flex flex-col items-center justify-center tt-slot" style="${empty ? '' : 'border-color:var(--accent)'}">
       <div class="text-2xl font-black" style="color:${empty ? 'var(--text-faint)' : 'var(--accent)'}">${count}</div>
       <div class="tt-label">${empty ? 'keine Spieler' : 'möglich'}</div>
     </div>`;
@@ -1036,7 +1092,7 @@ function editorCountCellHtml(r, c) {
 
 function renderEditorGrid() {
   const grid = document.getElementById('editor-grid');
-  const cells = [`<div class="h-32"></div>`];
+  const cells = [`<div class="tt-slot"></div>`];
   [0, 1, 2].forEach(c => cells.push(editorSlotHtml('col', c)));
   [0, 1, 2].forEach(r => {
     cells.push(editorSlotHtml('row', r));
@@ -1614,7 +1670,11 @@ document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal').addEventListener('click', e => {
   if (e.target.id === 'modal') closeModal();
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  closeModal();
+  closeSolutionSheet();
+});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 

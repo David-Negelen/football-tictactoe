@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Tiki-Taka-Toe</title>
   <meta name="description" content="Football-themed tic-tac-toe: name a real player who fits both the row and column category.">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#0a1512">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
@@ -30,7 +30,26 @@
       --accent-dim: rgba(249, 115, 22, .14);
     }
 
-    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); }
+    html { background: var(--bg); height: 100%; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      margin: 0;
+      min-height: 100%;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* One board slot (header cell or answer cell): scales with viewport
+       width instead of a fixed 128px, so 4 columns stay comfortably square
+       on a 375-414px phone instead of forcing content to overflow. */
+    .tt-slot { height: clamp(72px, 21vw, 128px); }
+
+    /* Grid items default to min-width:auto, which lets a track with
+       highly-wrappable content (long category labels) get squeezed
+       narrower than its 1fr share while other tracks keep theirs — the
+       cause of the lopsided, near-illegible header column seen on real
+       phones. min-width:0 makes every column honor the same 1fr share. */
+    #board > * { min-width: 0; }
 
     /* ── Type scale: distinct roles instead of "everything bold+uppercase" ── */
     .tt-title { font-size: 1.375rem; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; color: var(--text); }
@@ -69,13 +88,25 @@
     .tt-input:focus { outline: none; border-color: var(--accent); }
     .tt-input::placeholder { color: var(--text-faint); }
 
-    .tt-pill { background: transparent; color: var(--text-dim); font-weight: 600; transition: color .12s, background-color .12s; }
+    .tt-pill {
+      background: transparent; color: var(--text-dim); font-weight: 600;
+      transition: color .12s, background-color .12s;
+      min-height: 44px; display: flex; align-items: center; justify-content: center;
+    }
     .tt-pill:hover { color: var(--text); }
     .tt-pill.is-active { background: var(--accent); color: var(--accent-ink); }
 
-    .tt-row-hover { transition: background-color .12s; }
+    /* List rows (menu items, search/category/solution results) — dense by
+       nature, so the row itself carries the 44px minimum rather than
+       relying on font size to get there. */
+    .tt-row-hover {
+      transition: background-color .12s;
+      min-height: 44px; display: flex; align-items: center;
+    }
     .tt-row-hover:hover { background: var(--card-border); }
     .tt-row-hover.is-disabled { opacity: .4; cursor: not-allowed; }
+
+    .tt-tap-pad { padding: 10px; margin: -10px; }
 
     @keyframes confetti-fall {
       0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
@@ -94,13 +125,13 @@
     </button>
     <div class="relative">
       <button id="btn-menu-toggle" title="Menü" aria-label="Menü"
-        class="tt-card tt-card-hover flex items-center justify-center w-9 h-9" style="color:var(--text)">
+        class="tt-card tt-card-hover flex items-center justify-center w-11 h-11" style="color:var(--text)">
         <span class="text-lg leading-none">☰</span>
       </button>
       <div id="menu-dropdown" class="hidden tt-card absolute right-0 mt-2 w-52 overflow-hidden z-30">
         <button id="btn-stats" class="tt-row-hover w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm" style="color:var(--text)">📊 Statistik</button>
         <button id="btn-editor" class="tt-row-hover w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm" style="color:var(--text)">🛠️ Editor</button>
-        <button id="btn-install" class="hidden w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm transition-colors" style="color:var(--text)">⬇️ Installieren</button>
+        <button id="btn-install" class="tt-row-hover hidden w-full items-center gap-2 text-left px-4 py-2.5 text-sm" style="color:var(--text)">⬇️ Installieren</button>
       </div>
     </div>
   </header>
@@ -237,30 +268,6 @@
         </span>
       </div>
 
-      <!-- Rundenergebnis: inline im Layout statt als Popup, damit die
-           aufgedeckte Lösung im Raster darunter sichtbar bleibt. -->
-      <div id="end-banner" class="hidden p-4 flex flex-col sm:flex-row items-center gap-3" style="border-bottom:1px solid var(--card-border);">
-        <div class="flex items-center gap-3 flex-1 min-w-0 w-full">
-          <div id="end-icon" class="text-3xl flex-shrink-0 tt-icon-mono"></div>
-          <div class="min-w-0">
-            <h2 id="end-title" class="text-lg font-black leading-tight" style="color:var(--text)"></h2>
-            <p id="end-sub" class="text-xs leading-snug" style="color:var(--text-dim)"></p>
-            <p id="end-extra" class="text-[11px] leading-snug" style="color:var(--text-faint)"></p>
-          </div>
-        </div>
-        <div class="flex gap-2 flex-shrink-0 w-full sm:w-auto">
-          <button id="end-share" class="hidden tt-btn-neutral flex-1 sm:flex-none text-sm px-4 py-2 rounded-full">
-            📤 Teilen
-          </button>
-          <button id="end-new-game" class="tt-btn-accent flex-1 sm:flex-none text-sm px-4 py-2 rounded-full">
-            Nochmal spielen
-          </button>
-          <button id="end-menu" class="tt-btn-neutral flex-1 sm:flex-none text-sm px-4 py-2 rounded-full">
-            Menü
-          </button>
-        </div>
-      </div>
-
       <!-- Spielfeld: 4×4 CSS-Grid. Same gap for every row (header row
            included), same .tt-cell style for every slot (see game.js) —
            so it reads as one grid, not a header glued to a 3×3 grid. -->
@@ -270,11 +277,37 @@
 
     <!-- Buttons -->
     <div class="mt-4 flex gap-3">
-      <button id="btn-give-up" class="tt-btn-accent text-xs px-5 py-2 rounded-full tracking-widest uppercase">
+      <button id="btn-give-up" class="tt-btn-accent text-xs px-6 py-3 rounded-full tracking-widest uppercase">
         Aufgeben
       </button>
     </div>
 
+  </div>
+
+  <!-- Rundenergebnis: eigenes Overlay statt inline über dem Raster — sonst
+       schiebt die Ergebniskarte das Grid nach unten und wirkt wie ein
+       nachträglicher Zusatz statt das eigentliche Spielfeld. -->
+  <div id="end-banner" class="hidden fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center">
+    <div class="tt-card w-full sm:max-w-sm p-5 flex flex-col items-center text-center gap-3 rounded-b-none sm:rounded-b-[10px]"
+      style="padding-bottom:calc(1.25rem + env(safe-area-inset-bottom));">
+      <div id="end-icon" class="text-4xl flex-shrink-0 tt-icon-mono"></div>
+      <div>
+        <h2 id="end-title" class="text-xl font-black leading-tight" style="color:var(--text)"></h2>
+        <p id="end-sub" class="text-sm leading-snug mt-1" style="color:var(--text-dim)"></p>
+        <p id="end-extra" class="text-xs leading-snug mt-1" style="color:var(--text-faint)"></p>
+      </div>
+      <div class="flex flex-col gap-2 w-full mt-2">
+        <button id="end-new-game" class="tt-btn-accent w-full text-sm px-4 py-3 rounded-full">
+          Nochmal spielen
+        </button>
+        <button id="end-share" class="hidden tt-btn-neutral w-full text-sm px-4 py-3 rounded-full">
+          📤 Teilen
+        </button>
+        <button id="end-menu" class="tt-btn-neutral w-full text-sm px-4 py-3 rounded-full">
+          Menü
+        </button>
+      </div>
+    </div>
   </div>
 
   </div><!-- /content -->
@@ -284,7 +317,7 @@
     <div class="tt-card w-full max-w-sm overflow-hidden">
       <div class="px-5 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--card-border);">
         <span id="modal-title" class="font-bold text-sm leading-snug" style="color:var(--text)"></span>
-        <button id="modal-close" class="text-2xl leading-none ml-3 flex-shrink-0 transition-colors" style="color:var(--text-dim)">×</button>
+        <button id="modal-close" class="tt-tap-pad text-2xl leading-none ml-3 flex-shrink-0 transition-colors" style="color:var(--text-dim)">×</button>
       </div>
       <div class="p-4">
         <input id="search-input" type="text" placeholder="Spieler suchen…" autocomplete="off"
@@ -303,7 +336,7 @@
     <div class="tt-card w-full max-w-sm overflow-hidden">
       <div class="px-5 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--card-border);">
         <span class="font-bold text-sm leading-snug" style="color:var(--text)">Kategorie wählen</span>
-        <button id="category-picker-close" class="text-2xl leading-none ml-3 flex-shrink-0 transition-colors" style="color:var(--text-dim)">×</button>
+        <button id="category-picker-close" class="tt-tap-pad text-2xl leading-none ml-3 flex-shrink-0 transition-colors" style="color:var(--text-dim)">×</button>
       </div>
       <div class="p-4">
         <input id="category-picker-search" type="text" placeholder="Suchen… (z.B. Bayern, Torwart, Deutsch)" autocomplete="off"
@@ -318,9 +351,22 @@
     <div class="tt-card w-full max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
       <div class="px-5 py-3 flex items-center justify-between flex-shrink-0" style="border-bottom:1px solid var(--card-border);">
         <span class="font-bold text-sm" style="color:var(--text)">📊 Deine Statistik</span>
-        <button id="stats-close" class="text-2xl leading-none transition-colors" style="color:var(--text-dim)">×</button>
+        <button id="stats-close" class="tt-tap-pad text-2xl leading-none transition-colors" style="color:var(--text-dim)">×</button>
       </div>
       <div id="stats-body" class="p-5 space-y-4 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- Lösungs-Sheet: die volle Spielerliste für ein leer gebliebenes Feld —
+       als Bottom-Sheet auf dem Handy statt in die Zelle gequetscht. -->
+  <div id="solution-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center">
+    <div class="tt-card w-full sm:max-w-sm overflow-hidden max-h-[75vh] flex flex-col rounded-b-none sm:rounded-b-[10px]"
+      style="padding-bottom:env(safe-area-inset-bottom);">
+      <div class="px-5 py-3 flex items-center justify-between flex-shrink-0" style="border-bottom:1px solid var(--card-border);">
+        <span id="solution-modal-title" class="font-bold text-sm leading-snug" style="color:var(--text)"></span>
+        <button id="solution-modal-close" class="tt-tap-pad text-2xl leading-none ml-3 flex-shrink-0 transition-colors" style="color:var(--text-dim)">×</button>
+      </div>
+      <div id="solution-modal-body" class="p-2 space-y-1 overflow-y-auto"></div>
     </div>
   </div>
 
