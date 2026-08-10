@@ -122,6 +122,24 @@
        the palette. */
     .tt-icon-mono { filter: grayscale(1); opacity: .85; }
 
+    /* Downloaded crest/flag artwork (categoryIconHtml's icon_image branch)
+       sits on a fixed light backdrop, not the dark card directly — a
+       predominantly dark crest (Tottenham's navy, Newcastle's black/white)
+       would otherwise be nearly invisible against the dark theme. White
+       works for every crest/flag regardless of its own palette; letter
+       badges and the grayscale ball fallback don't use this, they already
+       carry their own contrast. */
+    .tt-icon-crest {
+      background: #fff;
+      border-radius: 6px;
+      padding: 2px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tt-icon-crest-img { width: 100%; height: 100%; object-fit: contain; }
+
     /* App-chrome icons (mode cards, daily card, header logo) — accent-
        colored line icons, replacing the old grayscale-filtered emoji so
        the mode-select screen isn't entirely neutral gray. */
