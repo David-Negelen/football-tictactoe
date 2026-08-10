@@ -1736,11 +1736,8 @@ function renderStats() {
   const s = stats.solo, o = stats.online;
   const d = loadDailyState();
   const dailyScores = Object.values(d.completed).map(v => v.correct);
-  const daysPlayed = dailyScores.length;
-  const dailyAccuracy = daysPlayed
-    ? Math.round((dailyScores.reduce((a, b) => a + b, 0) / (daysPlayed * 9)) * 100) : 0;
-  const dailyDistribution = new Array(10).fill(0);
-  dailyScores.forEach(c => { if (c >= 0 && c <= 9) dailyDistribution[c]++; });
+  const dailyAccuracy = dailyScores.length
+    ? Math.round((dailyScores.reduce((a, b) => a + b, 0) / (dailyScores.length * 9)) * 100) : 0;
   const soloAccuracy = s.cells ? Math.round((s.correct / s.cells) * 100) : 0;
   const onlineWinRate = o.rounds ? Math.round((o.wins / o.rounds) * 100) : 0;
 
@@ -1751,14 +1748,8 @@ function renderStats() {
     <div>
       <div class="tt-label mb-2">📅 Tages-Rätsel</div>
       <div class="grid grid-cols-2 gap-2 text-center">
-        ${tile(daysPlayed, 'Gespielt')}
-        ${tile(`${dailyAccuracy}%`, 'Trefferquote')}
         ${tile(`${d.currentStreak} 🔥`, 'Serie', true)}
-        ${tile(`${d.bestStreak} 🔥`, 'Beste Serie', true)}
-      </div>
-      <div class="tt-card p-3 mt-2 flex flex-col gap-1.5">
-        <div class="tt-label mb-0.5">Ergebnisverteilung</div>
-        ${distributionChartHtml(dailyDistribution, 'Noch kein Tagesrätsel gespielt')}
+        ${tile(`${dailyAccuracy}%`, 'Trefferquote')}
       </div>
     </div>
     <div>
@@ -1766,8 +1757,6 @@ function renderStats() {
       <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(s.rounds, 'Runden')}
         ${tile(`${s.bestCorrect}/9`, 'Bestes Ergebnis', true)}
-        ${tile(`${s.streak} 🔥`, 'Serie', true)}
-        ${tile(`${s.bestStreak} 🔥`, 'Beste Serie', true)}
         <div class="tt-card p-2.5 col-span-2"><div class="text-base font-black" style="color:var(--text)">${soloAccuracy}%</div><div class="tt-label">Trefferquote gesamt</div></div>
       </div>
       <div class="tt-card p-3 mt-2 flex flex-col gap-1.5">
@@ -1780,8 +1769,6 @@ function renderStats() {
       <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(o.rounds, 'Spiele')}
         ${tile(`${onlineWinRate}%`, 'Gewinnrate', true)}
-        ${tile(`${o.streak} 🔥`, 'Serie', true)}
-        ${tile(`${o.bestStreak} 🔥`, 'Beste Serie', true)}
         ${tile(o.wins, 'Siege', true)}
         ${tile(o.losses, 'Niederlagen')}
         <div class="tt-card p-2.5 col-span-2"><div class="text-base font-black" style="color:var(--text)">${o.draws}</div><div class="tt-label">Unentschieden</div></div>
