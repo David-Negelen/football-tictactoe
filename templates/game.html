@@ -128,22 +128,27 @@
        black/white) would otherwise be nearly invisible against the dark
        theme. CSS has no direct "outline" filter for arbitrary transparent
        artwork, so this is faked with eight zero-blur drop-shadows offset
-       1px in every direction — a solid traced line around the image's own
-       alpha silhouette, not a blur/glow. A dark crest gets a visible edge
-       while an already-bright one just gets a thin, barely-noticeable
-       line — no boxy backdrop behind crests that never needed one. Letter
-       badges and the grayscale ball fallback don't use this, they already
-       carry their own contrast. */
+       a fraction of a pixel in every direction — a thin traced line
+       around the image's own alpha silhouette, not a blur/glow. A dark
+       crest gets a visible edge while an already-bright one just gets a
+       barely-noticeable line — no boxy backdrop behind crests that never
+       needed one. object-fit:contain keeps the crest's real aspect ratio
+       within the fixed-size .tt-icon square instead of stretching it
+       (the browser's fill default otherwise squashes non-square crests
+       like SC Paderborn's circular badge into an oval). Letter badges and
+       the grayscale ball fallback don't use this, they already carry
+       their own contrast. */
     .tt-icon-crest-img {
+      object-fit: contain;
       filter:
-        drop-shadow(1px 0 0 rgba(255, 255, 255, .9))
-        drop-shadow(-1px 0 0 rgba(255, 255, 255, .9))
-        drop-shadow(0 1px 0 rgba(255, 255, 255, .9))
-        drop-shadow(0 -1px 0 rgba(255, 255, 255, .9))
-        drop-shadow(1px 1px 0 rgba(255, 255, 255, .9))
-        drop-shadow(-1px -1px 0 rgba(255, 255, 255, .9))
-        drop-shadow(1px -1px 0 rgba(255, 255, 255, .9))
-        drop-shadow(-1px 1px 0 rgba(255, 255, 255, .9));
+        drop-shadow(.6px 0 0 rgba(255, 255, 255, .8))
+        drop-shadow(-.6px 0 0 rgba(255, 255, 255, .8))
+        drop-shadow(0 .6px 0 rgba(255, 255, 255, .8))
+        drop-shadow(0 -.6px 0 rgba(255, 255, 255, .8))
+        drop-shadow(.6px .6px 0 rgba(255, 255, 255, .8))
+        drop-shadow(-.6px -.6px 0 rgba(255, 255, 255, .8))
+        drop-shadow(.6px -.6px 0 rgba(255, 255, 255, .8))
+        drop-shadow(-.6px .6px 0 rgba(255, 255, 255, .8));
     }
 
     /* App-chrome icons (mode cards, daily card, header logo) — accent-
