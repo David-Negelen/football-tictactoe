@@ -74,6 +74,24 @@
       overflow: hidden; overflow-wrap: anywhere;
     }
 
+    /* A filled cell's player name (see formatPlayerName in game.js, which
+       already compacts to "F. Lastname" so this almost never needs to
+       clamp). Kept as a hard 2-line/ellipsis fallback anyway, so even an
+       unusually long compound surname degrades to "…" at a word boundary
+       instead of overflowing the card — never a mid-word break. */
+    .tt-cell-name {
+      font-size: clamp(9px, 2.8vw, 12px);
+      font-weight: 700; line-height: 1.25;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; overflow-wrap: anywhere;
+      /* overflow:hidden (required for the line-clamp above) strips this
+         flex item's automatic min-height-from-content protection, which
+         let a crowded cell (badge+name+club) crush it well below 2 real
+         lines instead of just wrapping. Pin the floor back explicitly. */
+      flex-shrink: 0;
+      min-height: calc(1.25em * 2);
+    }
+
     /* ── Type scale: distinct roles instead of "everything bold+uppercase" ── */
     .tt-title { font-size: 1.375rem; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; color: var(--text); }
     .tt-label { font-size: .6875rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }

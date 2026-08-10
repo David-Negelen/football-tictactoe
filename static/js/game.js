@@ -275,6 +275,19 @@ function handleCellClick(r, c) {
   openCell(r, c);
 }
 
+// Board cells are too narrow for full names at readable font sizes without
+// either mid-word ellipsis or unpredictable wrapping ("Alexand" / "er..").
+// Compacting to "first initial + full last name" sidesteps both: it's
+// short enough to fit on one line in virtually every real case, and the
+// part that actually identifies the player (the surname) is never the
+// part that gets cut. Mononyms (Neymar, Pelé, Ronaldinho) pass through
+// unchanged since there's nothing to compact.
+function formatPlayerName(name) {
+  const parts = (name || '').trim().split(/\s+/);
+  if (parts.length < 2) return name || '';
+  return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+}
+
 function categoryIconHtml(cat) {
   // Real crest/flag artwork and team brand colors are content, not
   // decoration — they stay in full color. Only the generic emoji fallback
@@ -307,7 +320,7 @@ function headerCellHtml(cat) {
   // name like "Bor. M'gladbach" gets enough room across 3 lines instead of
   // being cut mid-word at 2.
   return `
-    <div class="tt-cell flex flex-col items-center justify-center p-2.5 tt-slot overflow-hidden gap-1"
+    <div class="tt-cell flex flex-col items-center justify-center p-3 tt-slot overflow-hidden gap-1"
          title="${esc(cat.label)}">
       ${categoryIconHtml(cat)}
       <div class="tt-cat-label font-semibold text-center leading-snug" style="color:var(--text-dim)">
@@ -327,7 +340,7 @@ function cellHtml(r, c) {
   // the one accent color, flat, no glow/animation.
   if (entry && entry.status === 'missed') {
     return `
-      <div class="tt-cell flex flex-col items-center justify-center p-2 tt-slot">
+      <div class="tt-cell flex flex-col items-center justify-center p-2.5 tt-slot">
         <div class="text-2xl mb-1" style="color:var(--text-dim)">✕</div>
         <div class="tt-label">Falsch</div>
       </div>`;
@@ -343,11 +356,18 @@ function cellHtml(r, c) {
     const badge = g.mode === 'solo'
       ? `<span class="text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="border:1.5px solid var(--accent);color:var(--accent)">✓</span>`
       : markBadge(entry.player);
+    // The badge sits absolutely in the corner instead of its own flex row —
+    // on a 4-column mobile grid the cell is only ~50px of usable content
+    // height, and a dedicated badge row was eating enough of that to crush
+    // the name down to an unreadable sliver (a flex item with overflow:
+    // hidden — needed for the line-clamp below — loses its automatic
+    // min-height protection, so a too-tall stack doesn't just wrap, it
+    // silently shrinks below its own content size).
     return `
-      <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot"
+      <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
            data-cell="${r},${c}">
-        <div class="flex justify-end w-full mb-1">${badge}</div>
-        <div class="font-bold text-center leading-tight" style="color:var(--text)">${esc(entry.name)}</div>
+        <div class="absolute top-1.5 right-1.5">${badge}</div>
+        <div class="tt-cell-name text-center" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
         <div class="tt-cell-sub text-xs mt-1 text-center" style="color:var(--text-dim)">${esc(entry.club || '')}</div>
       </div>`;
   }
@@ -360,13 +380,15 @@ function cellHtml(r, c) {
     // (openSolutionSheet) instead of cramming it in.
     const cellSol = g.solution[r][c];
     const count = cellSol.count || 0;
-    const first = cellSol.players?.[0] ? esc(cellSol.players[0].name) : '';
+    const first = cellSol.players?.[0] ? esc(formatPlayerName(cellSol.players[0].name)) : '';
     const summary = count === 0 ? '–' : count === 1 ? first : `${first} +${count - 1}`;
     // No "LÖSUNG" caption — repeated on every one of these cells it was
     // just noise, and the muted color plus the checkmark on cells you did
     // answer (see above) already says "this one wasn't yours" on its own.
+    // Same "F. Lastname" compacting as filled cells (formatPlayerName) so
+    // the two states read as one consistent grid, not two different rules.
     return `
-      <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-2.5 tt-slot text-center">
+      <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-3 tt-slot text-center">
         <div class="tt-cell-sub text-xs leading-snug" style="color:var(--text-dim)">${summary}</div>
       </button>`;
   }
@@ -383,7 +405,7 @@ function cellHtml(r, c) {
   const isActive = !disabled && g.activeCell && g.activeCell.r === r && g.activeCell.c === c;
   return `
     <button ${disabled ? 'disabled' : ''} data-cell="${r},${c}"
-      class="tt-cell ${isActive ? 'is-active' : ''} flex flex-col items-center justify-center px-2 tt-slot w-full">
+      class="tt-cell ${isActive ? 'is-active' : ''} flex flex-col items-center justify-center px-2 py-2 tt-slot w-full">
       ${shirtSvg()}
       <span class="tt-label mt-1">Spieler wählen</span>
     </button>`;
