@@ -215,10 +215,12 @@ document.getElementById('btn-logo').addEventListener('click', goToMenu);
 
 function closeMenuDropdown() {
   document.getElementById('menu-dropdown').classList.add('hidden');
+  document.getElementById('btn-menu-toggle').classList.remove('is-active');
 }
 document.getElementById('btn-menu-toggle').addEventListener('click', e => {
   e.stopPropagation();
-  document.getElementById('menu-dropdown').classList.toggle('hidden');
+  const open = document.getElementById('menu-dropdown').classList.toggle('hidden') === false;
+  e.currentTarget.classList.toggle('is-active', open);
 });
 document.addEventListener('click', e => {
   const dropdown = document.getElementById('menu-dropdown');
