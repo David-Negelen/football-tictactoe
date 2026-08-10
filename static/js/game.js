@@ -1,16 +1,17 @@
 // ─── SVG & badges ───────────────────────────────────────────────────────────
 
 function shirtSvg() {
-  return `<svg class="text-green-500 w-10 h-10 mx-auto mb-1 opacity-60" viewBox="0 0 80 72" fill="currentColor">
-    <path d="M22 4 L10 14 L2 36 L18 42 L18 68 L62 68 L62 42 L78 36 L70 14 L58 4
-             C54 14 46 18 40 18 C34 18 26 14 22 4 Z"/>
-  </svg>`;
+  // Flat, single-color "+" — an empty slot, nothing more. No shading, no
+  // gradient, no icon library glyph. Accent-colored so "orange = tap here,
+  // this is interactive" reads consistently across the board.
+  return `<span style="font-size:28px;line-height:1;font-weight:300;color:var(--accent)">+</span>`;
 }
 
 function markBadge(player) {
-  const color = player === 1 ? 'bg-red-500' : 'bg-blue-500';
-  const sym   = player === 1 ? 'X' : 'O';
-  return `<span class="${color} text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">${sym}</span>`;
+  // Players are told apart by glyph (X vs O), not by a second/third color —
+  // the palette stays background + neutral + accent.
+  const sym = player === 1 ? 'X' : 'O';
+  return `<span class="text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="border:1px solid var(--card-border);color:var(--text-dim)">${sym}</span>`;
 }
 
 function esc(v) {
@@ -127,18 +128,14 @@ function resetGiveUpConfirm() {
   const btn = document.getElementById('btn-give-up');
   giveUpConfirming = false;
   btn.textContent = 'Aufgeben';
-  btn.classList.remove('bg-red-600', 'hover:bg-red-500');
-  btn.classList.add('bg-orange-500', 'hover:bg-orange-400');
+  btn.classList.remove('tt-btn-accent-outline');
+  btn.classList.add('tt-btn-accent');
 }
 
 function setLeague(value) {
   selectedLeague = value;
   document.querySelectorAll('.league-btn').forEach(btn => {
-    const active = btn.dataset.league === value;
-    btn.classList.toggle('bg-yellow-400', active);
-    btn.classList.toggle('text-slate-900', active);
-    btn.classList.toggle('bg-green-900/40', !active);
-    btn.classList.toggle('text-green-200', !active);
+    btn.classList.toggle('is-active', btn.dataset.league === value);
   });
 }
 
@@ -266,30 +263,34 @@ function renderBoard() {
 }
 
 function categoryIconHtml(cat) {
+  // Real crest/flag artwork and team brand colors are content, not
+  // decoration — they stay in full color. Only the generic emoji fallback
+  // (trophy/ball/etc. — not tied to any specific team) is flattened to
+  // grayscale, so the palette still can't pick up arbitrary extra hues
+  // from whatever the emoji font happens to render.
   // Real downloaded flag/crest image (see fetch_flags.py, fetch_club_logos.py)
   // wins whenever available — looks far better than the emoji font or the
-  // generic colored-initial badge.
+  // generic initial badge.
   if (cat.icon_image) {
-    return `<img src="${esc(cat.icon_image)}" alt="" class="w-9 h-9 object-contain flex-shrink-0">`;
+    return `<img src="${esc(cat.icon_image)}" alt="" class="w-8 h-8 object-contain flex-shrink-0">`;
   }
   // Dynamically generated clubs without a hand-picked emoji (the vast
   // majority of ~6,500 clubs) carry icon_letter/icon_color instead of an
-  // icon string — render a small colored initial badge for those.
+  // icon string — render a small badge in that club's own color.
   if (!cat.icon && cat.icon_letter) {
-    return `<div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0"
-      style="background:${esc(cat.icon_color || '#14532d')}">${esc(cat.icon_letter)}</div>`;
+    return `<div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0"
+      style="background:${esc(cat.icon_color || 'var(--card-border)')}">${esc(cat.icon_letter)}</div>`;
   }
-  return `<div class="text-3xl leading-none flex-shrink-0">${cat.icon || '⚽'}</div>`;
+  return `<div class="tt-icon-mono text-2xl leading-none flex-shrink-0">${cat.icon || '⚽'}</div>`;
 }
 
 function headerCellHtml(cat) {
   return `
-    <div class="rounded-xl flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2"
-         style="background:rgba(20,83,45,.9);border:1px solid rgba(74,222,128,.15);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)"
+    <div class="tt-cell flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2"
          title="${esc(cat.label)}">
       ${categoryIconHtml(cat)}
-      <div class="text-white/90 font-semibold text-center leading-snug px-1"
-           style="font-size:11px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
+      <div class="font-semibold text-center leading-snug px-1"
+           style="font-size:11px;color:var(--text-dim);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
         ${esc(cat.label)}
       </div>
     </div>`;
@@ -300,26 +301,25 @@ function cellHtml(r, c) {
   const isWin = g.winCells.some(([wr, wc]) => wr === r && wc === c);
   const gone  = g.winner !== null;
 
+  // Every state below shares the same .tt-cell card (fill, border, radius) —
+  // only the content changes, and the only border-color states are
+  // .is-active (search modal open on this cell) and .is-win, both using
+  // the one accent color, flat, no glow/animation.
   if (entry && entry.status === 'missed') {
     return `
-      <div class="rounded-xl bg-slate-800/60 border border-red-900/40 flex flex-col items-center justify-center h-32">
-        <div class="text-red-400 text-2xl mb-1">✕</div>
-        <div class="text-red-300/70 text-[10px] font-semibold uppercase tracking-wide">Falsch</div>
+      <div class="tt-cell flex flex-col items-center justify-center h-32">
+        <div class="text-2xl mb-1" style="color:var(--text-dim)">✕</div>
+        <div class="tt-label">Falsch</div>
       </div>`;
   }
 
   if (entry) {
-    const p1  = entry.player === 1;
-    const bg  = p1 ? 'bg-red-900/50'  : 'bg-blue-900/50';
-    const ring = isWin
-      ? 'win-cell ring-4 ring-yellow-400'
-      : `ring-2 ${p1 ? 'ring-red-400' : 'ring-blue-400'}`;
     return `
-      <div class="rounded-xl ${bg} ${ring} flex flex-col items-center justify-center p-3 h-32"
+      <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 h-32"
            data-cell="${r},${c}">
         ${g.mode !== 'solo' ? `<div class="flex justify-end w-full mb-1">${markBadge(entry.player)}</div>` : ''}
-        <div class="text-white font-bold text-center leading-tight px-1 text-sm">${esc(entry.name)}</div>
-        <div class="text-green-300 text-xs mt-1 truncate max-w-full px-1">${esc(entry.club || '')}</div>
+        <div class="font-bold text-center leading-tight px-1 text-sm" style="color:var(--text)">${esc(entry.name)}</div>
+        <div class="text-xs mt-1 truncate max-w-full px-1" style="color:var(--text-dim)">${esc(entry.club || '')}</div>
       </div>`;
   }
 
@@ -327,10 +327,10 @@ function cellHtml(r, c) {
     const cellSol = g.solution[r][c];
     const names = (cellSol.players || []).slice(0, 3).map(p => esc(p.name)).join(', ');
     return `
-      <div class="rounded-xl bg-green-900/30 border border-green-700/30 flex flex-col items-center justify-center p-2 h-32 text-center">
-        <div class="text-green-400/80 text-[9px] font-bold uppercase tracking-wide mb-1">Lösung</div>
-        <div class="text-green-200/90 text-[11px] leading-snug px-1">${names || '–'}</div>
-        ${cellSol.count > 3 ? `<div class="text-green-500/70 text-[9px] mt-1">+${cellSol.count - 3} weitere</div>` : ''}
+      <div class="tt-cell flex flex-col items-center justify-center p-2 h-32 text-center">
+        <div class="tt-label mb-1">Lösung</div>
+        <div class="text-[11px] leading-snug px-1" style="color:var(--text-dim)">${names || '–'}</div>
+        ${cellSol.count > 3 ? `<div class="text-[9px] mt-1" style="color:var(--text-faint)">+${cellSol.count - 3} weitere</div>` : ''}
       </div>`;
   }
 
@@ -340,14 +340,15 @@ function cellHtml(r, c) {
   // a name first and only finding out afterward.
   const notYourTurn = g.mode === 'online' && g.onlineSlot && g.current !== g.onlineSlot;
   const disabled = gone || notYourTurn;
-  const hoverBg = disabled
-    ? 'bg-green-800/40 opacity-40'
-    : 'bg-green-700/60 hover:bg-green-600/70 cursor-pointer';
+  // The cell currently open in the search modal gets .is-active, recomputed
+  // here (not just set on click) so it survives an incidental re-render
+  // (e.g. an online-mode poll) while the modal is still open.
+  const isActive = !disabled && g.activeCell && g.activeCell.r === r && g.activeCell.c === c;
   return `
     <button ${disabled ? 'disabled' : ''} data-cell="${r},${c}"
-      class="cell-btn rounded-xl ${hoverBg} border border-green-600/50 flex flex-col items-center justify-center h-32 w-full">
+      class="tt-cell ${isActive ? 'is-active' : ''} flex flex-col items-center justify-center h-32 w-full">
       ${shirtSvg()}
-      <span class="text-green-300 font-semibold tracking-wide text-[10px] mt-1">SPIELER WÄHLEN</span>
+      <span class="tt-label mt-1">Spieler wählen</span>
     </button>`;
 }
 
@@ -382,10 +383,20 @@ async function revealSolutions() {
 
 // ─── Zell-Interaktion (gemeinsam) ──────────────────────────────────────────────
 
+function markActiveCell(r, c) {
+  document.querySelectorAll('.is-active').forEach(el => el.classList.remove('is-active'));
+  document.querySelector(`[data-cell="${r},${c}"]`)?.classList.add('is-active');
+}
+
+function clearActiveCell() {
+  document.querySelectorAll('.is-active').forEach(el => el.classList.remove('is-active'));
+}
+
 function openCell(r, c) {
   if (g.winner || g.board[r][c]) return;
   if (g.mode === 'online' && g.onlineSlot && g.current !== g.onlineSlot) return;
   g.activeCell = { r, c };
+  markActiveCell(r, c);
   document.getElementById('modal-title').textContent = `${g.rows[r].label} × ${g.cols[c].label}`;
   document.getElementById('search-input').value = '';
   document.getElementById('search-results').innerHTML = '';
@@ -397,6 +408,7 @@ function openCell(r, c) {
 
 function closeModal() {
   document.getElementById('modal').classList.add('hidden');
+  clearActiveCell();
   g.activeCell = null;
 }
 
@@ -421,25 +433,23 @@ async function doSearch(q) {
   const container = document.getElementById('search-results');
 
   if (!data.players?.length) {
-    container.innerHTML = '<p class="text-slate-400 text-xs text-center py-2">Keine Spieler gefunden</p>';
+    container.innerHTML = `<p class="text-xs text-center py-2" style="color:var(--text-faint)">Keine Spieler gefunden</p>`;
     return;
   }
 
   container.innerHTML = data.players.map(p => {
     const used = g.usedIds.has(p.id);
-    const cls  = used
-      ? 'opacity-40 cursor-not-allowed bg-slate-50'
-      : 'hover:bg-green-50 cursor-pointer';
     return `
-      <div class="flex items-center justify-between rounded-lg px-3 py-2 text-sm border border-transparent hover:border-green-200 transition-colors ${cls}"
+      <div class="tt-row-hover flex items-center justify-between rounded-lg px-3 py-2 text-sm ${used ? 'is-disabled' : 'cursor-pointer'}"
+           style="color:var(--text)"
            data-pid="${p.id}" data-name="${esc(p.name)}" data-club="${esc(p.current_club_name || '')}">
         <div class="min-w-0">
           <span class="font-semibold">${esc(p.name)}</span>
           ${p.current_club_name
-            ? `<span class="text-slate-400 text-xs ml-1 truncate">${esc(p.current_club_name)}</span>`
+            ? `<span class="text-xs ml-1 truncate" style="color:var(--text-dim)">${esc(p.current_club_name)}</span>`
             : ''}
         </div>
-        ${used ? '<span class="text-xs text-red-400 ml-2 flex-shrink-0">bereits gespielt</span>' : ''}
+        ${used ? '<span class="text-xs ml-2 flex-shrink-0" style="color:var(--text-faint)">bereits gespielt</span>' : ''}
       </div>`;
   }).join('');
 
@@ -466,18 +476,23 @@ function updateStatus() {
   updateStreakDisplay();
   if (g.winner) return;
   if (g.mode === 'solo') {
-    document.getElementById('status-text').textContent = `Zelle ${g.soloAttempted + 1} von 9`;
+    document.getElementById('status-text').innerHTML =
+      `Zelle <span style="color:var(--accent)">${g.soloAttempted + 1}</span> von 9`;
     return;
   }
   if (g.mode === 'online') {
     const yourTurn = g.current === g.onlineSlot;
-    document.getElementById('status-text').textContent = yourTurn ? 'Du bist dran' : 'Gegner ist dran…';
+    document.getElementById('status-text').innerHTML = yourTurn
+      ? `<span style="color:var(--accent)">Du bist dran</span>`
+      : `<span style="color:var(--text-dim)">Gegner ist dran…</span>`;
     return;
   }
-  const color = g.current === 1 ? '#ef4444' : '#3b82f6';
-  const sym   = g.current === 1 ? 'X' : 'O';
+  // Whose turn it is (X vs O) is told apart by the glyph, not by a
+  // per-player color — the dot just marks "this is the live turn", always
+  // in the one accent color.
+  const sym = g.current === 1 ? 'X' : 'O';
   document.getElementById('status-text').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
-    <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block"></span>
+    <span style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;display:inline-block"></span>
     ${sym} ist dran
   </span>`;
 }
@@ -568,7 +583,7 @@ function stopTimer() {
 }
 
 function updateTimerDisplay() {
-  document.getElementById('timer-display').textContent = `⏱ ${formatTime(g.elapsedSeconds)}`;
+  document.getElementById('timer-display').textContent = formatTime(g.elapsedSeconds);
 }
 
 function fireConfetti() {
@@ -987,36 +1002,35 @@ function editorSlotHtml(side, i) {
   const cat = g.editor[side][i];
   if (cat) {
     return `
-      <div class="rounded-xl flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2 cursor-pointer hover:brightness-110 transition-all"
-           style="background:rgba(20,83,45,.9);border:1px solid rgba(74,222,128,.15);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)"
+      <div class="tt-cell tt-card-hover flex flex-col items-center justify-center p-3 h-32 overflow-hidden gap-2 cursor-pointer"
            data-editor-slot="${side}-${i}" title="${esc(cat.label)}">
         ${categoryIconHtml(cat)}
-        <div class="text-white/90 font-semibold text-center leading-snug px-1"
-             style="font-size:11px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
+        <div class="font-semibold text-center leading-snug px-1"
+             style="font-size:11px;color:var(--text-dim);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
           ${esc(cat.label)}
         </div>
       </div>`;
   }
   return `
-    <div class="rounded-xl flex items-center justify-center h-32 border-2 border-dashed border-green-500/40 text-green-200/60 text-xs font-semibold text-center px-2 cursor-pointer hover:border-green-400 hover:text-white transition-colors"
-         data-editor-slot="${side}-${i}">
+    <div class="tt-cell tt-card-hover flex items-center justify-center h-32 text-xs font-semibold text-center px-2 cursor-pointer"
+         style="color:var(--text-faint)" data-editor-slot="${side}-${i}">
       + Kategorie
     </div>`;
 }
 
 function editorCountCellHtml(r, c) {
   if (!g.editor.row[r] || !g.editor.col[c]) {
-    return `<div class="rounded-xl bg-slate-800/30 border border-slate-700/30 h-32"></div>`;
+    return `<div class="h-32"></div>`;
   }
   const count = g.editorCounts ? g.editorCounts[r][c] : undefined;
   if (count === undefined || count === null) {
-    return `<div class="rounded-xl bg-slate-800/40 border border-slate-700/40 flex items-center justify-center h-32 text-slate-400 text-xs">…</div>`;
+    return `<div class="tt-cell flex items-center justify-center h-32 text-xs" style="color:var(--text-faint)">…</div>`;
   }
   const empty = count === 0;
   return `
-    <div class="rounded-xl ${empty ? 'bg-red-900/30 border-red-700/40' : 'bg-green-900/30 border-green-700/30'} border flex flex-col items-center justify-center h-32">
-      <div class="text-2xl font-black ${empty ? 'text-red-300' : 'text-green-300'}">${count}</div>
-      <div class="text-[10px] uppercase tracking-wide ${empty ? 'text-red-400/70' : 'text-green-400/70'}">${empty ? 'keine Spieler' : 'möglich'}</div>
+    <div class="tt-cell flex flex-col items-center justify-center h-32" style="${empty ? '' : 'border-color:var(--accent)'}">
+      <div class="text-2xl font-black" style="color:${empty ? 'var(--text-faint)' : 'var(--accent)'}">${count}</div>
+      <div class="tt-label">${empty ? 'keine Spieler' : 'möglich'}</div>
     </div>`;
 }
 
@@ -1094,7 +1108,7 @@ async function searchEditorCategories(query) {
   const data = await resp.json();
   const container = document.getElementById('category-picker-results');
   if (!data.categories?.length) {
-    container.innerHTML = '<p class="text-slate-400 text-xs text-center py-2">Keine Treffer</p>';
+    container.innerHTML = `<p class="text-xs text-center py-2" style="color:var(--text-faint)">Keine Treffer</p>`;
     return;
   }
   // A category already used in another slot can't be picked again — but the
@@ -1106,7 +1120,7 @@ async function searchEditorCategories(query) {
   );
   container.innerHTML = data.categories.map(c => {
     const used = usedIds.has(c.id);
-    return `<div class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm border border-transparent transition-colors ${used ? 'opacity-40 cursor-not-allowed bg-slate-50' : 'hover:bg-green-50 cursor-pointer'}" data-cat-id="${esc(c.id)}">
+    return `<div class="tt-row-hover flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${used ? 'is-disabled' : 'cursor-pointer'}" style="color:var(--text)" data-cat-id="${esc(c.id)}">
       ${categoryIconHtml(c)}
       <span class="min-w-0 truncate">${esc(c.label)}</span>
     </div>`;
@@ -1201,16 +1215,16 @@ async function loadAndStartCustomGrid(code) {
 
 function renderLobbyHome() {
   document.getElementById('online-lobby-body').innerHTML = `
-    <div class="bg-green-800/60 border border-green-600/40 rounded-2xl p-6 flex flex-col gap-4 items-center text-center">
-      <div class="text-4xl">🌐</div>
-      <button id="btn-create-room" class="w-full bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold text-sm px-4 py-2.5 rounded-xl transition-colors">Raum erstellen</button>
-      <div class="text-green-200/60 text-xs">— oder —</div>
+    <div class="tt-card p-6 flex flex-col gap-4 items-center text-center">
+      <div class="text-3xl tt-icon-mono">🌐</div>
+      <button id="btn-create-room" class="tt-btn-accent w-full text-sm px-4 py-2.5 rounded-xl">Raum erstellen</button>
+      <div class="text-xs" style="color:var(--text-dim)">— oder —</div>
       <div class="w-full flex gap-2">
         <input id="join-code-input" maxlength="5" placeholder="CODE" autocomplete="off"
-          class="flex-1 uppercase tracking-widest text-center border-2 border-green-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-green-600">
-        <button id="btn-join-room" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm px-4 py-2 rounded-lg transition-colors">Beitreten</button>
+          class="tt-input flex-1 uppercase tracking-widest text-center rounded-lg px-3 py-2 text-sm font-bold">
+        <button id="btn-join-room" class="tt-btn-neutral text-sm px-4 py-2 rounded-lg">Beitreten</button>
       </div>
-      <p id="lobby-error" class="text-red-300 text-xs hidden"></p>
+      <p id="lobby-error" class="text-xs hidden" style="color:var(--accent)"></p>
     </div>`;
   // Hosting needs difficulty/league first — that's the setup screen, shown
   // only now (not before this host-vs-join choice) since a joiner never
@@ -1261,12 +1275,12 @@ function execCommandCopy(text) {
 function renderLobbyWaiting(code) {
   const link = `${location.origin}/game?join=${code}`;
   document.getElementById('online-lobby-body').innerHTML = `
-    <div class="bg-green-800/60 border border-green-600/40 rounded-2xl p-6 flex flex-col gap-3 items-center text-center">
-      <div class="text-sm text-green-200/80">Warte auf Gegner…</div>
-      <div class="text-4xl font-black tracking-[0.3em] text-yellow-400">${esc(code)}</div>
-      <button id="btn-copy-link" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg transition-colors">🔗 Link kopieren</button>
-      <div class="flex items-center gap-2 text-green-200/60 text-xs mt-2">
-        <span class="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
+    <div class="tt-card p-6 flex flex-col gap-3 items-center text-center">
+      <div class="text-sm" style="color:var(--text-dim)">Warte auf Gegner…</div>
+      <div class="text-4xl font-black tracking-[0.3em]" style="color:var(--accent)">${esc(code)}</div>
+      <button id="btn-copy-link" class="tt-btn-neutral text-xs px-3 py-1.5 rounded-lg">🔗 Link kopieren</button>
+      <div class="flex items-center gap-2 text-xs mt-2" style="color:var(--text-dim)">
+        <span class="inline-block w-2 h-2 rounded-full animate-pulse" style="background:var(--accent)"></span>
         Sobald dein Freund beitritt, geht's los
       </div>
     </div>`;
@@ -1493,8 +1507,8 @@ document.getElementById('btn-give-up').addEventListener('click', async (e) => {
   if (!giveUpConfirming) {
     giveUpConfirming = true;
     e.currentTarget.textContent = 'Wirklich aufgeben?';
-    e.currentTarget.classList.remove('bg-orange-500', 'hover:bg-orange-400');
-    e.currentTarget.classList.add('bg-red-600', 'hover:bg-red-500');
+    e.currentTarget.classList.remove('tt-btn-accent');
+    e.currentTarget.classList.add('tt-btn-accent-outline');
     return;
   }
   resetGiveUpConfirm();
@@ -1527,40 +1541,43 @@ function renderStats() {
   const fastest = l.fastestWinSeconds != null ? formatTime(l.fastestWinSeconds) : '–';
   const soloAccuracy = s.cells ? Math.round((s.correct / s.cells) * 100) : 0;
 
+  const tile = (value, label, accented) => `
+    <div class="tt-card p-2.5"><div class="text-base font-black" style="color:${accented ? 'var(--accent)' : 'var(--text)'}">${value}</div><div class="tt-label">${label}</div></div>`;
+
   document.getElementById('stats-body').innerHTML = `
     <div>
-      <div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">📅 Tages-Rätsel</div>
+      <div class="tt-label mb-2">📅 Tages-Rätsel</div>
       <div class="grid grid-cols-3 gap-2 text-center">
-        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-base font-black text-slate-700">${daysPlayed}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Gespielt</div></div>
-        <div class="bg-amber-50 rounded-xl p-2.5"><div class="text-base font-black text-amber-600">${d.currentStreak} 🔥</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Serie</div></div>
-        <div class="bg-amber-50 rounded-xl p-2.5"><div class="text-base font-black text-amber-600">${d.bestStreak}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Beste Serie</div></div>
+        ${tile(daysPlayed, 'Gespielt')}
+        ${tile(`${d.currentStreak} 🔥`, 'Serie', true)}
+        ${tile(d.bestStreak, 'Beste Serie', true)}
       </div>
     </div>
     <div>
-      <div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">🛋️ 1v1 Lokal</div>
+      <div class="tt-label mb-2">🛋️ 1v1 Lokal</div>
       <div class="grid grid-cols-2 gap-2 text-center">
-        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-xl font-black text-slate-700">${l.gamesPlayed}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Spiele</div></div>
-        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-xl font-black text-amber-500">${l.bestStreak} 🔥</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Beste Serie</div></div>
-        <div class="bg-red-50 rounded-xl p-2.5"><div class="text-base font-black text-red-500">${l.wins[1]}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Siege X</div></div>
-        <div class="bg-blue-50 rounded-xl p-2.5"><div class="text-base font-black text-blue-500">${l.wins[2]}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Siege O</div></div>
-        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-base font-black text-slate-700">${accuracy}%</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Trefferquote</div></div>
-        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-base font-black text-slate-700">${fastest}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Schnellster Sieg</div></div>
+        ${tile(l.gamesPlayed, 'Spiele')}
+        ${tile(`${l.bestStreak} 🔥`, 'Beste Serie', true)}
+        ${tile(l.wins[1], 'Siege X')}
+        ${tile(l.wins[2], 'Siege O')}
+        ${tile(`${accuracy}%`, 'Trefferquote')}
+        ${tile(fastest, 'Schnellster Sieg')}
       </div>
     </div>
     <div>
-      <div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">🧩 Solo</div>
+      <div class="tt-label mb-2">🧩 Solo</div>
       <div class="grid grid-cols-2 gap-2 text-center">
-        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-xl font-black text-slate-700">${s.rounds}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Runden</div></div>
-        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-xl font-black text-emerald-500">${s.bestCorrect}/9</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Bestes Ergebnis</div></div>
-        <div class="bg-slate-50 rounded-xl p-2.5 col-span-2"><div class="text-base font-black text-slate-700">${soloAccuracy}%</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Trefferquote gesamt</div></div>
+        ${tile(s.rounds, 'Runden')}
+        ${tile(`${s.bestCorrect}/9`, 'Bestes Ergebnis', true)}
+        <div class="tt-card p-2.5 col-span-2"><div class="text-base font-black" style="color:var(--text)">${soloAccuracy}%</div><div class="tt-label">Trefferquote gesamt</div></div>
       </div>
     </div>
     <div>
-      <div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">🌐 1v1 Online</div>
+      <div class="tt-label mb-2">🌐 1v1 Online</div>
       <div class="grid grid-cols-3 gap-2 text-center">
-        <div class="bg-slate-50 rounded-xl p-2.5"><div class="text-base font-black text-slate-700">${o.rounds}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Spiele</div></div>
-        <div class="bg-emerald-50 rounded-xl p-2.5"><div class="text-base font-black text-emerald-600">${o.wins}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Siege</div></div>
-        <div class="bg-red-50 rounded-xl p-2.5"><div class="text-base font-black text-red-500">${o.losses}</div><div class="text-[10px] text-slate-400 font-semibold uppercase">Niederlagen</div></div>
+        ${tile(o.rounds, 'Spiele')}
+        ${tile(o.wins, 'Siege', true)}
+        ${tile(o.losses, 'Niederlagen')}
       </div>
     </div>`;
 }
@@ -1583,10 +1600,7 @@ function setDifficulty(d) {
   difficulty = d;
   document.querySelectorAll('.diff-btn').forEach(btn => {
     const active = parseInt(btn.dataset.diff) === d;
-    btn.className = `diff-btn flex-1 px-2.5 py-2 text-xs font-semibold transition-colors ${
-      active ? 'bg-yellow-400 text-slate-900' : 'bg-green-900/40 text-green-200 hover:text-white'
-    }`;
-    if (btn.dataset.diff === '2') btn.classList.add('border-x', 'border-green-600/40');
+    btn.classList.toggle('is-active', active);
   });
 }
 

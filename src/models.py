@@ -63,3 +63,4 @@ class ClubImportResult:
     discovered_players: int
     imported_players: int
     skipped_players: int
+    refreshed_players: int = 0

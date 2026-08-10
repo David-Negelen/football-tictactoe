@@ -18,18 +18,65 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="/static/js/pwa.js" defer></script>
   <style>
-    body { background: #14532d; font-family: 'Inter', system-ui, sans-serif; }
-    .cell-btn { transition: transform .12s, filter .12s; }
-    .cell-btn:not(:disabled):hover { transform: scale(1.04); filter: brightness(1.15); }
-    .cell-btn:disabled { cursor: default; }
-    @keyframes pulse-gold {
-      0%, 100% { box-shadow: 0 0 0 0 #fbbf24bb; }
-      50%       { box-shadow: 0 0 0 10px #fbbf2400; }
+    :root {
+      --bg: #0a1512;
+      --card: #171b1a;
+      --card-border: #2b312e;
+      --text: #eef1ef;
+      --text-dim: #8b948f;
+      --text-faint: #5c645f;
+      --accent: #f97316;
+      --accent-ink: #180f08;
+      --accent-dim: rgba(249, 115, 22, .14);
     }
-    .win-cell { animation: pulse-gold 1.3s ease-in-out infinite; }
-    .diff-btn { transition: background .15s, color .15s; }
-    .mode-card { transition: background .15s, border-color .15s, transform .15s; }
-    .mode-card:hover { transform: translateY(-2px); }
+
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); }
+
+    /* ── Type scale: distinct roles instead of "everything bold+uppercase" ── */
+    .tt-title { font-size: 1.375rem; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; color: var(--text); }
+    .tt-label { font-size: .6875rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+    .tt-body  { font-size: .875rem; font-weight: 500; color: var(--text); }
+
+    /* ── One flat card style, everywhere: mode cards, panels, modals, and
+       (see game.js) every board slot whether it's a header, an empty
+       answer cell, or a filled one. No shadows, no gradients — state is
+       shown by content and border-color only. ── */
+    .tt-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 10px; }
+    .tt-card-hover { transition: border-color .12s; }
+    .tt-card-hover:not(:disabled):hover { border-color: var(--accent); }
+    .tt-card-hover:disabled { opacity: .5; }
+
+    .tt-cell { background: var(--card); border: 1px solid var(--card-border); border-radius: 10px; transition: border-color .12s; }
+    button.tt-cell:not(:disabled):hover { border-color: var(--accent); }
+    button.tt-cell:disabled { opacity: .5; }
+    .tt-cell.is-active { border-color: var(--accent); }
+    .tt-cell.is-win { border-color: var(--accent); background: var(--accent-dim); }
+
+    /* Category header icons (crests, flags, emoji) carry their own colors —
+       flattened to grayscale so they read as content, not as extra hues in
+       the palette. */
+    .tt-icon-mono { filter: grayscale(1); opacity: .85; }
+
+    .tt-btn-accent { background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: background-color .12s; }
+    .tt-btn-accent:hover { background: #fb8b3f; }
+    .tt-btn-accent:disabled { opacity: .35; cursor: not-allowed; }
+    .tt-btn-accent-outline { background: transparent; border: 1.5px solid var(--accent); color: var(--accent); font-weight: 700; }
+
+    .tt-btn-neutral { background: var(--card); border: 1px solid var(--card-border); color: var(--text); font-weight: 600; transition: border-color .12s; }
+    .tt-btn-neutral:hover { border-color: var(--accent); }
+
+    .tt-input { background: var(--card); border: 1px solid var(--card-border); color: var(--text); }
+    .tt-input:focus { outline: none; border-color: var(--accent); }
+    .tt-input::placeholder { color: var(--text-faint); }
+
+    .tt-pill { background: transparent; color: var(--text-dim); font-weight: 600; transition: color .12s, background-color .12s; }
+    .tt-pill:hover { color: var(--text); }
+    .tt-pill.is-active { background: var(--accent); color: var(--accent-ink); }
+
+    .tt-row-hover { transition: background-color .12s; }
+    .tt-row-hover:hover { background: var(--card-border); }
+    .tt-row-hover.is-disabled { opacity: .4; cursor: not-allowed; }
+
     @keyframes confetti-fall {
       0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
       100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
@@ -38,87 +85,88 @@
 </head>
 <body class="flex flex-col min-h-screen">
 
-  <header class="bg-slate-900 text-white px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-md flex-shrink-0">
+  <header class="px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-20 flex-shrink-0"
+    style="background:var(--bg);border-bottom:1px solid var(--card-border);">
     <button id="btn-logo" title="Zum Menü"
-      class="flex items-center gap-2 text-white hover:opacity-80 transition-opacity">
+      class="flex items-center gap-2 hover:opacity-80 transition-opacity" style="color:var(--text)">
       <span class="text-lg">🎮</span>
       <span class="text-base font-bold tracking-tight">Tiki-Taka-Toe</span>
     </button>
     <div class="relative">
       <button id="btn-menu-toggle" title="Menü" aria-label="Menü"
-        class="flex items-center justify-center w-9 h-9 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors">
+        class="tt-card tt-card-hover flex items-center justify-center w-9 h-9" style="color:var(--text)">
         <span class="text-lg leading-none">☰</span>
       </button>
-      <div id="menu-dropdown" class="hidden absolute right-0 mt-2 w-52 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden z-30">
-        <button id="btn-stats" class="w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm text-white hover:bg-slate-700 transition-colors">📊 Statistik</button>
-        <button id="btn-editor" class="w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm text-white hover:bg-slate-700 transition-colors">🛠️ Editor</button>
-        <button id="btn-install" class="hidden w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm text-white hover:bg-slate-700 transition-colors">⬇️ Installieren</button>
+      <div id="menu-dropdown" class="hidden tt-card absolute right-0 mt-2 w-52 overflow-hidden z-30">
+        <button id="btn-stats" class="tt-row-hover w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm" style="color:var(--text)">📊 Statistik</button>
+        <button id="btn-editor" class="tt-row-hover w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm" style="color:var(--text)">🛠️ Editor</button>
+        <button id="btn-install" class="hidden w-full flex items-center gap-2 text-left px-4 py-2.5 text-sm transition-colors" style="color:var(--text)">⬇️ Installieren</button>
       </div>
     </div>
   </header>
 
-  <div class="flex flex-col items-center py-5 px-4 flex-1 w-full">
+  <div class="flex flex-col items-center justify-center py-5 px-4 flex-1 w-full">
 
   <!-- Modus-Auswahl -->
   <div id="screen-mode-select" class="w-full max-w-3xl flex flex-col items-center gap-6 py-8">
     <button id="daily-card"
-      class="w-full rounded-2xl bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 border border-yellow-300/40 p-5 flex items-center gap-4 text-left transition-colors">
-      <span class="text-4xl flex-shrink-0">📅</span>
+      class="tt-card tt-card-hover w-full p-5 flex items-center gap-4 text-left">
+      <span class="text-3xl flex-shrink-0 tt-icon-mono">📅</span>
       <div class="flex-1 min-w-0">
-        <div class="font-bold text-slate-900">Tägliches Rätsel</div>
-        <div class="text-xs text-slate-800/80">Ein neues Rätsel jeden Tag – für alle gleich</div>
+        <div class="font-bold" style="color:var(--text)">Tägliches Rätsel</div>
+        <div class="text-xs" style="color:var(--text-dim)">Ein neues Rätsel jeden Tag – für alle gleich</div>
       </div>
       <div id="daily-card-streak" class="hidden flex-shrink-0 text-right">
-        <div class="text-lg font-black text-slate-900 whitespace-nowrap">🔥 <span id="daily-streak-count">0</span></div>
-        <div class="text-[10px] text-slate-800/70 uppercase font-bold">Streak</div>
+        <div class="text-lg font-black whitespace-nowrap" style="color:var(--accent)">🔥 <span id="daily-streak-count">0</span></div>
+        <div class="tt-label">Streak</div>
       </div>
     </button>
-    <h2 class="text-white text-xl font-bold">Spielmodus wählen</h2>
+    <h2 class="tt-title">Spielmodus wählen</h2>
     <div class="grid sm:grid-cols-3 gap-4 w-full">
-      <button data-mode="solo" class="mode-card flex flex-col items-center justify-center gap-2 rounded-2xl bg-green-800/60 hover:bg-green-700/70 border border-green-600/40 hover:border-yellow-400/60 p-6 text-center">
-        <span class="text-4xl">🧩</span>
-        <span class="font-bold text-white">Solo</span>
-        <span class="text-xs text-green-200/70">Fülle das Raster allein aus</span>
+      <button data-mode="solo" class="tt-card tt-card-hover flex flex-col items-center justify-center gap-2 p-6 text-center">
+        <span class="text-3xl tt-icon-mono">🧩</span>
+        <span class="font-bold" style="color:var(--text)">Solo</span>
+        <span class="text-xs font-medium" style="color:var(--text-dim)">Fülle das Raster allein aus</span>
       </button>
-      <button data-mode="local" class="mode-card flex flex-col items-center justify-center gap-2 rounded-2xl bg-green-800/60 hover:bg-green-700/70 border border-green-600/40 hover:border-yellow-400/60 p-6 text-center">
-        <span class="text-4xl">🛋️</span>
-        <span class="font-bold text-white">1v1 Lokal</span>
-        <span class="text-xs text-green-200/70">Ein Gerät, zwei Spieler im Wechsel</span>
+      <button data-mode="local" class="tt-card tt-card-hover flex flex-col items-center justify-center gap-2 p-6 text-center">
+        <span class="text-3xl tt-icon-mono">🛋️</span>
+        <span class="font-bold" style="color:var(--text)">1v1 Lokal</span>
+        <span class="text-xs font-medium" style="color:var(--text-dim)">Ein Gerät, zwei Spieler im Wechsel</span>
       </button>
-      <button data-mode="online" class="mode-card flex flex-col items-center justify-center gap-2 rounded-2xl bg-green-800/60 hover:bg-green-700/70 border border-green-600/40 hover:border-yellow-400/60 p-6 text-center">
-        <span class="text-4xl">🌐</span>
-        <span class="font-bold text-white">1v1 Online</span>
-        <span class="text-xs text-green-200/70">Gegen einen Freund, live über einen Raum-Code</span>
+      <button data-mode="online" class="tt-card tt-card-hover flex flex-col items-center justify-center gap-2 p-6 text-center">
+        <span class="text-3xl tt-icon-mono">🌐</span>
+        <span class="font-bold" style="color:var(--text)">1v1 Online</span>
+        <span class="text-xs font-medium" style="color:var(--text-dim)">Gegen einen Freund, live über einen Raum-Code</span>
       </button>
     </div>
   </div>
 
   <!-- Rätsel einstellen (Schwierigkeit & Liga) -->
   <div id="screen-setup" class="hidden w-full max-w-md flex flex-col items-center gap-6 py-8">
-    <div class="w-full bg-green-800/60 border border-green-600/40 rounded-2xl p-5 flex flex-col gap-5">
+    <div class="tt-card w-full p-5 flex flex-col gap-5">
       <div>
-        <div class="text-xs font-bold uppercase tracking-wide text-green-200/70 mb-2">Schwierigkeit</div>
-        <div class="flex rounded-lg overflow-hidden border border-green-600/40">
-          <button data-diff="1" class="diff-btn flex-1 px-2.5 py-2 text-xs font-semibold bg-green-900/40 text-green-200 hover:text-white transition-colors">Leicht</button>
-          <button data-diff="2" class="diff-btn flex-1 px-2.5 py-2 text-xs font-semibold bg-green-900/40 text-green-200 hover:text-white border-x border-green-600/40 transition-colors">Mittel</button>
-          <button data-diff="3" class="diff-btn flex-1 px-2.5 py-2 text-xs font-semibold bg-yellow-400 text-slate-900 transition-colors">Schwer</button>
+        <div class="tt-label mb-2">Schwierigkeit</div>
+        <div class="tt-card flex overflow-hidden">
+          <button data-diff="1" class="diff-btn tt-pill flex-1 px-2.5 py-2 text-xs">Leicht</button>
+          <button data-diff="2" class="diff-btn tt-pill flex-1 px-2.5 py-2 text-xs" style="border-left:1px solid var(--card-border);border-right:1px solid var(--card-border);">Mittel</button>
+          <button data-diff="3" class="diff-btn tt-pill is-active flex-1 px-2.5 py-2 text-xs">Schwer</button>
         </div>
       </div>
       <div>
-        <div class="text-xs font-bold uppercase tracking-wide text-green-200/70 mb-2">Liga</div>
+        <div class="tt-label mb-2">Liga</div>
         <div id="league-picker" class="flex flex-col gap-2">
-          <button data-league="" class="league-btn w-full rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 transition-colors bg-yellow-400 text-slate-900">Alle Ligen</button>
+          <button data-league="" class="league-btn tt-card tt-pill is-active w-full px-3 py-2 text-sm">Alle Ligen</button>
           <div class="grid grid-cols-2 gap-2">
-            <button data-league="league_buli" class="league-btn rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 bg-green-900/40 text-green-200 hover:text-white transition-colors">🇩🇪 Bundesliga</button>
-            <button data-league="league_pl" class="league-btn rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 bg-green-900/40 text-green-200 hover:text-white transition-colors">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League</button>
-            <button data-league="league_laliga" class="league-btn rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 bg-green-900/40 text-green-200 hover:text-white transition-colors">🇪🇸 La Liga</button>
-            <button data-league="league_seriea" class="league-btn rounded-lg px-3 py-2 text-sm font-semibold border border-green-600/40 bg-green-900/40 text-green-200 hover:text-white transition-colors">🇮🇹 Serie A</button>
+            <button data-league="league_buli" class="league-btn tt-card tt-pill px-3 py-2 text-sm">🇩🇪 Bundesliga</button>
+            <button data-league="league_pl" class="league-btn tt-card tt-pill px-3 py-2 text-sm">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League</button>
+            <button data-league="league_laliga" class="league-btn tt-card tt-pill px-3 py-2 text-sm">🇪🇸 La Liga</button>
+            <button data-league="league_seriea" class="league-btn tt-card tt-pill px-3 py-2 text-sm">🇮🇹 Serie A</button>
           </div>
         </div>
       </div>
     </div>
-    <button id="btn-setup-continue" class="w-full bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold text-sm px-4 py-3 rounded-xl transition-colors">Los geht's →</button>
-    <button id="btn-setup-back" class="text-green-200/80 hover:text-white text-xs font-semibold transition-colors">← Zurück</button>
+    <button id="btn-setup-continue" class="tt-btn-accent w-full text-sm px-4 py-3 rounded-xl">Los geht's →</button>
+    <button id="btn-setup-back" class="text-xs font-semibold transition-colors" style="color:var(--text-dim)">← Zurück</button>
   </div>
 
   <!-- Online-Lobby -->
@@ -128,103 +176,101 @@
 
   <!-- Tägliches Rätsel bereits gespielt -->
   <div id="screen-daily-done" class="hidden w-full max-w-md flex flex-col items-center gap-4 py-8 text-center">
-    <div class="text-5xl">📅</div>
-    <h2 class="text-white text-xl font-bold">Heute schon gespielt!</h2>
-    <div class="bg-green-800/60 border border-green-600/40 rounded-2xl p-6 w-full flex flex-col gap-2">
-      <div id="daily-done-score" class="text-2xl font-black text-white"></div>
-      <div id="daily-done-streak" class="text-amber-300 font-semibold"></div>
-      <div id="daily-done-best" class="text-green-200/70 text-xs"></div>
+    <div class="text-4xl tt-icon-mono">📅</div>
+    <h2 class="tt-title">Heute schon gespielt!</h2>
+    <div class="tt-card p-6 w-full flex flex-col gap-2">
+      <div id="daily-done-score" class="text-2xl font-black" style="color:var(--text)"></div>
+      <div id="daily-done-streak" class="font-semibold" style="color:var(--accent)"></div>
+      <div id="daily-done-best" class="text-xs" style="color:var(--text-dim)"></div>
     </div>
-    <p class="text-green-200/60 text-xs">Komm morgen wieder für ein neues Rätsel.</p>
-    <button id="daily-done-menu" class="text-green-200/80 hover:text-white text-xs font-semibold transition-colors">← Zurück zum Menü</button>
+    <p class="text-xs" style="color:var(--text-dim)">Komm morgen wieder für ein neues Rätsel.</p>
+    <button id="daily-done-menu" class="text-xs font-semibold transition-colors" style="color:var(--text-dim)">← Zurück zum Menü</button>
   </div>
 
   <!-- Editor: eigenes Rätsel bauen, speichern & teilen, per Code laden -->
   <div id="screen-editor" class="hidden w-full max-w-2xl flex flex-col gap-5 py-8">
-    <h2 class="text-white text-xl font-bold">Editor</h2>
+    <h2 class="tt-title">Editor</h2>
 
-    <div class="bg-green-800/60 border border-green-600/40 rounded-2xl p-5">
-      <div class="text-sm font-bold text-white mb-1">Eigenes Rätsel bauen</div>
-      <p class="text-green-200/70 text-xs mb-3">Tippe auf ein Feld am Rand, um eine Kategorie zu wählen. Sobald Zeile und Spalte feststehen, zeigt das Feld die Anzahl möglicher Spieler.</p>
+    <div class="tt-card p-5">
+      <div class="text-sm font-bold mb-1" style="color:var(--text)">Eigenes Rätsel bauen</div>
+      <p class="text-xs mb-3" style="color:var(--text-dim)">Tippe auf ein Feld am Rand, um eine Kategorie zu wählen. Sobald Zeile und Spalte feststehen, zeigt das Feld die Anzahl möglicher Spieler.</p>
       <div id="editor-grid" class="grid gap-2 w-full" style="grid-template-columns: repeat(4, 1fr);"></div>
-      <button id="btn-editor-save" disabled
-        class="mt-4 w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-40 disabled:cursor-not-allowed text-slate-900 font-bold text-sm px-4 py-2.5 rounded-xl transition-colors">
+      <button id="btn-editor-save" disabled class="tt-btn-accent mt-4 w-full text-sm px-4 py-2.5 rounded-xl">
         Speichern &amp; Teilen
       </button>
-      <p id="editor-error" class="text-red-300 text-xs mt-2 hidden"></p>
-      <div id="editor-share" class="hidden mt-3 bg-green-900/40 rounded-xl p-3 flex flex-col items-center gap-2 text-center">
-        <div class="text-3xl font-black tracking-[0.2em] text-yellow-400" id="editor-share-code"></div>
+      <p id="editor-error" class="text-xs mt-2 hidden" style="color:var(--accent)"></p>
+      <div id="editor-share" class="hidden tt-card mt-3 p-3 flex flex-col items-center gap-2 text-center">
+        <div class="text-3xl font-black tracking-[0.2em]" style="color:var(--accent)" id="editor-share-code"></div>
         <div class="flex gap-2">
-          <button id="btn-editor-copy-link" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg transition-colors">🔗 Link kopieren</button>
-          <button id="btn-editor-play" class="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg transition-colors">▶️ Jetzt spielen</button>
+          <button id="btn-editor-copy-link" class="tt-btn-neutral text-xs px-3 py-1.5 rounded-lg">🔗 Link kopieren</button>
+          <button id="btn-editor-play" class="tt-btn-accent text-xs px-3 py-1.5 rounded-lg">▶️ Jetzt spielen</button>
         </div>
       </div>
     </div>
 
-    <div class="bg-green-800/60 border border-green-600/40 rounded-2xl p-5">
-      <div class="text-sm font-bold text-white mb-3">Rätsel per Code laden</div>
+    <div class="tt-card p-5">
+      <div class="text-sm font-bold mb-3" style="color:var(--text)">Rätsel per Code laden</div>
       <div class="flex gap-2">
         <input id="editor-load-code" maxlength="6" placeholder="CODE" autocomplete="off"
-          class="flex-1 uppercase tracking-widest text-center border-2 border-green-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-green-600">
-        <button id="btn-editor-load" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm px-4 py-2 rounded-lg transition-colors">Laden</button>
+          class="tt-input flex-1 uppercase tracking-widest text-center rounded-lg px-3 py-2 text-sm font-bold">
+        <button id="btn-editor-load" class="tt-btn-neutral text-sm px-4 py-2 rounded-lg">Laden</button>
       </div>
-      <p id="editor-load-error" class="text-red-300 text-xs mt-2 hidden"></p>
+      <p id="editor-load-error" class="text-xs mt-2 hidden" style="color:var(--accent)"></p>
     </div>
 
-    <button id="btn-editor-back" class="self-start text-green-200/80 hover:text-white text-xs font-semibold transition-colors">← Zurück zum Menü</button>
+    <button id="btn-editor-back" class="self-start text-xs font-semibold transition-colors" style="color:var(--text-dim)">← Zurück zum Menü</button>
   </div>
 
   <!-- Spielfeld-Screen (Solo / Lokal / Online) -->
   <div id="screen-board" class="hidden w-full flex flex-col items-center">
 
-    <!-- Statusleiste -->
-    <div id="status-bar"
-      class="w-full max-w-3xl mb-3 rounded-xl px-4 py-2 flex items-center justify-between gap-3 font-bold text-white text-sm bg-green-800 border border-green-600 min-h-[38px]">
-      <span id="status-text">Rätsel wird geladen…</span>
-      <span class="flex items-center gap-3 text-xs font-semibold text-green-200 flex-shrink-0">
-        <span id="streak-display" class="hidden items-center gap-1"></span>
-        <span id="timer-display">⏱ 0:00</span>
-      </span>
-    </div>
+    <!-- Statusleiste + Spielfeld: eine zusammenhängende Karte, keine
+         schwebende Pille über dem Raster — die Statuszeile ist die
+         oberste Reihe derselben Karte wie das Grid. -->
+    <div class="tt-card w-full max-w-3xl overflow-hidden">
+      <div id="status-bar" class="flex items-center justify-between gap-3 text-sm px-4 py-2.5"
+        style="border-bottom:1px solid var(--card-border);">
+        <span id="status-text" class="font-bold" style="color:var(--text)">Rätsel wird geladen…</span>
+        <span class="flex items-center gap-3 flex-shrink-0">
+          <span id="streak-display" class="hidden items-center gap-1 text-xs font-bold" style="color:var(--accent)"></span>
+          <span id="timer-display" class="text-xs font-medium" style="color:var(--text-dim)">0:00</span>
+        </span>
+      </div>
 
-    <!-- Rundenergebnis: inline im Layout statt als Popup, damit die
-         aufgedeckte Lösung im Raster darunter sichtbar bleibt. -->
-    <div id="end-banner"
-      class="hidden w-full max-w-3xl mb-3 rounded-2xl bg-white/95 shadow-xl p-4 flex flex-col sm:flex-row items-center gap-3">
-      <div class="flex items-center gap-3 flex-1 min-w-0 w-full">
-        <div id="end-icon" class="text-4xl flex-shrink-0"></div>
-        <div class="min-w-0">
-          <h2 id="end-title" class="text-lg font-black text-slate-800 leading-tight"></h2>
-          <p id="end-sub" class="text-slate-500 text-xs leading-snug"></p>
-          <p id="end-extra" class="text-slate-400 text-[11px] leading-snug"></p>
+      <!-- Rundenergebnis: inline im Layout statt als Popup, damit die
+           aufgedeckte Lösung im Raster darunter sichtbar bleibt. -->
+      <div id="end-banner" class="hidden p-4 flex flex-col sm:flex-row items-center gap-3" style="border-bottom:1px solid var(--card-border);">
+        <div class="flex items-center gap-3 flex-1 min-w-0 w-full">
+          <div id="end-icon" class="text-3xl flex-shrink-0 tt-icon-mono"></div>
+          <div class="min-w-0">
+            <h2 id="end-title" class="text-lg font-black leading-tight" style="color:var(--text)"></h2>
+            <p id="end-sub" class="text-xs leading-snug" style="color:var(--text-dim)"></p>
+            <p id="end-extra" class="text-[11px] leading-snug" style="color:var(--text-faint)"></p>
+          </div>
+        </div>
+        <div class="flex gap-2 flex-shrink-0 w-full sm:w-auto">
+          <button id="end-share" class="hidden tt-btn-neutral flex-1 sm:flex-none text-sm px-4 py-2 rounded-full">
+            📤 Teilen
+          </button>
+          <button id="end-new-game" class="tt-btn-accent flex-1 sm:flex-none text-sm px-4 py-2 rounded-full">
+            Nochmal spielen
+          </button>
+          <button id="end-menu" class="tt-btn-neutral flex-1 sm:flex-none text-sm px-4 py-2 rounded-full">
+            Menü
+          </button>
         </div>
       </div>
-      <div class="flex gap-2 flex-shrink-0 w-full sm:w-auto">
-        <button id="end-share"
-          class="hidden flex-1 sm:flex-none bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm px-4 py-2 rounded-full transition-colors">
-          📤 Teilen
-        </button>
-        <button id="end-new-game"
-          class="flex-1 sm:flex-none bg-green-700 hover:bg-green-600 text-white font-bold text-sm px-4 py-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-700">
-          Nochmal spielen
-        </button>
-        <button id="end-menu"
-          class="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-500 font-semibold text-sm px-4 py-2 rounded-full transition-colors">
-          Menü
-        </button>
-      </div>
-    </div>
 
-    <!-- Spielfeld: 4×4 CSS-Grid -->
-    <div id="board"
-      class="grid gap-2 w-full max-w-3xl"
-      style="grid-template-columns: repeat(4, 1fr);">
+      <!-- Spielfeld: 4×4 CSS-Grid. Same gap for every row (header row
+           included), same .tt-cell style for every slot (see game.js) —
+           so it reads as one grid, not a header glued to a 3×3 grid. -->
+      <div id="board" class="grid gap-2 w-full p-3" style="grid-template-columns: repeat(4, 1fr);">
+      </div>
     </div>
 
     <!-- Buttons -->
     <div class="mt-4 flex gap-3">
-      <button id="btn-give-up"
-        class="bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs px-5 py-2 rounded-full tracking-widest uppercase transition-colors opacity-80 hover:opacity-100 disabled:opacity-30">
+      <button id="btn-give-up" class="tt-btn-accent text-xs px-5 py-2 rounded-full tracking-widest uppercase">
         Aufgeben
       </button>
     </div>
@@ -234,51 +280,45 @@
   </div><!-- /content -->
 
   <!-- Spieler-Suche Modal -->
-  <div id="modal"
-    class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
-    style="backdrop-filter:blur(3px)">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-      <div class="bg-green-800 px-5 py-3 flex items-center justify-between">
-        <span id="modal-title" class="text-white font-bold text-sm leading-snug"></span>
-        <button id="modal-close" class="text-green-300 hover:text-white text-2xl leading-none ml-3 flex-shrink-0">×</button>
+  <div id="modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="tt-card w-full max-w-sm overflow-hidden">
+      <div class="px-5 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--card-border);">
+        <span id="modal-title" class="font-bold text-sm leading-snug" style="color:var(--text)"></span>
+        <button id="modal-close" class="text-2xl leading-none ml-3 flex-shrink-0 transition-colors" style="color:var(--text-dim)">×</button>
       </div>
       <div class="p-4">
         <input id="search-input" type="text" placeholder="Spieler suchen…" autocomplete="off"
-          class="w-full border-2 border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-600 mb-3">
+          class="tt-input w-full rounded-lg px-3 py-2 text-sm mb-3">
         <div id="search-results" class="space-y-1 max-h-64 overflow-y-auto"></div>
-        <p id="search-hint" class="text-xs text-slate-400 mt-2 text-center">
+        <p id="search-hint" class="text-xs mt-2 text-center" style="color:var(--text-faint)">
           Mindestens 3 Buchstaben eingeben
         </p>
-        <p id="search-error" class="text-xs text-red-500 mt-1 text-center hidden"></p>
+        <p id="search-error" class="text-xs mt-1 text-center hidden" style="color:var(--accent)"></p>
       </div>
     </div>
   </div>
 
   <!-- Kategorie-Auswahl Modal (Editor) -->
-  <div id="category-picker-modal"
-    class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
-    style="backdrop-filter:blur(3px)">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-      <div class="bg-green-800 px-5 py-3 flex items-center justify-between">
-        <span class="text-white font-bold text-sm leading-snug">Kategorie wählen</span>
-        <button id="category-picker-close" class="text-green-300 hover:text-white text-2xl leading-none ml-3 flex-shrink-0">×</button>
+  <div id="category-picker-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="tt-card w-full max-w-sm overflow-hidden">
+      <div class="px-5 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--card-border);">
+        <span class="font-bold text-sm leading-snug" style="color:var(--text)">Kategorie wählen</span>
+        <button id="category-picker-close" class="text-2xl leading-none ml-3 flex-shrink-0 transition-colors" style="color:var(--text-dim)">×</button>
       </div>
       <div class="p-4">
         <input id="category-picker-search" type="text" placeholder="Suchen… (z.B. Bayern, Torwart, Deutsch)" autocomplete="off"
-          class="w-full border-2 border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-600 mb-3">
+          class="tt-input w-full rounded-lg px-3 py-2 text-sm mb-3">
         <div id="category-picker-results" class="space-y-1 max-h-72 overflow-y-auto"></div>
       </div>
     </div>
   </div>
 
   <!-- Statistik-Modal -->
-  <div id="stats-modal"
-    class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
-    style="backdrop-filter:blur(4px)">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
-      <div class="bg-slate-700 px-5 py-3 flex items-center justify-between flex-shrink-0">
-        <span class="text-white font-bold text-sm">📊 Deine Statistik</span>
-        <button id="stats-close" class="text-slate-300 hover:text-white text-2xl leading-none">×</button>
+  <div id="stats-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="tt-card w-full max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
+      <div class="px-5 py-3 flex items-center justify-between flex-shrink-0" style="border-bottom:1px solid var(--card-border);">
+        <span class="font-bold text-sm" style="color:var(--text)">📊 Deine Statistik</span>
+        <button id="stats-close" class="text-2xl leading-none transition-colors" style="color:var(--text-dim)">×</button>
       </div>
       <div id="stats-body" class="p-5 space-y-4 overflow-y-auto"></div>
     </div>

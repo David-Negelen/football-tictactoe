@@ -15,7 +15,18 @@ class ImportService:
     database: Database
     scraper: TransfermarktScraper
 
-    def import_club(self, club_url: str) -> ClubImportResult:
+    def import_club(
+        self, club_url: str, historical: bool = True, refresh_existing: bool = False
+    ) -> ClubImportResult:
+        """Import (or refresh) a club's squad.
+
+        historical=False fetches only the current squad, skipping the
+        season-by-season crawl — historical rosters never change once
+        imported, so re-walking them is pure waste on a rescrape.
+        refresh_existing=True re-fetches players already in the DB instead
+        of skipping them, so transfers/market-value/trophy changes since
+        the last scrape get picked up.
+        """
         print(f"\n→ Club: {club_url}")
         print("  Fetching current squad...")
         current_page = self.scraper.fetch_club(club_url)
@@ -27,14 +38,18 @@ class ImportService:
         )
         run_id = self.database.start_scrape_run(club_url=club_url, club_name=current_page.name)
 
-        to_year = date.today().year - 1
-        historical_years = list(range(_FROM_YEAR, to_year + 1))
+        if historical:
+            to_year = date.today().year - 1
+            historical_years = list(range(_FROM_YEAR, to_year + 1))
+        else:
+            historical_years = []
         total_seasons = 1 + len(historical_years)
 
         seen_player_urls: set[str] = set()
         discovered = 0
         imported = 0
         skipped = 0
+        refreshed = 0
 
         try:
             # Current squad first, then historical seasons oldest-to-newest
@@ -61,7 +76,8 @@ class ImportService:
 
                 for player_url in new_urls:
                     discovered += 1
-                    if self.database.player_exists(player_url):
+                    already_known = self.database.player_exists(player_url)
+                    if already_known and not refresh_existing:
                         print(f"               ~ SKIP (already in DB)  {player_url}")
                         skipped += 1
                         continue
@@ -86,8 +102,9 @@ class ImportService:
                         ]
                         stints_summary = " | ".join(parts)
 
+                    marker = "↻" if already_known else "+"
                     print(
-                        f"               + {player.name} | "
+                        f"               {marker} {player.name} | "
                         f"{player.position or '?'} | "
                         f"{player.nationality or '?'} | "
                         f"age {player.age or '?'} | "
@@ -101,18 +118,25 @@ class ImportService:
                     self.database.replace_transfers(player_id, player.transfers, player.scraped_at)
                     self.database.replace_trophies(player_id, player.trophies, player.scraped_at)
                     self.database.replace_career_stints(player_id, player.career_stints)
-                    imported += 1
+                    if already_known:
+                        refreshed += 1
+                    else:
+                        imported += 1
 
             self.database.finish_scrape_run(run_id, "success", None)
         except Exception as exc:
             self.database.finish_scrape_run(run_id, "failed", str(exc))
             raise
 
-        print(f"  ✓ Imported {imported}/{discovered} players ({skipped} skipped)\n")
+        print(
+            f"  ✓ Imported {imported}/{discovered} new, refreshed {refreshed} existing "
+            f"({skipped} skipped)\n"
+        )
         return ClubImportResult(
             club_url=club_url,
             club_name=current_page.name,
             discovered_players=discovered,
             imported_players=imported,
             skipped_players=skipped,
+            refreshed_players=refreshed,
         )
