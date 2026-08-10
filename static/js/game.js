@@ -362,10 +362,12 @@ function cellHtml(r, c) {
     const count = cellSol.count || 0;
     const first = cellSol.players?.[0] ? esc(cellSol.players[0].name) : '';
     const summary = count === 0 ? '–' : count === 1 ? first : `${first} +${count - 1}`;
+    // No "LÖSUNG" caption — repeated on every one of these cells it was
+    // just noise, and the muted color plus the checkmark on cells you did
+    // answer (see above) already says "this one wasn't yours" on its own.
     return `
       <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-2.5 tt-slot text-center">
-        <div class="tt-label mb-1">Lösung</div>
-        <div class="tt-cell-sub text-[11px] leading-snug" style="color:var(--text-dim)">${summary}</div>
+        <div class="tt-cell-sub text-xs leading-snug" style="color:var(--text-dim)">${summary}</div>
       </button>`;
   }
 
@@ -583,14 +585,19 @@ function updateStreakDisplay() {
   }
 }
 
-// The round result is shown as a banner inline above the board — not a
-// blocking popup — so the revealed solution underneath is visible right away
-// without needing to dismiss anything first.
+// The round result folds into the existing status card instead of a
+// separate popup/overlay: the live "X / 9" or turn indicator in status-text
+// is replaced by the final result, a thin one-line sub-message appears
+// right below it (still inside the same card), and the button row swaps
+// "Aufgeben" for the result actions — no new block, no dimmed backdrop, and
+// the revealed board underneath stays fully visible and tappable the whole
+// time (see openSolutionSheet).
 function showEndBanner(icon, title, sub, extra, showReplay = true) {
-  document.getElementById('end-icon').textContent  = icon;
-  document.getElementById('end-title').textContent = title;
-  document.getElementById('end-sub').textContent   = sub;
-  document.getElementById('end-extra').textContent = extra || '';
+  document.getElementById('status-text').textContent = `${icon} ${title}`;
+  const subEl = document.getElementById('end-banner');
+  subEl.textContent = extra ? `${sub} · ${extra}` : sub;
+  subEl.classList.remove('hidden');
+
   const replayBtn = document.getElementById('end-new-game');
   replayBtn.classList.toggle('hidden', !showReplay);
   replayBtn.disabled = false;
@@ -599,19 +606,18 @@ function showEndBanner(icon, title, sub, extra, showReplay = true) {
   // here so a stale "shown" state from an earlier daily round never leaks
   // into a later solo/local/online banner.
   document.getElementById('end-share').classList.add('hidden');
-  document.getElementById('end-banner').classList.remove('hidden');
+
+  document.getElementById('btn-give-up').classList.add('hidden');
+  document.getElementById('end-actions').classList.remove('hidden');
+  document.getElementById('end-actions').classList.add('flex');
 }
 
 function hideEndBanner() {
   document.getElementById('end-banner').classList.add('hidden');
+  document.getElementById('end-actions').classList.add('hidden');
+  document.getElementById('end-actions').classList.remove('flex');
+  document.getElementById('btn-give-up').classList.remove('hidden');
 }
-
-// Tapping the backdrop dismisses the results sheet without leaving the
-// board screen, so the revealed solutions underneath are reachable (each
-// still tappable for its full answer list — see openSolutionSheet).
-document.getElementById('end-banner').addEventListener('click', e => {
-  if (e.target.id === 'end-banner') hideEndBanner();
-});
 
 // Online rematches need both players' agreement — see updateRematchButtonState,
 // which keeps this button in sync (waiting / accept / ask) on every poll
@@ -794,7 +800,7 @@ async function endGameLocal() {
   if (g.winner === 'draw') {
     stats.local.draws++;
     saveStats();
-    showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`);
+    showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.');
   } else {
     stats.local.wins[g.winner] = (stats.local.wins[g.winner] || 0) + 1;
     if (stats.local.fastestWinSeconds == null || g.elapsedSeconds < stats.local.fastestWinSeconds) {
@@ -806,10 +812,10 @@ async function endGameLocal() {
     const winnerSym = g.winner === 1 ? 'X' : 'O';
     const loserSym  = g.winner === 1 ? 'O' : 'X';
     showEndBanner(
-      g.winner === 1 ? '🔴' : '🔵',
+      '🏆',
       `${winnerSym} gewinnt!`,
       gaveUp ? `${loserSym} hat aufgegeben.` : `${winnerSym} hat das Spiel gewonnen!`,
-      `⏱ ${timeStr} · 🔥 Beste Serie: ${stats.local.bestStreak}`
+      `🔥 Beste Serie: ${stats.local.bestStreak}`
     );
   }
   await revealSolutions();
@@ -919,7 +925,7 @@ async function endGameSolo() {
       perfect ? '🏆' : '📅',
       `${g.soloCorrect} / 9 richtig`,
       `🔥 Streak: ${daily.currentStreak} Tag${daily.currentStreak === 1 ? '' : 'e'}`,
-      `⏱ ${formatTime(g.elapsedSeconds)} · Beste Serie: ${daily.bestStreak}`,
+      `Beste Serie: ${daily.bestStreak}`,
       false // already played today — no "Nochmal spielen"
     );
     document.getElementById('end-share').classList.remove('hidden');
@@ -930,8 +936,7 @@ async function endGameSolo() {
     showEndBanner(
       perfect ? '🏆' : '🧩',
       `${g.soloCorrect} / 9 richtig`,
-      perfect ? 'Perfekte Runde!' : 'Rätsel beendet.',
-      `⏱ ${formatTime(g.elapsedSeconds)}`
+      perfect ? 'Perfekte Runde!' : 'Rätsel beendet.'
     );
   } else {
     stats.solo.rounds++;
@@ -943,8 +948,7 @@ async function endGameSolo() {
     showEndBanner(
       perfect ? '🏆' : '🧩',
       `${g.soloCorrect} / 9 richtig`,
-      perfect ? 'Perfekte Runde!' : 'Runde beendet.',
-      `⏱ ${formatTime(g.elapsedSeconds)}`
+      perfect ? 'Perfekte Runde!' : 'Runde beendet.'
     );
   }
   await revealSolutions();
@@ -1554,11 +1558,10 @@ async function finishOnline() {
   setStatus('Runde beendet.');
   stats.online.rounds++;
 
-  const timeStr = formatTime(g.elapsedSeconds);
   if (g.winner === 'draw') {
     stats.online.draws++;
     saveStats();
-    showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', `⏱ ${timeStr}`, true);
+    showEndBanner('🤝', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', '', true);
   } else {
     const youWon = g.winner === g.onlineSlot;
     if (youWon) stats.online.wins++; else stats.online.losses++;
@@ -1568,7 +1571,7 @@ async function finishOnline() {
       youWon ? '🏆' : '💔',
       youWon ? 'Du gewinnst!' : 'Du verlierst',
       youWon ? 'Gut gespielt!' : 'Nächstes Mal klappt’s!',
-      `⏱ ${timeStr}`,
+      '',
       true
     );
   }

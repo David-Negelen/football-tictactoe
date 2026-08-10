@@ -280,7 +280,10 @@
 
     <!-- Statusleiste + Spielfeld: eine zusammenhängende Karte, keine
          schwebende Pille über dem Raster — die Statuszeile ist die
-         oberste Reihe derselben Karte wie das Grid. -->
+         oberste Reihe derselben Karte wie das Grid. Das Rundenergebnis
+         (end-banner) ist keine eigene Karte/Popup, sondern eine weitere,
+         schmale Zeile derselben Karte — die Statuszeile übernimmt selbst
+         die Ergebnis-Botschaft (siehe showEndBanner in game.js). -->
     <div class="tt-card w-full max-w-3xl overflow-hidden">
       <div id="status-bar" class="flex items-center justify-between gap-3 text-sm px-4 py-2.5"
         style="border-bottom:1px solid var(--card-border);">
@@ -291,6 +294,8 @@
         </span>
       </div>
 
+      <div id="end-banner" class="hidden px-4 py-2 text-xs" style="border-bottom:1px solid var(--card-border);color:var(--text-dim)"></div>
+
       <!-- Spielfeld: 4×4 CSS-Grid. Same gap for every row (header row
            included), same .tt-cell style for every slot (see game.js) —
            so it reads as one grid, not a header glued to a 3×3 grid. -->
@@ -298,39 +303,25 @@
       </div>
     </div>
 
-    <!-- Buttons -->
-    <div class="mt-4 flex gap-3">
+    <!-- Buttons: "Aufgeben" while a round is live, swapped for the result
+         actions once it ends — same slot, not a second block. -->
+    <div class="mt-4 flex flex-col gap-2 w-full max-w-xs px-4">
       <button id="btn-give-up" class="tt-btn-accent text-xs px-6 py-3 rounded-full tracking-widest uppercase">
         Aufgeben
       </button>
-    </div>
-
-  </div>
-
-  <!-- Rundenergebnis: eigenes Overlay statt inline über dem Raster — sonst
-       schiebt die Ergebniskarte das Grid nach unten und wirkt wie ein
-       nachträglicher Zusatz statt das eigentliche Spielfeld. -->
-  <div id="end-banner" class="hidden fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center">
-    <div class="tt-card w-full sm:max-w-sm p-5 flex flex-col items-center text-center gap-3 rounded-b-none sm:rounded-b-[10px]"
-      style="padding-bottom:calc(1.25rem + env(safe-area-inset-bottom));">
-      <div id="end-icon" class="text-4xl flex-shrink-0 tt-icon-mono"></div>
-      <div>
-        <h2 id="end-title" class="text-xl font-black leading-tight" style="color:var(--text)"></h2>
-        <p id="end-sub" class="text-sm leading-snug mt-1" style="color:var(--text-dim)"></p>
-        <p id="end-extra" class="text-xs leading-snug mt-1" style="color:var(--text-faint)"></p>
-      </div>
-      <div class="flex flex-col gap-2 w-full mt-2">
-        <button id="end-new-game" class="tt-btn-accent w-full text-sm px-4 py-3 rounded-full">
+      <div id="end-actions" class="hidden flex-col gap-2">
+        <button id="end-new-game" class="tt-btn-accent text-sm px-4 py-3 rounded-full">
           Nochmal spielen
         </button>
-        <button id="end-share" class="hidden tt-btn-neutral w-full text-sm px-4 py-3 rounded-full">
+        <button id="end-share" class="hidden tt-btn-neutral text-sm px-4 py-3 rounded-full">
           📤 Teilen
         </button>
-        <button id="end-menu" class="tt-btn-neutral w-full text-sm px-4 py-3 rounded-full">
+        <button id="end-menu" class="tt-btn-neutral text-sm px-4 py-3 rounded-full">
           Menü
         </button>
       </div>
     </div>
+
   </div>
 
   </div><!-- /content -->
