@@ -387,9 +387,8 @@
     <!-- Statusleiste + Spielfeld: eine zusammenhängende Karte, keine
          schwebende Pille über dem Grid — die Statuszeile ist die
          oberste Reihe derselben Karte wie das Grid. Das Rundenergebnis
-         (end-banner) ist keine eigene Karte/Popup, sondern eine weitere,
-         schmale Zeile derselben Karte — die Statuszeile übernimmt selbst
-         die Ergebnis-Botschaft (siehe showEndBanner in game.js). -->
+         übernimmt dieselbe Statuszeile direkt (siehe showEndBanner in
+         game.js) statt einer eigenen Karte/Popup oder Zeile darunter. -->
     <div class="tt-card w-full max-w-3xl overflow-hidden">
       <div id="status-bar" class="flex items-center justify-between gap-3 text-sm px-4 py-2.5"
         style="border-bottom:1px solid var(--card-border);">
@@ -399,8 +398,6 @@
           <span id="timer-display" class="text-xs font-medium" style="color:var(--text-dim)">0:00</span>
         </span>
       </div>
-
-      <div id="end-banner" class="hidden px-4 py-2 text-xs" style="border-bottom:1px solid var(--card-border);color:var(--text-dim)"></div>
 
       <!-- Spielfeld: 4×4 CSS-Grid. Same gap for every row (header row
            included), same .tt-cell style for every slot (see game.js) —

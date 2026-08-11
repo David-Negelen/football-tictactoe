@@ -957,16 +957,12 @@ function updateStreakDisplay() {
 
 // The round result folds into the existing status card instead of a
 // separate popup/overlay: the live "X / 9" or turn indicator in status-text
-// is replaced by the final result, a thin one-line sub-message appears
-// right below it (still inside the same card), and the button row swaps
-// "Aufgeben" for the result actions — no new block, no dimmed backdrop, and
-// the revealed board underneath stays fully visible and tappable the whole
-// time (see openSolutionSheet).
-function showEndBanner(icon, title, sub, extra, showReplay = true) {
+// is replaced by the final result, and the button row swaps "Aufgeben" for
+// the result actions — no new block, no dimmed backdrop, and the revealed
+// board underneath stays fully visible and tappable the whole time (see
+// openSolutionSheet).
+function showEndBanner(icon, title, showReplay = true) {
   document.getElementById('status-text').innerHTML = iconText(icon, title);
-  const subEl = document.getElementById('end-banner');
-  subEl.innerHTML = extra ? `${sub} · ${extra}` : sub;
-  subEl.classList.remove('hidden');
 
   const replayBtn = document.getElementById('end-new-game');
   replayBtn.classList.toggle('hidden', !showReplay);
@@ -983,7 +979,6 @@ function showEndBanner(icon, title, sub, extra, showReplay = true) {
 }
 
 function hideEndBanner() {
-  document.getElementById('end-banner').classList.add('hidden');
   document.getElementById('end-actions').classList.add('hidden');
   document.getElementById('end-actions').classList.remove('flex');
   document.getElementById('btn-give-up').classList.remove('hidden');
@@ -1174,7 +1169,7 @@ async function endGameLocal() {
   if (g.winner === 'draw') {
     stats.local.draws++;
     saveStats();
-    showEndBanner('handshake', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.');
+    showEndBanner('handshake', 'Unentschieden!');
   } else {
     stats.local.wins[g.winner] = (stats.local.wins[g.winner] || 0) + 1;
     if (stats.local.fastestWinSeconds == null || g.elapsedSeconds < stats.local.fastestWinSeconds) {
@@ -1182,15 +1177,8 @@ async function endGameLocal() {
     }
     saveStats();
     fireConfetti();
-    const gaveUp = g.winCells.length === 0;
     const winnerSym = g.winner === 1 ? 'X' : 'O';
-    const loserSym  = g.winner === 1 ? 'O' : 'X';
-    showEndBanner(
-      'trophy',
-      `${winnerSym} gewinnt!`,
-      gaveUp ? `${loserSym} hat aufgegeben.` : `${winnerSym} hat das Spiel gewonnen!`,
-      iconText('fire', `Beste Serie: ${stats.local.bestStreak}`, { size: 13 })
-    );
+    showEndBanner('trophy', `${winnerSym} gewinnt!`);
   }
   await revealSolutions();
 }
@@ -1300,26 +1288,16 @@ async function endGameSolo() {
     // — the streak is about showing up daily, not about getting a perfect
     // score (getting all 9 right is much harder here than guessing a
     // Wordle, so requiring perfection would make streaks nearly unreachable).
-    const daily = recordDailyCompletion(g.dailyDate, g.soloCorrect);
+    recordDailyCompletion(g.dailyDate, g.soloCorrect);
     updateDailyCardBadge();
     if (perfect) fireConfetti();
-    showEndBanner(
-      perfect ? 'trophy' : 'calendar',
-      `${g.soloCorrect} / 9 richtig`,
-      iconText('fire', `Streak: ${daily.currentStreak} Tag${daily.currentStreak === 1 ? '' : 'e'}`, { size: 13 }),
-      `Beste Serie: ${daily.bestStreak}`,
-      false // already played today — no "Nochmal spielen"
-    );
+    showEndBanner(perfect ? 'trophy' : 'calendar', `${g.soloCorrect} / 9 richtig`, false); // already played today — no "Nochmal spielen"
     document.getElementById('end-share').classList.remove('hidden');
   } else if (g.soloVariant === 'custom') {
     // Doesn't count toward the "Solo" stats — a shared/custom grid is a
     // different activity, not a random practice round.
     if (perfect) fireConfetti();
-    showEndBanner(
-      perfect ? 'trophy' : 'puzzle',
-      `${g.soloCorrect} / 9 richtig`,
-      perfect ? 'Perfekte Runde!' : 'Grid beendet.'
-    );
+    showEndBanner(perfect ? 'trophy' : 'puzzle', `${g.soloCorrect} / 9 richtig`);
   } else {
     stats.solo.rounds++;
     stats.solo.correct += g.soloCorrect;
@@ -1328,11 +1306,7 @@ async function endGameSolo() {
     stats.solo.scoreDistribution[g.soloCorrect]++;
     saveStats();
     if (perfect) fireConfetti();
-    showEndBanner(
-      perfect ? 'trophy' : 'puzzle',
-      `${g.soloCorrect} / 9 richtig`,
-      perfect ? 'Perfekte Runde!' : 'Runde beendet.'
-    );
+    showEndBanner(perfect ? 'trophy' : 'puzzle', `${g.soloCorrect} / 9 richtig`);
   }
   await revealSolutions();
 }
@@ -2007,7 +1981,6 @@ async function rematchOnline() {
   });
   if (!resp.ok) {
     alert('Revanche nicht möglich – Raum eventuell nicht mehr aktiv.');
-    document.getElementById('end-banner').classList.remove('hidden');
     return;
   }
   await refreshOnlineState();
@@ -2022,7 +1995,7 @@ async function finishOnline() {
     stats.online.draws++;
     stats.online.streak = 0;
     saveStats();
-    showEndBanner('handshake', 'Unentschieden!', 'Gut gespielt – kein Gewinner diesmal.', '', true);
+    showEndBanner('handshake', 'Unentschieden!');
   } else {
     const youWon = g.winner === g.onlineSlot;
     if (youWon) {
@@ -2035,13 +2008,7 @@ async function finishOnline() {
     }
     saveStats();
     if (youWon) fireConfetti();
-    showEndBanner(
-      youWon ? 'trophy' : 'loss',
-      youWon ? 'Du gewinnst!' : 'Du verlierst',
-      youWon ? 'Gut gespielt!' : 'Nächstes Mal klappt’s!',
-      '',
-      true
-    );
+    showEndBanner(youWon ? 'trophy' : 'loss', youWon ? 'Du gewinnst!' : 'Du verlierst');
   }
   await revealSolutions();
 }
