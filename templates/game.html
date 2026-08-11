@@ -113,7 +113,12 @@
     button.tt-cell:not(:disabled):hover { border-color: var(--accent); }
     button.tt-cell:disabled { opacity: .5; }
     .tt-cell.is-active { border-color: var(--accent); }
-    .tt-cell.is-win { border-color: var(--accent); background: var(--accent-dim); }
+    /* Winning cells are always already filled (see cellHtml), and now
+       always already colored solid with their owner's color — a fixed
+       accent border/tint here would clash on an O win, so this is a
+       neutral ring that layers on top of either player's fill instead of
+       overriding it. */
+    .tt-cell.is-win { box-shadow: 0 0 0 2px var(--text) inset; }
 
     /* Category header icons (crests, flags, emoji) carry their own colors —
        flattened to grayscale so they read as content, not as extra hues in

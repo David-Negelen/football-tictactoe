@@ -56,17 +56,10 @@ function shirtSvg() {
 }
 
 // The one place the app's palette grows a second color (--o-color, next to
-// --accent for X) — a dim-gray glyph-only badge turned out too easy to miss
-// on a small cell (see the game.js history around this line). Player color
-// is otherwise still nowhere else in the UI.
+// --accent for X): player identity in 1v1 local/online — the filled-cell
+// background (see cellHtml), its corner glyph, and the turn-indicator dot.
 function playerColor(player) {
   return player === 1 ? 'var(--accent)' : 'var(--o-color)';
-}
-
-function markBadge(player) {
-  const sym = player === 1 ? 'X' : 'O';
-  const color = playerColor(player);
-  return `<span class="text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="border:1.5px solid ${color};color:${color}">${sym}</span>`;
 }
 
 function esc(v) {
@@ -679,27 +672,39 @@ function cellHtml(r, c) {
   }
 
   if (entry) {
-    // Correct answers need a clear "you got this" signal — everywhere but
-    // solo, the X/O badge already implies it (a missed guess never reaches
-    // this branch, it's the 'missed' one above). Solo suppresses that
-    // badge, which left correct cells looking like plain bold text with
-    // no marker at all — easy to mistake for a "Lösung" reveal cell at a
-    // glance. A small accent checkmark closes that gap.
-    const badge = g.mode === 'solo'
-      ? `<span class="text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="border:1.5px solid var(--accent);color:var(--accent)">✓</span>`
-      : markBadge(entry.player);
-    // The badge sits absolutely in the corner instead of its own flex row —
-    // on a 4-column mobile grid the cell is only ~50px of usable content
-    // height, and a dedicated badge row was eating enough of that to crush
-    // the name down to an unreadable sliver (a flex item with overflow:
-    // hidden — needed for the line-clamp below — loses its automatic
-    // min-height protection, so a too-tall stack doesn't just wrap, it
-    // silently shrinks below its own content size).
+    // The badge/glyph sits absolutely in the corner instead of its own flex
+    // row — on a 4-column mobile grid the cell is only ~50px of usable
+    // content height, and a dedicated badge row was eating enough of that
+    // to crush the name down to an unreadable sliver (a flex item with
+    // overflow: hidden — needed for the line-clamp below — loses its
+    // automatic min-height protection, so a too-tall stack doesn't just
+    // wrap, it silently shrinks below its own content size).
+    if (g.mode === 'solo') {
+      // Solo has no "which player" concept, just correct-or-not — a small
+      // accent checkmark is enough (a missed guess never reaches this
+      // branch, it's the 'missed' one above).
+      return `
+        <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
+             data-cell="${r},${c}">
+          <div class="absolute top-1.5 right-1.5">
+            <span class="text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="border:1.5px solid var(--accent);color:var(--accent)">✓</span>
+          </div>
+          <div class="tt-cell-name text-center" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
+        </div>`;
+    }
+    // Local/online: the whole cell fills with that player's color instead
+    // of just a small corner badge — ownership reads across the whole
+    // board at a glance, not just up close on one cell at a time. Text
+    // switches to --accent-ink (the same "on solid accent" ink already
+    // used by .tt-btn-accent) since it now sits on a bright fill rather
+    // than the dark card background.
+    const color = playerColor(entry.player);
+    const sym = entry.player === 1 ? 'X' : 'O';
     return `
       <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
-           data-cell="${r},${c}">
-        <div class="absolute top-1.5 right-1.5">${badge}</div>
-        <div class="tt-cell-name text-center" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
+           data-cell="${r},${c}" style="background:${color};border-color:${color};">
+        <div class="absolute top-1.5 right-1.5 text-sm font-black" style="color:var(--accent-ink)">${sym}</div>
+        <div class="tt-cell-name text-center" style="color:var(--accent-ink)">${esc(formatPlayerName(entry.name))}</div>
       </div>`;
   }
 
