@@ -2103,6 +2103,12 @@ function renderStats() {
   const dailyScores = Object.values(d.completed).map(v => v.correct);
   const dailyAccuracy = dailyScores.length
     ? Math.round((dailyScores.reduce((a, b) => a + b, 0) / (dailyScores.length * 9)) * 100) : 0;
+  // Derived straight from d.completed each render, same as dailyAccuracy
+  // above — no separate persisted counter needed, unlike Solo's
+  // scoreDistribution (that one counts *rounds*, which aren't otherwise
+  // stored anywhere; a completed day's score already lives in d.completed).
+  const dailyDistribution = new Array(10).fill(0);
+  dailyScores.forEach(correct => { if (correct >= 0 && correct <= 9) dailyDistribution[correct]++; });
   const soloAccuracy = s.cells ? Math.round((s.correct / s.cells) * 100) : 0;
   const onlineWinRate = o.rounds ? Math.round((o.wins / o.rounds) * 100) : 0;
 
@@ -2118,6 +2124,10 @@ function renderStats() {
       <div class="grid grid-cols-2 gap-2 text-center">
         ${tile(iconText('fire', d.currentStreak, { size: 14, gap: 4 }), 'Serie', true)}
         ${tile(`${dailyAccuracy}%`, 'Trefferquote')}
+      </div>
+      <div class="tt-card p-3 mt-2 flex flex-col gap-1.5">
+        <div class="tt-label mb-0.5">Ergebnisverteilung</div>
+        ${distributionChartHtml(dailyDistribution, 'Noch keine Tagesrätsel gespielt')}
       </div>
     </div>
     <div>
