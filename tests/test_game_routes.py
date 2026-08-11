@@ -207,3 +207,53 @@ def test_create_grid_rejects_a_combination_with_an_empty_cell(app_client, fixtur
         content_type="application/json",
     )
     assert resp.status_code == 400
+
+
+# ─── Error handling ─────────────────────────────────────────────────────────
+
+def test_unknown_api_path_returns_json_404(app_client) -> None:
+    # Not the SPA shell (see api_not_found) — a client expecting JSON from
+    # under /api/ should get an error it can actually detect, not a 200 full
+    # of HTML for a typoed or removed endpoint.
+    resp = app_client.get("/api/this-endpoint-does-not-exist")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]
+
+
+def test_unknown_page_path_still_serves_the_game_shell(app_client) -> None:
+    # Unlike /api/*, an arbitrary page-ish path is still owned by the
+    # client-side router (see game()) — this is unchanged, existing behavior.
+    resp = app_client.get("/some/deep/link/the/router/handles")
+    assert resp.status_code == 200
+    assert b"Tiki-Taka-Toe" in resp.data
+
+
+def test_method_not_allowed_on_page_route_returns_html_error_page(app_client) -> None:
+    # A non-JSON path's HTTPException (here: 405, from POSTing to a GET-only
+    # route) renders error.html rather than the JSON shape /api/* gets.
+    resp = app_client.post("/combos")
+    assert resp.status_code == 405
+    assert resp.content_type.startswith("text/html")
+    assert b"Fehler 405" in resp.data
+
+
+def test_unexpected_exception_returns_generic_json_500_without_leaking_details(app_client, monkeypatch) -> None:
+    import app as app_module
+
+    # TESTING=True (set by the app_client fixture) makes Flask propagate
+    # unhandled exceptions straight to the test client instead of running
+    # our registered error handler — turn that back off so this test
+    # exercises the same handler production traffic would hit.
+    app_module.app.config.update(PROPAGATE_EXCEPTIONS=False)
+
+    def _boom():
+        raise RuntimeError("secret internal detail that must not reach the client")
+
+    monkeypatch.setattr(app_module, "get_db", _boom)
+
+    resp = app_client.get("/api/game/search?q=abc")
+    assert resp.status_code == 500
+    body = resp.get_data(as_text=True)
+    assert "secret internal detail" not in body
+    assert "RuntimeError" not in body
+    assert resp.get_json()["error"]

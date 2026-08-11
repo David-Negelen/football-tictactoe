@@ -1,5 +1,6 @@
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, abort, jsonify, render_template, request
 import hashlib
+import logging
 import sqlite3
 import time
 import unicodedata
@@ -9,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import json as _json
+
+from werkzeug.exceptions import HTTPException
 
 from src import category_config
 from src import dynamic_categories
@@ -23,6 +26,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "tictactoe.db")
 
 app = Flask(__name__)
+
+# Plain stdout/stderr logging — gunicorn (see Dockerfile's --access-logfile/
+# --error-logfile) and `docker logs`/journald/etc. already capture whatever
+# a process prints, so there's no separate log-shipping setup to stand up
+# for a single-container deployment this size. FLASK_DEBUG=1 (local dev)
+# gets DEBUG-level noise; production stays at INFO so routine requests
+# (already logged by gunicorn's own access log) don't get duplicated here —
+# this logger is for our own messages, chiefly the unhandled-exception log
+# in handle_unexpected_exception below.
+logging.basicConfig(
+    level=logging.DEBUG if os.environ.get("FLASK_DEBUG", "0") == "1" else logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 Database(DB_PATH).initialize()
 
@@ -595,8 +611,20 @@ def game(subpath=None):
     # show. Werkzeug's routing prefers a more-static rule over this catch-all
     # for any URL that also matches one (/combos, /squad-guesser, /sw.js,
     # /api/..., /static/...), so those keep working unshadowed regardless of
-    # declaration order.
+    # declaration order — including api_not_found just below, which is more
+    # specific than this route for anything under /api/ and keeps a typoed
+    # or removed API endpoint a real 404 instead of a 200 full of HTML.
     return render_template("game.html")
+
+
+@app.route("/api/<path:subpath>")
+def api_not_found(subpath):
+    # Without this, an unmatched /api/* request would fall through to the
+    # game() catch-all above and get a 200 response full of HTML — the SPA
+    # shell is a reasonable fallback for a mistyped *page* URL, but silently
+    # handing a client expecting JSON an HTML document (rather than an error
+    # it can actually detect) is a footgun, not a feature.
+    abort(404)
 
 
 @app.route("/api/game/new")
@@ -1220,6 +1248,58 @@ def datenschutz():
 @app.route("/impressum")
 def impressum():
     return render_template("impressum.html")
+
+
+# ─── Error handling ─────────────────────────────────────────────────────────
+# Two handlers, deliberately not one: HTTPException (404, 405, a route's own
+# abort(400), ...) is expected, routine traffic — no logging beyond gunicorn's
+# own access log. A bare Exception reaching here is always a bug (every
+# anticipated failure in this codebase already returns its own error
+# response instead of raising) — that one gets logged with its full
+# traceback server-side and a generic message to the client, never the
+# traceback itself. Both render an HTML page for a normal page request and
+# JSON for anything under /api/, matching how the rest of the app already
+# splits those two response styles.
+#
+# Neither handler runs at all while FLASK_DEBUG=1: Flask's own
+# PROPAGATE_EXCEPTIONS default (True whenever app.debug is True) lets
+# exceptions surface to Werkzeug's interactive debugger instead, which is
+# what local development actually wants. This only takes over once that's
+# off, i.e. exactly the "FLASK_DEBUG left on in production" case this exists
+# to make impossible to observe from the outside.
+def _wants_json() -> bool:
+    return request.path.startswith("/api/")
+
+
+# German titles/messages for the handful of HTTPExceptions a real visitor
+# (as opposed to an API client, which gets JSON and doesn't care) could
+# plausibly hit on this German-language site — everything else falls back to
+# Werkzeug's own (English) e.name/e.description rather than transcribing its
+# entire exception catalog for codes nobody here will ever actually see.
+_HTTP_ERROR_DE: dict[int, tuple[str, str]] = {
+    404: ("Seite nicht gefunden", "Die aufgerufene Seite existiert nicht (mehr)."),
+    405: ("Methode nicht erlaubt", "Diese Aktion ist für diese Seite nicht vorgesehen."),
+    429: ("Zu viele Anfragen", "Bitte versuche es in Kürze erneut."),
+}
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e: HTTPException):
+    if _wants_json():
+        return jsonify({"error": e.description or e.name}), e.code
+    title, message = _HTTP_ERROR_DE.get(e.code, (e.name, e.description))
+    return render_template("error.html", code=e.code, title=title, message=message), e.code
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_exception(e: Exception):
+    app.logger.exception("Unhandled exception on %s %s", request.method, request.path)
+    if _wants_json():
+        return jsonify({"error": "Internal server error"}), 500
+    return render_template(
+        "error.html", code=500, title="Etwas ist schiefgelaufen",
+        message="Bitte lade die Seite neu oder versuche es später erneut.",
+    ), 500
 
 
 if __name__ == "__main__":

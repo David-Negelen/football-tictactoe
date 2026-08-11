@@ -30,4 +30,10 @@ EXPOSE 5001
 # requests randomly routed to it would 404 on rooms that exist in the other
 # worker. Concurrency instead comes from --threads, which share memory within
 # the one process (see the architecture note in src/multiplayer.py).
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --worker-class gthread --workers 1 --threads 8 --timeout 60 app:app"]
+#
+# --access-logfile/--error-logfile "-": gunicorn logs nothing at all by
+# default beyond startup/shutdown — "-" sends both to stdout/stderr instead
+# of /dev/null, which is what `docker logs`/journald/whatever's supervising
+# the container actually captures. app.py's own logging.basicConfig also
+# targets stdout/stderr, so both land in the same place.
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --worker-class gthread --workers 1 --threads 8 --timeout 60 --access-logfile - --error-logfile - app:app"]

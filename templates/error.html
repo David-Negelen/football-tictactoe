@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ code }} · Tiki-Taka-Toe</title>
+  <style>
+    /* Deliberately self-contained (no external stylesheet, no Google/CDN
+       fonts, no dependency on static/fonts/fonts.css) — this page is what
+       renders when something has already gone wrong, so it shouldn't have
+       any more failure points than the browser's own system font stack. */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      background: #0a1512;
+      color: #eef1ef;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .wrap { max-width: 420px; }
+    .code { font-size: 15px; font-weight: 700; letter-spacing: .08em; color: #ff7a1a; margin-bottom: 12px; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    p { color: #9aa39f; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
+    a {
+      display: inline-block;
+      background: #ff7a1a;
+      color: #171b1a;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="code">Fehler {{ code }}</div>
+    <h1>{{ title }}</h1>
+    {% if message %}<p>{{ message }}</p>{% endif %}
+    <a href="/">Zur Startseite</a>
+  </div>
+</body>
+</html>
