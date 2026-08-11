@@ -173,11 +173,11 @@ function genParams() {
 // (online-lobby/board are both driven by one room's state; board/daily-done
 // are both driven by one day's puzzle), so this maps to /game/solo,
 // /game/local, /game/solo/<code>, /game/online/<code> etc. instead of a
-// single generic /game/board. Only setup, an online room (server state
-// lives under its code), and a saved/shared grid (server state lives under
-// its code) can actually be reconstructed from a URL alone on a cold load —
-// a plain solo/local round has no server-side representation at all, so its
-// URL is only ever reached by pushing it during a live session.
+// single generic /game/board. Setup, an online room, and a saved/shared grid
+// can be reconstructed from the URL alone (server state lives under a code);
+// a plain solo/local round has no server-side representation, so a cold load
+// of its URL instead falls back to tryResumeRound's sessionStorage snapshot
+// (see below) and, failing that, to that mode's setup screen.
 function urlForScreen(name) {
   switch (name) {
     case 'setup': return `/game/setup/${g.pendingMode}`;
@@ -246,14 +246,15 @@ function showScreen(name, { push = true } = {}) {
 // Entry point for a URL with NO live `g` state behind it — a cold page
 // load (init()) or the rare popstate with no history.state payload. Each
 // branch either reconstructs the screen from data the URL/server/
-// localStorage can actually supply, or — for a plain solo/local round,
-// which has no server-side representation at all — bounces one level to
-// that mode's setup screen (replace, not push: this corrects an
-// unresumable URL, it isn't a new step) rather than all the way home, so
-// relaunching is one tap instead of a full re-navigation. A saved/shared
-// grid (solo-custom) and an online room are the two cases that ARE
-// resumable cold, since their state genuinely lives server-side under a
-// code.
+// sessionStorage/localStorage can actually supply, or — if there's no
+// saved round to resume either — bounces one level to that mode's setup
+// screen (replace, not push: this corrects an unresumable URL, it isn't a
+// new step) rather than all the way home, so relaunching is one tap
+// instead of a full re-navigation. A saved/shared grid (solo-custom) and
+// an online room can additionally be reconstructed cold from just the URL
+// (their state lives server-side under a code) even with no saved round —
+// tryResumeRound only ever gets in the way there if it were to restore
+// stale progress for a *different* code, which its match check rules out.
 function enterFromPath(parsed) {
   switch (parsed.screen) {
     case 'setup': enterSetupScreen(parsed.mode, { push: false }); break;
@@ -273,8 +274,12 @@ function enterFromPath(parsed) {
       else renderLobbyHome();
       break;
     case 'solo-custom': loadAndStartCustomGrid(parsed.code, undefined, undefined, { push: false }); break;
-    case 'solo': enterSetupScreen('solo', { push: false }); break;
-    case 'local': enterSetupScreen('local', { push: false }); break;
+    case 'solo':
+      if (!tryResumeRound({ mode: 'solo', soloVariant: null })) enterSetupScreen('solo', { push: false });
+      break;
+    case 'local':
+      if (!tryResumeRound({ mode: 'local' })) enterSetupScreen('local', { push: false });
+      break;
     default: showScreen('mode-select', { push: false });
   }
 }
@@ -395,6 +400,58 @@ function clearOnlineSession() {
   sessionStorage.removeItem(ONLINE_SESSION_KEY);
 }
 
+// Same idea, for solo/local rounds — these have no server-side game state to
+// reattach to at all, so this holds the actual board (not just an identity
+// token): rows/cols, filled cells, whose turn, elapsed time. Saved on every
+// move and cleared the instant a round ends or the player leaves to the
+// menu — a finished round's reload still bounces to setup (nothing of value
+// is lost there; they already saw the result) rather than trying to
+// reconstruct a result banner from storage too.
+const ROUND_SESSION_KEY = 'ttt_round_session';
+
+function saveRoundSession() {
+  if (g.mode !== 'solo' && g.mode !== 'local') return;
+  sessionStorage.setItem(ROUND_SESSION_KEY, JSON.stringify({
+    mode: g.mode, soloVariant: g.soloVariant, soloGridCode: g.soloGridCode, dailyDate: g.dailyDate,
+    rows: g.rows, cols: g.cols, board: g.board, current: g.current,
+    usedIds: [...g.usedIds], streak: g.streak, elapsedSeconds: g.elapsedSeconds,
+    soloAttempted: g.soloAttempted, soloCorrect: g.soloCorrect,
+  }));
+}
+
+function clearRoundSession() {
+  sessionStorage.removeItem(ROUND_SESSION_KEY);
+}
+
+// Rebuilds g and the board DOM from a saved round session if one matches the
+// screen being entered — returns whether it did, so callers know whether to
+// fall back to their normal fresh-start path (no saved session, or it's for
+// a different mode/grid/day).
+function tryResumeRound(match) {
+  let saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(ROUND_SESSION_KEY) || 'null'); } catch { /* corrupt entry — ignore */ }
+  if (!saved || saved.mode !== match.mode) return false;
+  if ((saved.soloVariant || null) !== (match.soloVariant || null)) return false;
+  if (match.soloVariant === 'custom' && saved.soloGridCode !== match.gridCode) return false;
+  if (match.soloVariant === 'daily' && saved.dailyDate !== match.dailyDate) return false;
+
+  Object.assign(g, {
+    mode: saved.mode, soloVariant: saved.soloVariant, soloGridCode: saved.soloGridCode, dailyDate: saved.dailyDate,
+    rows: saved.rows, cols: saved.cols, board: saved.board, current: saved.current,
+    winner: null, winCells: [], usedIds: new Set(saved.usedIds || []),
+    streak: saved.streak || { 1: 0, 2: 0 }, elapsedSeconds: saved.elapsedSeconds || 0,
+    soloAttempted: saved.soloAttempted || 0, soloCorrect: saved.soloCorrect || 0, solution: null,
+  });
+  showScreen('board', { push: false });
+  updateModeChrome();
+  hideEndBanner();
+  document.getElementById('btn-give-up').disabled = false;
+  renderBoard();
+  updateStatus();
+  startTimer();
+  return true;
+}
+
 function goToMenu() {
   stopTimer();
   if (g.mode === 'online' && g.onlineCode && !g.winner) {
@@ -405,6 +462,7 @@ function goToMenu() {
   }
   if (g.onlineEventSource) { g.onlineEventSource.close(); g.onlineEventSource = null; }
   clearOnlineSession();
+  clearRoundSession();
   Object.assign(g, { mode: null, onlineCode: null, onlineToken: null, onlineSlot: null, onlineBoardEntered: false, onlineFinished: false });
   showScreen('mode-select');
 }
@@ -1036,6 +1094,7 @@ async function newLocalRound() {
   renderBoard();
   updateStatus();
   startTimer();
+  saveRoundSession();
 }
 
 function checkWinnerLocal() {
@@ -1064,6 +1123,7 @@ function placeLocal(r, c, playerId, name, club) {
   if (g.winner) { endGameLocal(); return; }
   g.current = g.current === 1 ? 2 : 1;
   updateStatus();
+  saveRoundSession();
 }
 
 async function localSelectPlayer(pid, name, club, r, c) {
@@ -1087,12 +1147,14 @@ async function localSelectPlayer(pid, name, club, r, c) {
       closeModal();
       g.current = g.current === 1 ? 2 : 1;
       updateStatus();
+      saveRoundSession();
     }, 1500);
   }
 }
 
 async function endGameLocal() {
   stopTimer();
+  clearRoundSession();
   // The banner below now carries the result — the status bar just needs to
   // stop showing a stale "X ist dran" from before the game ended (it used
   // to sit unnoticed behind the old blocking modal).
@@ -1163,6 +1225,7 @@ function finishSoloRoundSetup(rows, cols) {
   renderBoard();
   updateStatus();
   startTimer();
+  saveRoundSession();
 }
 
 async function newSoloRound() {
@@ -1200,6 +1263,7 @@ async function soloSelectPlayer(pid, name, club, r, c) {
   }
   saveStats();
   updateStatus();
+  saveRoundSession();
   if (g.soloAttempted >= 9) {
     g.winner = 'complete';
     await endGameSolo();
@@ -1218,6 +1282,7 @@ function giveUpSolo() {
 
 async function endGameSolo() {
   stopTimer();
+  clearRoundSession();
   resetGiveUpConfirm();
   document.getElementById('btn-give-up').disabled = true;
   g.rows.forEach((_, r) => g.cols.forEach((__, c) => refreshCell(r, c)));
@@ -1343,6 +1408,8 @@ async function startDaily({ push = true } = {}) {
     showDailyAlreadyPlayed(daily, data.date, { push });
     return;
   }
+
+  if (tryResumeRound({ mode: 'solo', soloVariant: 'daily', dailyDate: data.date })) return;
 
   g.mode = 'solo';
   g.soloVariant = 'daily';
@@ -1597,6 +1664,7 @@ document.getElementById('setup-load-code').addEventListener('keydown', e => {
 });
 
 async function loadAndStartCustomGrid(code, errorElId = 'editor-load-error', btnId = null, { push = true } = {}) {
+  if (tryResumeRound({ mode: 'solo', soloVariant: 'custom', gridCode: code })) return;
   const errorEl = document.getElementById(errorElId);
   errorEl.classList.add('hidden');
   const btn = btnId ? document.getElementById(btnId) : null;
