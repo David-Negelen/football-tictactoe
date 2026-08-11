@@ -1005,6 +1005,7 @@ def api_mp_create_room():
     league = data.get("league") or None
     excluded_types = set(data.get("excludedTypes") or [])
     excluded_ids = set(data.get("excludedCategoryIds") or [])
+    visibility = "public" if data.get("visibility") == "public" else "private"
     pool = _resolve_pool(excluded_types=excluded_types, excluded_ids=excluded_ids, league=league)
 
     db = get_db()
@@ -1019,8 +1020,9 @@ def api_mp_create_room():
     room, token = mp.create_room(
         rows, cols, difficulty=difficulty, league=league,
         excluded_types=frozenset(excluded_types), excluded_ids=frozenset(excluded_ids),
+        visibility=visibility,
     )
-    return jsonify({"code": room.code, "token": token, "slot": 1})
+    return jsonify({"code": room.code, "token": token, "slot": 1, "visibility": room.visibility})
 
 
 @app.route("/api/multiplayer/rooms/<code>/join", methods=["POST"])
@@ -1031,6 +1033,42 @@ def api_mp_join_room(code):
         return jsonify({"error": "Raum nicht gefunden oder bereits voll"}), status
     room, token = result
     return jsonify({"code": room.code, "token": token, "slot": 2})
+
+
+@app.route("/api/multiplayer/lobbies")
+def api_mp_lobbies():
+    return jsonify({"rooms": [room.public_lobby_summary() for room in mp.list_public_rooms()]})
+
+
+@app.route("/api/multiplayer/lobbies/events")
+def api_mp_lobbies_events():
+    # Same version-diff SSE shape as a room's own /events (see
+    # api_mp_room_events) — a browsing client just refetches /lobbies on any
+    # message rather than trusting a payload here, so this only has to
+    # signal "something changed", not carry the list itself.
+    def stream():
+        last_codes = None
+        ticks = 0
+        while True:
+            codes = tuple(room.code for room in mp.list_public_rooms())
+            if codes != last_codes:
+                last_codes = codes
+                yield f"data: {_json.dumps({'count': len(codes)})}\n\n"
+            elif ticks % 15 == 0:
+                yield ": ping\n\n"  # keep proxies/browsers from closing the idle connection
+            ticks += 1
+            time.sleep(1)
+            # Not tied to a single room's own TTL check like api_mp_room_events
+            # (this stream outlives any one room) — this is just a backstop so
+            # a connection whose close a proxy swallows doesn't leak its
+            # thread forever; the client's EventSource just reconnects.
+            if ticks > mp.ROOM_TTL_SECONDS:
+                break
+
+    resp = Response(stream(), mimetype="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"  # disable reverse-proxy response buffering for SSE
+    return resp
 
 
 @app.route("/api/multiplayer/rooms/<code>/state")

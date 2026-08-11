@@ -304,6 +304,16 @@
           </div>
         </div>
       </div>
+      <!-- Only relevant (and only shown) when hosting a 1v1 Online room —
+           see enterSetupScreen, which toggles this alongside setup-load-grid. -->
+      <div id="setup-visibility-picker" class="hidden">
+        <div class="tt-label mb-2">Sichtbarkeit</div>
+        <div class="tt-card flex overflow-hidden">
+          <button data-visibility="private" class="visibility-btn tt-pill is-active flex-1 px-2.5 py-2 text-xs">Privat</button>
+          <button data-visibility="public" class="visibility-btn tt-pill flex-1 px-2.5 py-2 text-xs" style="border-left:1px solid var(--card-border);">Öffentlich</button>
+        </div>
+        <p class="text-xs mt-2" style="color:var(--text-dim)">Privat: nur per Link/Code beitretbar. Öffentlich: erscheint zusätzlich in der Lobby-Liste für alle.</p>
+      </div>
     </div>
     <button id="btn-setup-continue" class="tt-btn-accent w-full text-sm px-4 py-3 rounded-xl">Los geht's →</button>
 

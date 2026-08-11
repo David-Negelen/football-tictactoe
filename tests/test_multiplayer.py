@@ -62,6 +62,49 @@ def test_join_room_rejects_unknown_code() -> None:
     assert mp.get_room("ZZZZZ") is None
 
 
+def test_create_room_defaults_to_private(fixture_categories) -> None:
+    room, _token = _room(fixture_categories)
+    assert room.visibility == "private"
+
+
+def test_create_room_normalizes_unknown_visibility_to_private(fixture_categories) -> None:
+    cats = list(fixture_categories.values())[:6]
+    room, _token = mp.create_room(rows=cats[:3], cols=cats[3:], visibility="nonsense")
+    assert room.visibility == "private"
+
+
+def test_list_public_rooms_includes_public_but_not_private(fixture_categories) -> None:
+    cats = list(fixture_categories.values())[:6]
+    public_room, _ = mp.create_room(rows=cats[:3], cols=cats[3:], visibility="public")
+    private_room, _ = mp.create_room(rows=cats[:3], cols=cats[3:], visibility="private")
+
+    codes = {room.code for room in mp.list_public_rooms()}
+    assert public_room.code in codes
+    assert private_room.code not in codes
+
+
+def test_list_public_rooms_excludes_full_rooms(fixture_categories) -> None:
+    cats = list(fixture_categories.values())[:6]
+    room, _creator_token = mp.create_room(rows=cats[:3], cols=cats[3:], visibility="public")
+    assert room.code in {r.code for r in mp.list_public_rooms()}
+
+    mp.join_room(room.code)
+    assert room.code not in {r.code for r in mp.list_public_rooms()}  # no longer waiting for anyone
+
+
+def test_list_public_rooms_excludes_abandoned_host(fixture_categories) -> None:
+    # A public room whose host hasn't been seen (e.g. SSE ticks stopped
+    # because the tab closed) in longer than PUBLIC_LOBBY_STALE_SECONDS
+    # shouldn't clutter the browsable list even though it's nowhere near
+    # the room's full multi-hour TTL yet.
+    cats = list(fixture_categories.values())[:6]
+    room, _creator_token = mp.create_room(rows=cats[:3], cols=cats[3:], visibility="public")
+    assert room.code in {r.code for r in mp.list_public_rooms()}
+
+    room.last_seen[1] = time.monotonic() - mp.PUBLIC_LOBBY_STALE_SECONDS - 1
+    assert room.code not in {r.code for r in mp.list_public_rooms()}
+
+
 def test_apply_move_places_correct_answer_and_advances_turn(fixture_db_path, fixture_categories) -> None:
     room, creator_token = _room(fixture_categories)
     _room2, joiner_token = mp.join_room(room.code)

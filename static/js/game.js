@@ -101,6 +101,7 @@ const g = {
   onlineSlot: null,
   onlineConnected: 0,
   onlineEventSource: null,
+  lobbyEventSource: null, // SSE for the public lobby-browsing list — see connectLobbyListEvents
   onlineBoardEntered: false,
   onlineFinished: false,
   // The `version` of the last wrong-guess flash we've already shown (see
@@ -163,6 +164,7 @@ const deviceId = getDeviceId();
 let stats = loadStats();
 
 let selectedLeague = '';
+let onlineVisibility = 'private'; // 'private' | 'public' — see setVisibility, only used when hosting
 
 function genParams() {
   const p = new URLSearchParams({ difficulty: String(difficulty) });
@@ -236,6 +238,13 @@ function renderScreenDom(name) {
   document.getElementById('screen-editor').classList.toggle('hidden', name !== 'editor');
   document.getElementById('screen-board').classList.toggle('hidden', name !== 'board');
   closeMenuDropdown();
+  // The public-lobby SSE connection (see connectLobbyListEvents) is only
+  // meaningful while actually browsing online-lobby's "home" sub-state —
+  // leaving the screen entirely always means leaving that sub-state too, so
+  // this one check covers every transition away (menu, setup, board, ...)
+  // without each of them separately remembering to call it. Reopened by
+  // renderLobbyHome the next time this screen is (re-)entered.
+  if (name !== 'online-lobby') closeLobbyListEvents();
 }
 
 // push=true (the default) is every screen change a user actually navigated
@@ -333,6 +342,20 @@ document.querySelectorAll('.league-btn').forEach(btn => {
   btn.addEventListener('click', () => setLeague(btn.dataset.league));
 });
 
+// Host-only setting (see setup-visibility-picker, toggled visible in
+// enterSetupScreen): whether the room additionally gets listed in the
+// public lobby (see connectLobbyListEvents) or stays link/code-only.
+function setVisibility(value) {
+  onlineVisibility = value;
+  document.querySelectorAll('.visibility-btn').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.visibility === value);
+  });
+}
+
+document.querySelectorAll('.visibility-btn').forEach(btn => {
+  btn.addEventListener('click', () => setVisibility(btn.dataset.visibility));
+});
+
 document.querySelectorAll('[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => selectMode(btn.dataset.mode));
 });
@@ -351,6 +374,8 @@ function enterSetupScreen(pendingMode, { push = true } = {}) {
   document.getElementById('setup-load-grid').classList.toggle('hidden', pendingMode !== 'solo');
   document.getElementById('setup-load-error').classList.add('hidden');
   document.getElementById('setup-load-code').value = '';
+  // Room visibility only makes sense when hosting a room in the first place.
+  document.getElementById('setup-visibility-picker').classList.toggle('hidden', pendingMode !== 'online-host');
   showScreen('setup', { push });
 }
 
@@ -1708,11 +1733,20 @@ function renderLobbyHome() {
         <button id="btn-join-room" class="tt-btn-neutral text-sm px-4 py-2 rounded-lg">Beitreten</button>
       </div>
       <p id="lobby-error" class="text-xs hidden" style="color:var(--accent)"></p>
+    </div>
+    <div class="w-full flex flex-col gap-2 mt-4">
+      <div class="tt-label">Öffentliche Lobbys</div>
+      <div id="public-lobbies-list" class="w-full flex flex-col gap-2">
+        <div class="text-xs" style="color:var(--text-dim)">Lädt…</div>
+      </div>
     </div>`;
   // Hosting needs difficulty/league first — that's the setup screen, shown
   // only now (not before this host-vs-join choice) since a joiner never
   // needs it at all (the room's creator-chosen settings apply to them too).
-  document.getElementById('btn-create-room').addEventListener('click', () => enterSetupScreen('online-host'));
+  document.getElementById('btn-create-room').addEventListener('click', () => {
+    closeLobbyListEvents();
+    enterSetupScreen('online-host');
+  });
   document.getElementById('btn-join-room').addEventListener('click', e => {
     if (e.currentTarget.disabled) return;
     const code = document.getElementById('join-code-input').value.trim();
@@ -1723,6 +1757,65 @@ function renderLobbyHome() {
   document.getElementById('join-code-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-join-room').click();
   });
+  // Bound once on the container itself, not per-row — renderPublicLobbyList
+  // below only ever replaces the container's innerHTML (on every SSE-driven
+  // refresh), which would silently drop a per-row listener each time.
+  document.getElementById('public-lobbies-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-join-code]');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    joinOnlineRoom(btn.dataset.joinCode);
+  });
+  connectLobbyListEvents();
+}
+
+const DIFFICULTY_LABELS = { 1: 'Leicht', 2: 'Mittel', 3: 'Schwer' };
+const LEAGUE_LABELS = {
+  league_buli: '🇩🇪 Bundesliga',
+  league_pl: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League',
+  league_laliga: '🇪🇸 La Liga',
+  league_seriea: '🇮🇹 Serie A',
+};
+
+function renderPublicLobbyList(rooms) {
+  const container = document.getElementById('public-lobbies-list');
+  if (!container) return; // navigated away since the fetch/event fired
+  if (!rooms.length) {
+    container.innerHTML = `<div class="text-xs" style="color:var(--text-dim)">Gerade keine offenen Lobbys — erstelle eine!</div>`;
+    return;
+  }
+  container.innerHTML = rooms.map(r => `
+    <button data-join-code="${esc(r.code)}" class="tt-card tt-card-hover w-full flex items-center justify-between px-4 py-2.5 text-sm">
+      <span class="flex items-center gap-2 font-semibold" style="color:var(--text)">
+        ${esc(r.code)}
+        <span class="font-medium" style="color:var(--text-dim)">${esc(DIFFICULTY_LABELS[r.difficulty] || '')}${r.league ? ' · ' + esc(LEAGUE_LABELS[r.league] || r.league) : ''}</span>
+      </span>
+      <span class="font-bold" style="color:var(--accent)">Beitreten</span>
+    </button>`).join('');
+}
+
+// Keeps the public lobby list live for everyone browsing it: an initial
+// fetch for fast first paint, then an SSE connection (same version-diff
+// pattern as a room's own /events) that just signals "the list changed" —
+// the client always refetches the full list rather than trusting a payload
+// on the event itself.
+function connectLobbyListEvents() {
+  closeLobbyListEvents();
+  fetchPublicLobbies();
+  const es = new EventSource('/api/multiplayer/lobbies/events');
+  es.onmessage = () => fetchPublicLobbies();
+  g.lobbyEventSource = es;
+}
+
+function closeLobbyListEvents() {
+  if (g.lobbyEventSource) { g.lobbyEventSource.close(); g.lobbyEventSource = null; }
+}
+
+async function fetchPublicLobbies() {
+  const resp = await fetch('/api/multiplayer/lobbies');
+  if (!resp.ok) return;
+  const data = await resp.json();
+  renderPublicLobbyList(data.rooms || []);
 }
 
 // navigator.clipboard requires a "secure context" (https:, or http://
@@ -1784,10 +1877,11 @@ function showLobbyError(msg) {
 }
 
 async function createOnlineRoom() {
+  closeLobbyListEvents();
   Object.assign(g, { onlineBoardEntered: false, onlineFinished: false, onlineLastWrongGuessVersion: undefined });
   const resp = await fetch('/api/multiplayer/rooms', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ difficulty, league: selectedLeague || undefined }),
+    body: JSON.stringify({ difficulty, league: selectedLeague || undefined, visibility: onlineVisibility }),
   });
   if (!resp.ok) {
     // Creation happens from the setup screen — surface the failure back on
@@ -1797,6 +1891,7 @@ async function createOnlineRoom() {
     // screen we were already conceptually at, it isn't a new step.
     showScreen('online-lobby', { push: false });
     showLobbyError('Raum konnte nicht erstellt werden.');
+    connectLobbyListEvents();
     return;
   }
   const data = await resp.json();
@@ -1810,6 +1905,7 @@ async function createOnlineRoom() {
 }
 
 async function joinOnlineRoom(code, { push = true } = {}) {
+  closeLobbyListEvents();
   Object.assign(g, { onlineBoardEntered: false, onlineFinished: false, onlineLastWrongGuessVersion: undefined });
   code = code.toUpperCase();
   const resp = await fetch(`/api/multiplayer/rooms/${code}/join`, { method: 'POST' });
@@ -1817,6 +1913,7 @@ async function joinOnlineRoom(code, { push = true } = {}) {
     showLobbyError('Raum nicht gefunden oder schon voll.');
     const btn = document.getElementById('btn-join-room');
     if (btn) btn.disabled = false;
+    connectLobbyListEvents(); // e.g. a public-lobby row that just filled up — refresh it away
     return;
   }
   const data = await resp.json();

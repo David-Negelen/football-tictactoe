@@ -19,6 +19,13 @@ ROOM_TTL_SECONDS = 2 * 60 * 60  # rooms idle this long are swept on the next cre
 # falsely end the game — see Room.check_opponent_disconnected.
 DISCONNECT_TIMEOUT_SECONDS = 20
 
+# How long a public "waiting for opponent" room stays listed in the
+# browsable lobby without any activity from its host. Slightly above
+# DISCONNECT_TIMEOUT_SECONDS for the same reason: a closed host tab (no more
+# SSE ticks -> no more mark_seen calls) shouldn't clutter public matchmaking
+# for up to the full ROOM_TTL_SECONDS room lifetime — see list_public_rooms.
+PUBLIC_LOBBY_STALE_SECONDS = 30
+
 WIN_LINES = [
     [(0, 0), (0, 1), (0, 2)], [(1, 0), (1, 1), (1, 2)], [(2, 0), (2, 1), (2, 2)],
     [(0, 0), (1, 0), (2, 0)], [(0, 1), (1, 1), (2, 1)], [(0, 2), (1, 2), (2, 2)],
@@ -71,6 +78,10 @@ class Room:
     league: Optional[str] = None
     excluded_types: frozenset = field(default_factory=frozenset)
     excluded_ids: frozenset = field(default_factory=frozenset)
+    # "private": joinable only by whoever has the code/link (the original,
+    # and still default, behavior). "public": additionally listed in the
+    # browsable lobby (see list_public_rooms) for anyone to join.
+    visibility: str = "private"
 
     def touch(self) -> None:
         self.last_activity = time.monotonic()
@@ -145,6 +156,13 @@ class Room:
             "endReason": self.end_reason,
         }
 
+    def public_lobby_summary(self) -> dict:
+        """Just enough for the browsable public-lobby list to render a row
+        and let someone join it — no board/category state, unlike
+        public_state (that's only handed out once a player is actually
+        seated in the room)."""
+        return {"code": self.code, "difficulty": self.difficulty, "league": self.league}
+
 
 _rooms: dict[str, Room] = {}
 _rooms_lock = threading.Lock()
@@ -167,6 +185,7 @@ def create_room(
     league: Optional[str] = None,
     excluded_types: frozenset = frozenset(),
     excluded_ids: frozenset = frozenset(),
+    visibility: str = "private",
 ) -> tuple[Room, str]:
     """Create a room and seat the creator as slot 1. Returns (room, creator_token)."""
     with _rooms_lock:
@@ -177,6 +196,7 @@ def create_room(
         room = Room(
             code=code, rows=rows, cols=cols, difficulty=difficulty, league=league,
             excluded_types=excluded_types, excluded_ids=excluded_ids,
+            visibility="public" if visibility == "public" else "private",
         )
         token = secrets.token_urlsafe(16)
         room.tokens[token] = 1
@@ -205,6 +225,23 @@ def reset_room(room: Room, rows: list, cols: list) -> None:
 
 def get_room(code: str) -> Optional[Room]:
     return _rooms.get((code or "").upper())
+
+
+def list_public_rooms() -> list[Room]:
+    """Public rooms currently open to join — waiting for a second player,
+    and with a host who's still actually around. Newest first, since a
+    just-created room is the one most likely to still need an opponent."""
+    now = time.monotonic()
+    with _rooms_lock:
+        _sweep_stale_locked()
+        rooms = [
+            room for room in _rooms.values()
+            if room.visibility == "public"
+            and len(room.tokens) == 1
+            and now - room.last_seen.get(1, room.created_at) <= PUBLIC_LOBBY_STALE_SECONDS
+        ]
+    rooms.sort(key=lambda room: room.created_at, reverse=True)
+    return rooms
 
 
 def join_room(code: str) -> Optional[tuple[Room, str]]:
