@@ -55,11 +55,18 @@ function shirtSvg() {
   return `<span style="font-size:28px;line-height:1;font-weight:300;color:var(--accent)">+</span>`;
 }
 
+// The one place the app's palette grows a second color (--o-color, next to
+// --accent for X) — a dim-gray glyph-only badge turned out too easy to miss
+// on a small cell (see the game.js history around this line). Player color
+// is otherwise still nowhere else in the UI.
+function playerColor(player) {
+  return player === 1 ? 'var(--accent)' : 'var(--o-color)';
+}
+
 function markBadge(player) {
-  // Players are told apart by glyph (X vs O), not by a second/third color —
-  // the palette stays background + neutral + accent.
   const sym = player === 1 ? 'X' : 'O';
-  return `<span class="text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="border:1px solid var(--card-border);color:var(--text-dim)">${sym}</span>`;
+  const color = playerColor(player);
+  return `<span class="text-xs font-black w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="border:1.5px solid ${color};color:${color}">${sym}</span>`;
 }
 
 function esc(v) {
@@ -916,12 +923,11 @@ function updateStatus() {
       : `<span style="color:var(--text-dim)">Gegner ist dran…</span>`;
     return;
   }
-  // Whose turn it is (X vs O) is told apart by the glyph, not by a
-  // per-player color — the dot just marks "this is the live turn", always
-  // in the one accent color.
+  // The dot now doubles as a preview of that player's badge color (see
+  // markBadge) — whose turn it is reads at a glance, not just from the glyph.
   const sym = g.current === 1 ? 'X' : 'O';
   document.getElementById('status-text').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
-    <span style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;display:inline-block"></span>
+    <span style="width:8px;height:8px;border-radius:50%;background:${playerColor(g.current)};flex-shrink:0;display:inline-block"></span>
     ${sym} ist dran
   </span>`;
 }

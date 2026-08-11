@@ -28,6 +28,12 @@
       --accent: #ff7a1a;
       --accent-ink: #180f08;
       --accent-dim: rgba(255, 122, 26, .14);
+      /* X's color everywhere else stays --accent — this is only ever the
+         second player's color (1v1 local/online), so it's scoped to its
+         own variable instead of joining the app-wide accent/neutral pair.
+         Orange/blue also holds up for red-green color blindness, unlike
+         most "team color" pairs. */
+      --o-color: #4da8ff;
     }
 
     html { background: var(--bg); height: 100%; }
