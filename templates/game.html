@@ -113,6 +113,21 @@
     .tt-card-hover:not(:disabled):hover { border-color: var(--accent); }
     .tt-card-hover:disabled { opacity: .5; }
 
+    /* Every scrollable panel (search results, category picker, stats modal,
+       solution sheet) — mobile browsers already render a slim overlay
+       scrollbar that doesn't need any help, but desktop browsers default to
+       a chunky, unstyled, light-gray OS scrollbar that clashes badly with
+       this dark theme (most visible on the stats modal, tall enough to
+       actually scroll once a few rounds are logged). Firefox gets the
+       standard property; everything else (Chromium, Safari) needs the
+       -webkit- pseudo-elements, since there's still no cross-browser way to
+       just say "make it match the theme". */
+    .tt-scroll { scrollbar-width: thin; scrollbar-color: var(--card-border) transparent; }
+    .tt-scroll::-webkit-scrollbar { width: 8px; }
+    .tt-scroll::-webkit-scrollbar-track { background: transparent; }
+    .tt-scroll::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 8px; }
+    .tt-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
     .tt-cell { background: var(--card); border: 1px solid var(--card-border); border-radius: 10px; transition: border-color .12s; }
     button.tt-cell:not(:disabled):hover { border-color: var(--accent); }
     button.tt-cell:disabled { opacity: .5; }
@@ -461,7 +476,7 @@
       <div class="p-4">
         <input id="search-input" type="text" placeholder="Spieler suchen…" autocomplete="off"
           class="tt-input w-full rounded-lg px-3 py-2 text-sm mb-3">
-        <div id="search-results" class="space-y-1 max-h-64 overflow-y-auto"></div>
+        <div id="search-results" class="tt-scroll space-y-1 max-h-64 overflow-y-auto"></div>
         <p id="search-hint" class="text-xs mt-2 text-center" style="color:var(--text-faint)">
           Mindestens 3 Buchstaben eingeben
         </p>
@@ -480,7 +495,7 @@
       <div class="p-4">
         <input id="category-picker-search" type="text" placeholder="Suchen… (z.B. Bayern, Torwart, Deutsch)" autocomplete="off"
           class="tt-input w-full rounded-lg px-3 py-2 text-sm mb-3">
-        <div id="category-picker-results" class="space-y-1 max-h-72 overflow-y-auto"></div>
+        <div id="category-picker-results" class="tt-scroll space-y-1 max-h-72 overflow-y-auto"></div>
       </div>
     </div>
   </div>
@@ -495,7 +510,7 @@
         </span>
         <button id="stats-close" class="tt-tap-pad text-2xl leading-none transition-colors" style="color:var(--text-dim)">×</button>
       </div>
-      <div id="stats-body" class="p-5 space-y-4 overflow-y-auto"></div>
+      <div id="stats-body" class="tt-scroll p-5 space-y-4 overflow-y-auto"></div>
     </div>
   </div>
 
@@ -508,7 +523,7 @@
         <span id="solution-modal-title" class="font-bold text-sm leading-snug" style="color:var(--text)"></span>
         <button id="solution-modal-close" class="tt-tap-pad text-2xl leading-none ml-3 flex-shrink-0 transition-colors" style="color:var(--text-dim)">×</button>
       </div>
-      <div id="solution-modal-body" class="p-2 space-y-1 overflow-y-auto"></div>
+      <div id="solution-modal-body" class="tt-scroll p-2 space-y-1 overflow-y-auto"></div>
     </div>
   </div>
 
