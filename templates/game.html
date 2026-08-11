@@ -69,14 +69,6 @@
       overflow: hidden; overflow-wrap: anywhere;
     }
 
-    /* Secondary cell text (club under a filled name, the answer summary
-       in a "Lösung" cell): wraps to 2 lines instead of ellipsizing a
-       single line mid-word. */
-    .tt-cell-sub {
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-      overflow: hidden; overflow-wrap: anywhere;
-    }
-
     /* A filled cell's player name (see formatPlayerName in game.js, which
        shows the last name only — short enough that this is single-line by
        design). Never wraps or breaks mid-word: the starting size is this

@@ -497,7 +497,6 @@ function cellHtml(r, c) {
            data-cell="${r},${c}">
         <div class="absolute top-1.5 right-1.5">${badge}</div>
         <div class="tt-cell-name text-center" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
-        <div class="tt-cell-sub text-xs mt-1 text-center" style="color:var(--text-dim)">${esc(entry.club || '')}</div>
       </div>`;
   }
 
