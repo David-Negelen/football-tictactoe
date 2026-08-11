@@ -657,7 +657,11 @@ function categoryIconHtml(cat) {
   // ICON_PATHS above) — category types with no real photo and no specific
   // letter/abbreviation to show (continents, age brackets, awards, ...).
   if (cat.icon && ICON_PATHS[cat.icon]) {
-    return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon(cat.icon, 22)}</div>`;
+    // '100%' (not a fixed pixel size) so the SVG itself fills the
+    // responsive .tt-icon box on the wrapping div, the same way a real
+    // crest/flag <img> already scales with it — a fixed size here left it
+    // visibly smaller than photographic icons on wider screens.
+    return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon(cat.icon, '100%')}</div>`;
   }
   // A plain typographic symbol (e.g. "€" for market-value brackets) — not
   // an SVG, not emoji, just text in the same treatment.
@@ -665,7 +669,7 @@ function categoryIconHtml(cat) {
     return `<div class="tt-icon-mono tt-icon leading-none flex-shrink-0 flex items-center justify-center"
       style="font-size:clamp(18px,6vw,26px)">${esc(cat.icon)}</div>`;
   }
-  return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon('ball', 22)}</div>`;
+  return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon('ball', '100%')}</div>`;
 }
 
 // Swaps a broken crest/flag <img> for the same letter-badge (or generic
@@ -679,7 +683,7 @@ function iconImgFallback(img, letter, color) {
     div.textContent = letter;
   } else {
     div.className = 'tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center';
-    div.innerHTML = svgIcon('ball', 22);
+    div.innerHTML = svgIcon('ball', '100%');
   }
   img.replaceWith(div);
 }

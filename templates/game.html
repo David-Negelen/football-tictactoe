@@ -139,10 +139,13 @@
        overriding it. */
     .tt-cell.is-win { box-shadow: 0 0 0 2px var(--text) inset; }
 
-    /* Category header icons (crests, flags, emoji) carry their own colors —
-       flattened to grayscale so they read as content, not as extra hues in
-       the palette. */
-    .tt-icon-mono { filter: grayscale(1); opacity: .85; }
+    /* Generic fallback icons (globe/calendar/trophy/ball, and the "€"
+       market-value glyph) — no real crest/flag artwork exists for these, so
+       unlike those (which carry their own real colors and stay untouched),
+       these are deliberately accent-colored to read as a real part of the
+       UI instead of fading into a flat gray — same treatment already used
+       for the mode-select screen's icons. */
+    .tt-icon-mono { color: var(--accent); }
 
     /* Downloaded crest/flag artwork (categoryIconHtml's icon_image branch) —
        object-fit:contain keeps the real aspect ratio within the fixed-size
