@@ -34,6 +34,11 @@
          Orange/blue also holds up for red-green color blindness, unlike
          most "team color" pairs. */
       --o-color: #4da8ff;
+      /* Filled-cell backgrounds in 1v1 (see cellHtml) — a soft tint of the
+         owner's color over the dark theme, not a fully saturated block;
+         the X/O mark itself carries the full-strength color instead. */
+      --accent-cell-bg: rgba(255, 122, 26, .2);
+      --o-cell-bg: rgba(77, 168, 255, .2);
     }
 
     html { background: var(--bg); height: 100%; }
@@ -186,10 +191,6 @@
 
     .tt-tap-pad { padding: 10px; margin: -10px; }
 
-    @keyframes confetti-fall {
-      0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
-      100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
-    }
     @keyframes tt-spin { to { transform: rotate(360deg); } }
     .tt-spinner {
       display: inline-block;
@@ -495,9 +496,6 @@
       <div id="solution-modal-body" class="p-2 space-y-1 overflow-y-auto"></div>
     </div>
   </div>
-
-  <!-- Konfetti-Layer -->
-  <div id="confetti-layer" class="fixed inset-0 pointer-events-none z-[70] overflow-hidden" aria-hidden="true"></div>
 
   <script src="/static/js/game.js" defer></script>
 </body>

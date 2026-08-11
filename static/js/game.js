@@ -27,6 +27,12 @@ const ICON_PATHS = {
   ball: `<circle cx="12" cy="12" r="9"/><path d="M12 8l3 2-1 4H10l-1-4Z"/><path d="M12 3v5"/><path d="M6 8l3.5 2.5"/><path d="M18 8l-3.5 2.5"/><path d="M8 20l2-6"/><path d="M16 20l-2-6"/>`,
   play: `<path d="M6 4l13 8-13 8V4Z"/>`,
   clock: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>`,
+  // 1v1 board marks (see cellHtml) — same stroke-width-2 line-icon
+  // treatment as everything above, and deliberately matched bounding
+  // boxes (both span the 4-20 range) so X doesn't visually outweigh O the
+  // way the same font glyphs at an equal font-size used to.
+  x: `<path d="M4 4l16 16"/><path d="M20 4 4 20"/>`,
+  o: `<circle cx="12" cy="12" r="8"/>`,
 };
 // "play" stays filled — a solid triangle is the universal play-button
 // convention, not an emoji-like exception. Every other icon, fire
@@ -696,25 +702,30 @@ function cellHtml(r, c) {
           <div class="tt-cell-name text-center" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
         </div>`;
     }
-    // Local/online: the whole cell fills with that player's color instead
-    // of just a small corner badge — ownership reads across the whole
-    // board at a glance, not just up close on one cell at a time. Text
-    // switches to --accent-ink (the same "on solid accent" ink already
-    // used by .tt-btn-accent) since it now sits on a bright fill rather
-    // than the dark card background. The X/O itself is a big, low-opacity
-    // watermark filling the cell (position:relative + later in the DOM is
-    // what lifts the name above it — an absolutely-positioned box always
-    // paints above a plain static one, regardless of source order, so the
-    // name needs to be "positioned" too to win that stacking fight) rather
-    // than a small corner mark, so the shape reads before the name does.
+    // Local/online: the cell background carries a soft tint of that
+    // player's color (not a fully saturated block — two of those side by
+    // side just fight each other), while an X/O mark at full color/opacity
+    // sits centered behind the name as the actual "who owns this cell"
+    // signal — legible as a game mark on its own, before the name is even
+    // read. X and O share one line-icon (stroke-width 2, matched bounding
+    // box — see ICON_PATHS) instead of the browser's X/O font glyphs,
+    // which don't carry equal visual weight at the same font-size (X's
+    // diagonal strokes read "bigger" than O's circle). Text stays the
+    // app's one usual near-white --text regardless of player — the tint
+    // is soft enough that dark ink is no longer needed for contrast.
+    // position:relative on the name (it's later in the DOM than the mark)
+    // is what lifts it above the mark — an absolutely-positioned box
+    // always paints above a plain static one regardless of source order,
+    // so the name needs to be "positioned" too to win that stacking fight.
     const color = playerColor(entry.player);
-    const sym = entry.player === 1 ? 'X' : 'O';
+    const bg = entry.player === 1 ? 'var(--accent-cell-bg)' : 'var(--o-cell-bg)';
+    const markPath = entry.player === 1 ? ICON_PATHS.x : ICON_PATHS.o;
     return `
       <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
-           data-cell="${r},${c}" style="background:${color};border-color:${color};">
-        <div class="absolute inset-0 flex items-center justify-center font-black leading-none pointer-events-none"
-             style="color:var(--accent-ink);opacity:.3;font-size:clamp(2.75rem,11vw,4.5rem);">${sym}</div>
-        <div class="tt-cell-name text-center relative" style="color:var(--accent-ink)">${esc(formatPlayerName(entry.name))}</div>
+           data-cell="${r},${c}" style="background:${bg};border-color:${color};">
+        <svg class="absolute pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="top:50%;left:50%;transform:translate(-50%,-50%);width:clamp(28px,9vw,42px);height:clamp(28px,9vw,42px);">${markPath}</svg>
+        <div class="tt-cell-name text-center relative" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
       </div>`;
   }
 
@@ -1061,26 +1072,6 @@ function updateTimerDisplay() {
   document.getElementById('timer-display').textContent = formatTime(g.elapsedSeconds);
 }
 
-function fireConfetti() {
-  const colors = ['#fbbf24', '#ef4444', '#3b82f6', '#22c55e', '#ffffff'];
-  const layer = document.getElementById('confetti-layer');
-  const pieces = 70;
-  for (let i = 0; i < pieces; i++) {
-    const el = document.createElement('div');
-    const color = colors[i % colors.length];
-    const left = Math.random() * 100;
-    const delay = Math.random() * 0.35;
-    const duration = 1.6 + Math.random() * 1.3;
-    const rotate = Math.random() * 360;
-    const w = 6 + Math.random() * 6;
-    el.style.cssText = `position:absolute;top:-20px;left:${left}%;width:${w}px;height:${w * 0.4}px;` +
-      `background:${color};opacity:.9;transform:rotate(${rotate}deg);` +
-      `animation:confetti-fall ${duration}s ease-in ${delay}s forwards;`;
-    layer.appendChild(el);
-    setTimeout(() => el.remove(), (duration + delay) * 1000 + 150);
-  }
-}
-
 // ─── Modus: 1v1 Lokal ───────────────────────────────────────────────────────────
 
 const WIN_LINES = [
@@ -1205,7 +1196,6 @@ async function endGameLocal() {
       stats.local.fastestWinSeconds = g.elapsedSeconds;
     }
     saveStats();
-    fireConfetti();
     const winnerSym = g.winner === 1 ? 'X' : 'O';
     showEndBanner('trophy', `${winnerSym} gewinnt!`);
   }
@@ -1319,13 +1309,11 @@ async function endGameSolo() {
     // Wordle, so requiring perfection would make streaks nearly unreachable).
     recordDailyCompletion(g.dailyDate, g.soloCorrect);
     updateDailyCardBadge();
-    if (perfect) fireConfetti();
     showEndBanner(perfect ? 'trophy' : 'calendar', `${g.soloCorrect} / 9 richtig`, false); // already played today — no "Nochmal spielen"
     document.getElementById('end-share').classList.remove('hidden');
   } else if (g.soloVariant === 'custom') {
     // Doesn't count toward the "Solo" stats — a shared/custom grid is a
     // different activity, not a random practice round.
-    if (perfect) fireConfetti();
     showEndBanner(perfect ? 'trophy' : 'puzzle', `${g.soloCorrect} / 9 richtig`);
   } else {
     stats.solo.rounds++;
@@ -1334,7 +1322,6 @@ async function endGameSolo() {
     if (g.soloCorrect > stats.solo.bestCorrect) stats.solo.bestCorrect = g.soloCorrect;
     stats.solo.scoreDistribution[g.soloCorrect]++;
     saveStats();
-    if (perfect) fireConfetti();
     showEndBanner(perfect ? 'trophy' : 'puzzle', `${g.soloCorrect} / 9 richtig`);
   }
   await revealSolutions();
@@ -2060,7 +2047,6 @@ async function finishOnline(reason) {
       stats.online.streak = 0;
     }
     saveStats();
-    if (youWon) fireConfetti();
     const titles = {
       forfeit: youWon ? 'Gegner hat aufgegeben' : 'Aufgegeben',
       disconnect: youWon ? 'Gegner ist offline' : 'Verbindung verloren',
