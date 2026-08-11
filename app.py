@@ -13,6 +13,9 @@ import json as _json
 
 from werkzeug.exceptions import HTTPException
 
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 from src import category_config
 from src import dynamic_categories
 from src import grids as grid_store
@@ -39,6 +42,46 @@ logging.basicConfig(
     level=logging.DEBUG if os.environ.get("FLASK_DEBUG", "0") == "1" else logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
+
+# In-memory counters — consistent with the same single-worker-process
+# constraint online multiplayer room state already has (see the Dockerfile's
+# --workers 1 note and src/multiplayer.py's architecture comment): a second
+# gunicorn worker would keep its own, disjoint set of counters, letting a
+# client bypass a limit just by getting routed to a different worker.
+#
+# Keyed by get_remote_address, i.e. request.remote_addr — accurate for a
+# direct connection, but this app isn't deployed behind a reverse proxy yet
+# (see README's Deployment section); once it is, request.remote_addr will
+# just be the proxy's own IP for every request unless that proxy's specific
+# forwarding header is explicitly trusted (e.g. via ProxyFix), so revisit
+# this when that's actually set up rather than trusting X-Forwarded-For
+# blindly now with no proxy in front to have set it.
+#
+# default_limits is the floor for every route below that doesn't declare its
+# own @limiter.limit(...) — the handful of routes that do are either
+# meaningfully more expensive per request (puzzle/room/grid generation) or
+# fired rapidly by design (search-as-you-type, gameplay actions); everything
+# else (simple reads) is cheap enough that this floor is basically headroom,
+# not an active constraint. Flask-Limiter exempts the "static" endpoint
+# automatically; the page-shell routes are exempted explicitly below.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["100 per minute"],
+    storage_uri="memory://",
+    strategy="fixed-window",
+    headers_enabled=True,
+)
+
+# Real DB/CPU work per request: puzzle generation, and creating a room/grid
+# that persists (in memory or in the DB) until something else cleans it up.
+RATE_LIMIT_EXPENSIVE = "15 per minute"
+# Cheaper per call, but fired rapidly by design — search-as-you-type,
+# validation, and in-game actions (a move, a rematch vote, ...).
+RATE_LIMIT_MODERATE = "30 per minute"
+# Establishing an SSE connection, not the (potentially long-lived) stream
+# itself — a limiter check only ever runs once, at connect time.
+RATE_LIMIT_CONNECT = "20 per minute"
 
 Database(DB_PATH).initialize()
 
@@ -98,6 +141,7 @@ for _league_pool in LEAGUE_POOLS.values():
 
 
 @app.route("/sw.js")
+@limiter.exempt
 def service_worker():
     # Served from the root path (not /static/sw.js) so it can be registered
     # with scope "/" — a service worker's max allowed scope is its own
@@ -578,6 +622,7 @@ def _parse_csv_param(raw: str | None) -> set[str]:
 
 
 @app.route("/api/categories")
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_categories():
     """Server-side search over the category catalog — with ~6,500 clubs and
     ~490 trophies, shipping the full catalog to the browser up front isn't
@@ -602,6 +647,7 @@ def api_categories():
 
 @app.route("/")
 @app.route("/<path:subpath>")
+@limiter.exempt
 def game(subpath=None):
     # Client-side router (see the "Router" section in static/js/game.js) owns
     # every URL under the site root (e.g. /setup/solo, /online/ABCDE) — the
@@ -628,6 +674,7 @@ def api_not_found(subpath):
 
 
 @app.route("/api/game/new")
+@limiter.limit(RATE_LIMIT_EXPENSIVE)
 def api_game_new():
     difficulty = min(3, max(1, int(request.args.get("difficulty", 3))))
     league = request.args.get("league") or None
@@ -648,6 +695,7 @@ def api_game_new():
 
 
 @app.route("/api/game/search")
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_game_search():
     """Search all players by name (no category filter) — category check happens on validate."""
     q = request.args.get("q", "").strip()
@@ -674,6 +722,7 @@ def api_game_search():
 
 
 @app.route("/api/game/solve")
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_game_solve():
     """Return valid players for every cell in the grid (for the solve view)."""
     row_ids = request.args.get("rows", "").split(",")
@@ -741,6 +790,7 @@ def api_game_solve():
 
 
 @app.route("/api/game/validate", methods=["POST"])
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_game_validate():
     data = request.get_json() or {}
     player_id = data.get("player_id")
@@ -818,6 +868,7 @@ def api_daily_today():
 # ─── Editor: build, save, and load custom grids by code ────────────────────
 
 @app.route("/api/grids/preview")
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_grid_preview():
     """Live cell-count preview for the editor grid (see game.js's
     renderEditorGrid) — as the builder fills in row/col categories, each
@@ -845,6 +896,7 @@ def api_grid_preview():
 
 
 @app.route("/api/grids", methods=["POST"])
+@limiter.limit(RATE_LIMIT_EXPENSIVE)
 def api_create_grid():
     data = request.get_json(silent=True) or {}
     row_ids = data.get("row_ids") or []
@@ -913,6 +965,7 @@ def api_get_grid(code):
 # its own, disjoint copy of the room dict.
 
 @app.route("/api/multiplayer/rooms", methods=["POST"])
+@limiter.limit(RATE_LIMIT_EXPENSIVE)
 def api_mp_create_room():
     data = request.get_json(silent=True) or {}
     difficulty = min(3, max(1, int(data.get("difficulty", 3))))
@@ -942,6 +995,7 @@ def api_mp_create_room():
 
 
 @app.route("/api/multiplayer/rooms/<code>/join", methods=["POST"])
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_mp_join_room(code):
     result = mp.join_room(code)
     if result is None:
@@ -957,6 +1011,7 @@ def api_mp_lobbies():
 
 
 @app.route("/api/multiplayer/lobbies/events")
+@limiter.limit(RATE_LIMIT_CONNECT)
 def api_mp_lobbies_events():
     # Same version-diff SSE shape as a room's own /events (see
     # api_mp_room_events) — a browsing client just refetches /lobbies on any
@@ -998,6 +1053,7 @@ def api_mp_room_state(code):
 
 
 @app.route("/api/multiplayer/rooms/<code>/events")
+@limiter.limit(RATE_LIMIT_CONNECT)
 def api_mp_room_events(code):
     room = mp.get_room(code)
     if room is None:
@@ -1034,6 +1090,7 @@ def api_mp_room_events(code):
 
 
 @app.route("/api/multiplayer/rooms/<code>/moves", methods=["POST"])
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_mp_move(code):
     room = mp.get_room(code)
     if room is None:
@@ -1054,6 +1111,7 @@ def api_mp_move(code):
 
 
 @app.route("/api/multiplayer/rooms/<code>/forfeit", methods=["POST"])
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_mp_forfeit(code):
     room = mp.get_room(code)
     if room is None:
@@ -1064,6 +1122,7 @@ def api_mp_forfeit(code):
 
 
 @app.route("/api/multiplayer/rooms/<code>/rematch", methods=["POST"])
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_mp_rematch(code):
     # Either player can ask for a rematch, but the round only actually
     # resets once both have — request_rematch just records this player's
@@ -1098,11 +1157,13 @@ def api_mp_rematch(code):
 
 
 @app.route("/squad-guesser")
+@limiter.exempt
 def squad_guesser():
     return render_template("squad_guesser.html")
 
 
 @app.route("/api/squad-guesser/game")
+@limiter.limit(RATE_LIMIT_MODERATE)
 def api_squad_guesser_game():
     db = get_db()
     try:
@@ -1159,11 +1220,13 @@ def api_squad_guesser_game():
 
 
 @app.route("/combos")
+@limiter.exempt
 def combos():
     return render_template("combos.html")
 
 
 @app.route("/api/clubs/combos")
+@limiter.limit(RATE_LIMIT_EXPENSIVE)
 def api_clubs_combos():
     club_filter = request.args.get("club", "").strip()
     try:
@@ -1241,11 +1304,13 @@ def api_clubs_combos():
 
 
 @app.route("/datenschutz")
+@limiter.exempt
 def datenschutz():
     return render_template("datenschutz.html")
 
 
 @app.route("/impressum")
+@limiter.exempt
 def impressum():
     return render_template("impressum.html")
 
@@ -1271,11 +1336,14 @@ def _wants_json() -> bool:
     return request.path.startswith("/api/")
 
 
-# German titles/messages for the handful of HTTPExceptions a real visitor
-# (as opposed to an API client, which gets JSON and doesn't care) could
-# plausibly hit on this German-language site — everything else falls back to
-# Werkzeug's own (English) e.name/e.description rather than transcribing its
-# entire exception catalog for codes nobody here will ever actually see.
+# German titles/messages for the handful of HTTPExceptions either a real
+# visitor or an API client could plausibly hit on this German-language site
+# — everything else falls back to Werkzeug's own (English) e.name/
+# e.description rather than transcribing its entire exception catalog for
+# codes nobody here will ever actually see. 429 specifically also keeps
+# flask-limiter's own e.description (e.g. "15 per 1 minute") out of the
+# response — that's the exact limit a client would need to time an
+# abuse-flavored retry around, not something worth handing over.
 _HTTP_ERROR_DE: dict[int, tuple[str, str]] = {
     404: ("Seite nicht gefunden", "Die aufgerufene Seite existiert nicht (mehr)."),
     405: ("Methode nicht erlaubt", "Diese Aktion ist für diese Seite nicht vorgesehen."),
@@ -1285,9 +1353,9 @@ _HTTP_ERROR_DE: dict[int, tuple[str, str]] = {
 
 @app.errorhandler(HTTPException)
 def handle_http_exception(e: HTTPException):
-    if _wants_json():
-        return jsonify({"error": e.description or e.name}), e.code
     title, message = _HTTP_ERROR_DE.get(e.code, (e.name, e.description))
+    if _wants_json():
+        return jsonify({"error": message or title}), e.code
     return render_template("error.html", code=e.code, title=title, message=message), e.code
 
 

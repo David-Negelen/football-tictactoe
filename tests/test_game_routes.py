@@ -257,3 +257,44 @@ def test_unexpected_exception_returns_generic_json_500_without_leaking_details(a
     assert "secret internal detail" not in body
     assert "RuntimeError" not in body
     assert resp.get_json()["error"]
+
+
+# ─── Rate limiting ──────────────────────────────────────────────────────────
+# The app_client fixture disables app_module.limiter for every other test in
+# this file (see conftest.py) — its in-memory counters would otherwise carry
+# over between unrelated tests within the same pytest session, since the
+# Flask app is a module-level singleton imported once. These two turn it
+# back on to actually exercise it; nothing else needs to reset it afterwards
+# since the next test's app_client call does that itself.
+
+def test_rate_limit_trips_after_the_configured_number_of_requests(app_client) -> None:
+    import app as app_module
+
+    app_module.limiter.enabled = True
+
+    # /api/game/new is decorated with RATE_LIMIT_EXPENSIVE ("15 per minute")
+    # — the test itself derives the count from that constant rather than
+    # hardcoding 15, so it keeps working if the limit is ever retuned.
+    allowed = int(app_module.RATE_LIMIT_EXPENSIVE.split()[0])
+    for _ in range(allowed):
+        resp = app_client.get("/api/game/new?difficulty=3")
+        assert resp.status_code == 200
+
+    resp = app_client.get("/api/game/new?difficulty=3")
+    assert resp.status_code == 429
+    assert resp.get_json()["error"]
+
+
+def test_rate_limit_is_scoped_per_route(app_client) -> None:
+    import app as app_module
+
+    app_module.limiter.enabled = True
+
+    allowed = int(app_module.RATE_LIMIT_EXPENSIVE.split()[0])
+    for _ in range(allowed + 1):
+        app_client.get("/api/game/new?difficulty=3")
+
+    # A different, independently-limited route is unaffected by /api/game/new
+    # having just been exhausted above.
+    resp = app_client.get("/api/game/search?q=abc")
+    assert resp.status_code == 200

@@ -134,4 +134,11 @@ def app_client(monkeypatch, fixture_db_path, fixture_categories):
     monkeypatch.setattr(app_module, "ALL_CATEGORIES", list(fixture_categories.values()))
     monkeypatch.setattr(app_module, "CATEGORY_BY_ID", fixture_categories)
     app_module.app.config.update(TESTING=True)
+    # app_module.limiter's counters are in-memory and live for the whole
+    # pytest session (the Flask app object is a module-level singleton,
+    # imported once) — without this, tests that hit the same rate-limited
+    # route many times across the suite would start tripping 429s on each
+    # other. Tests that specifically want to exercise the limiter (see
+    # test_game_routes.py) flip this back on for just that one test.
+    monkeypatch.setattr(app_module.limiter, "enabled", False)
     return app_module.app.test_client()
