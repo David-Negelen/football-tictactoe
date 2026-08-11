@@ -1212,6 +1212,16 @@ def api_clubs_combos():
     return jsonify({"pairs": result, "total": len(result)})
 
 
+@app.route("/datenschutz")
+def datenschutz():
+    return render_template("datenschutz.html")
+
+
+@app.route("/impressum")
+def impressum():
+    return render_template("impressum.html")
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"

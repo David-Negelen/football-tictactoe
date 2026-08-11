@@ -14,8 +14,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Tiki-Taka-Toe">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="/static/fonts/fonts.css" rel="stylesheet">
   <script src="/static/js/pwa.js" defer></script>
   <style>
     :root {
@@ -233,6 +232,12 @@
           <svg class="tt-icon-menu" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
           Installieren
         </button>
+        <a href="/impressum" class="tt-row-hover w-full flex items-center gap-2.5 text-left px-4 py-2.5 text-sm" style="color:var(--text-dim);border-top:1px solid var(--card-border)">
+          Impressum
+        </a>
+        <a href="/datenschutz" class="tt-row-hover w-full flex items-center gap-2.5 text-left px-4 py-2.5 text-sm" style="color:var(--text-dim)">
+          Datenschutz
+        </a>
       </div>
     </div>
   </header>

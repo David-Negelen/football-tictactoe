@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Club Combos — Football DB</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="/static/fonts/fonts.css" rel="stylesheet">
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; }
     tbody tr:nth-child(even) { background-color: rgb(249 250 251); }
@@ -258,5 +257,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 
 loadData();
 </script>
+
+<footer class="text-center py-4 text-xs text-slate-400 flex-shrink-0">
+  <a href="/impressum" class="hover:text-slate-600">Impressum</a>
+  <span class="mx-2">·</span>
+  <a href="/datenschutz" class="hover:text-slate-600">Datenschutz</a>
+</footer>
 </body>
 </html>

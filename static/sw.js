@@ -4,7 +4,7 @@
 // "/combos" and "/squad-guesser" pages — see the fetch handler below, which
 // explicitly bypasses both so this cache never touches them.
 
-const CACHE_NAME = 'ttt-shell-v57';
+const CACHE_NAME = 'ttt-shell-v58';
 const SHELL_URLS = [
   '/',
   '/static/manifest.json',
@@ -12,6 +12,8 @@ const SHELL_URLS = [
   '/static/icons/icon-512.png',
   '/static/js/game.js',
   '/static/js/pwa.js',
+  '/static/fonts/fonts.css',
+  '/static/fonts/inter-var-latin.woff2',
 ];
 
 self.addEventListener('install', event => {

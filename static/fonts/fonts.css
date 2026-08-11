@@ -1,0 +1,19 @@
+/* Self-hosted Inter (variable font, Latin subset only — this app is
+   German-only, so Cyrillic/Greek/Vietnamese instances Google Fonts also
+   ships aren't needed). Replaces loading fonts.googleapis.com/fonts.gstatic.com
+   directly: that CDN request leaks every visitor's IP to Google on every
+   page load, which German courts (LG München, 2022) have specifically
+   found to be a GDPR problem when done without disclosure/consent — see
+   templates/datenschutz.html. Self-hosting sidesteps the question entirely
+   instead of just documenting it, and doubles as one less external
+   dependency for the PWA's offline shell (see static/sw.js's SHELL_URLS).
+   Font file source: Google Fonts' own CSS API
+   (fonts.googleapis.com/css2?family=Inter:wght@100..900), downloaded once;
+   Inter itself is SIL Open Font License, redistribution is fine. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/static/fonts/inter-var-latin.woff2') format('woff2');
+}
