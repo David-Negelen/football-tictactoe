@@ -74,7 +74,6 @@ CONTAINS_LETTER_CATEGORIES: list[ContainsLetterCategory] = [
 
 AGE_CATEGORIES: list[AgeCategory] = [
     AgeCategory("age_u23",  "Unter 23 Jahre",  max_age=22,              difficulty=2),
-    AgeCategory("age_2430", "24–30 Jahre",     min_age=24, max_age=30,  difficulty=2),
     AgeCategory("age_30p",  "Über 30 Jahre",   min_age=31,              difficulty=2),
 ]
 
