@@ -624,14 +624,15 @@ function formatPlayerName(name) {
 }
 
 function categoryIconHtml(cat) {
-  // Real crest/flag artwork and team brand colors are content, not
-  // decoration — they stay in full color. Only the generic emoji fallback
-  // (trophy/ball/etc. — not tied to any specific team) is flattened to
-  // grayscale, so the palette still can't pick up arbitrary extra hues
-  // from whatever the emoji font happens to render.
+  // Real crest/flag artwork and team/position brand colors are content, not
+  // decoration — they stay in full color. Only the generic fallback icons
+  // (trophy/globe/calendar/ball — not tied to any specific team) are
+  // flattened to grayscale, so the palette still can't pick up arbitrary
+  // extra hues. See app.py's _cat_display for how `icon`/`icon_letter`/
+  // `icon_color`/`icon_image` get set — every category resolves to exactly
+  // one of the four branches below, never a raw emoji character.
   // Real downloaded flag/crest image (see fetch_flags.py, fetch_club_logos.py)
-  // wins whenever available — looks far better than the emoji font or the
-  // generic initial badge.
+  // wins whenever available — looks far better than any icon/badge.
   if (cat.icon_image) {
     // Crest/flag downloads occasionally 404 (source removed the file, a
     // scrape gap, etc.) — fall back to the same letter-badge/ball icon
@@ -644,16 +645,25 @@ function categoryIconHtml(cat) {
     const onerror = `iconImgFallback(this, ${jsStr(cat.icon_letter || '')}, ${jsStr(cat.icon_color || '')})`;
     return `<img src="${esc(cat.icon_image)}" alt="" class="tt-icon tt-icon-img flex-shrink-0" onerror="${esc(onerror)}">`;
   }
-  // Dynamically generated clubs without a hand-picked emoji (the vast
-  // majority of ~6,500 clubs) carry icon_letter/icon_color instead of an
-  // icon string — render a small badge in that club's own color.
+  // No real image for this category (the vast majority of ~6,500 clubs, all
+  // positions, and letter categories) — a small badge in a deliberate
+  // color, showing real text: a club/position initial, or the specific
+  // letter an initial/contains-letter category is actually about.
   if (!cat.icon && cat.icon_letter) {
     return `<div class="tt-icon rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0"
       style="background:${esc(cat.icon_color || 'var(--card-border)')}">${esc(cat.icon_letter)}</div>`;
   }
+  // A named icon from the shared line-icon set (globe/calendar/trophy — see
+  // ICON_PATHS above) — category types with no real photo and no specific
+  // letter/abbreviation to show (continents, age brackets, awards, ...).
+  if (cat.icon && ICON_PATHS[cat.icon]) {
+    return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon(cat.icon, 22)}</div>`;
+  }
+  // A plain typographic symbol (e.g. "€" for market-value brackets) — not
+  // an SVG, not emoji, just text in the same treatment.
   if (cat.icon) {
     return `<div class="tt-icon-mono tt-icon leading-none flex-shrink-0 flex items-center justify-center"
-      style="font-size:clamp(18px,6vw,26px)">${cat.icon}</div>`;
+      style="font-size:clamp(18px,6vw,26px)">${esc(cat.icon)}</div>`;
   }
   return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon('ball', 22)}</div>`;
 }
@@ -1467,7 +1477,7 @@ document.getElementById('end-share').addEventListener('click', () => {
   const daily = loadDailyState();
   const result = daily.completed[g.dailyDate];
   if (!result) return;
-  const text = `⚽ Tiki-Taka-Toe Tagesrätsel ${g.dailyDate}\n${result.correct}/9 richtig · 🔥 ${daily.currentStreak} Tage Serie\n${location.origin}/`;
+  const text = `Tiki-Taka-Toe Tagesrätsel ${g.dailyDate}\n${result.correct}/9 richtig · ${daily.currentStreak} Tage Serie\n${location.origin}/`;
   copyToClipboard(text);
   const btn = document.getElementById('end-share');
   btn.innerHTML = iconText('check', 'Kopiert', { size: 15 });
@@ -1782,10 +1792,10 @@ function renderLobbyHome() {
 
 const DIFFICULTY_LABELS = { 1: 'Leicht', 2: 'Mittel', 3: 'Schwer' };
 const LEAGUE_LABELS = {
-  league_buli: '🇩🇪 Bundesliga',
-  league_pl: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League',
-  league_laliga: '🇪🇸 La Liga',
-  league_seriea: '🇮🇹 Serie A',
+  league_buli: 'Bundesliga',
+  league_pl: 'Premier League',
+  league_laliga: 'La Liga',
+  league_seriea: 'Serie A',
 };
 
 function renderPublicLobbyList(rooms) {

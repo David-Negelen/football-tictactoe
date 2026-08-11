@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 
 from .categories import Category, ClubCategory, NationalityCategory, TrophyCategory
 from .category_config import LEAGUE_CATEGORIES
-from .countries import COUNTRY_BY_NAME, country_flag, parse_nationality_tokens
+from .countries import COUNTRY_BY_NAME, parse_nationality_tokens
 from .trophy_rules import classify_trophy_title
 
 # ─── Clubs ──────────────────────────────────────────────────────────────────
@@ -380,8 +380,11 @@ def build_dynamic_nationalities(
         legacy = LEGACY_NATIONALITY_ENTRIES.get(name)
         cat_id = legacy[0] if legacy else f"nat_dyn_{COUNTRY_BY_NAME[name].iso_code.lower()}"
         label = legacy[1] if legacy else name
+        # No per-category icon here — app.py's _cat_display resolves a real
+        # flag image (or a shared generic fallback icon) off `nationality`
+        # at render time instead, so there's nothing to precompute.
         categories.append(
-            NationalityCategory(cat_id, label, name, icon=country_flag(name), difficulty=difficulty)
+            NationalityCategory(cat_id, label, name, difficulty=difficulty)
         )
     return categories
 

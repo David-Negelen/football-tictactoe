@@ -1,15 +1,12 @@
 """Reference data mapping Transfermarkt's German nationality strings to
-ISO 3166-1 codes, flag emoji, and European/UEFA membership.
+ISO 3166-1 codes and European/UEFA membership.
 
 This replaces the old ad-hoc `_EUROPEAN_NATIONALITIES` list in
 `src/categories.py` with a single, larger source of truth, and adds the
-data needed for two things the game didn't have before:
-
-1. Parsing dual-national compound strings ("Deutschland Türkei") into
-   individual country tokens, without ever splitting a genuine multi-word
-   country name in half (e.g. "Vereinigte Staaten" must stay one token).
-2. Generating a flag emoji per nationality category instead of a generic
-   fallback icon.
+data needed for something the game didn't have before: parsing
+dual-national compound strings ("Deutschland Türkei") into individual
+country tokens, without ever splitting a genuine multi-word country name
+in half (e.g. "Vereinigte Staaten" must stay one token).
 
 Player counts referenced in comments are from a full scan of
 `players.nationality` in the real dataset (see conversation/plan notes) —
@@ -30,12 +27,6 @@ class Country:
                           # convention already established by the old European list
                           # (e.g. Türkei, Russland, Georgien, Armenien, Aserbaidschan
                           # count as European here, matching UEFA membership)
-    flag_override: str | None = None  # explicit emoji for names ISO-flag lookup can't handle
-
-
-def flag_emoji(iso_code: str) -> str:
-    """Convert a 2-letter ISO 3166-1 code to its regional-indicator flag emoji."""
-    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in iso_code.upper())
 
 
 COUNTRIES: list[Country] = [
@@ -44,12 +35,12 @@ COUNTRIES: list[Country] = [
     Country("Italien", "IT", True),
     Country("Spanien", "ES", True),
     Country("Niederlande", "NL", True),
-    # England/Scotland/Wales use Unicode "tag sequence" flags (subdivision
-    # flags), not the regional-indicator technique every normal country flag
-    # uses — they have no ISO 3166-1 code of their own (they're part of GB).
-    Country("England", "GB", True, flag_override="🏴󠁧󠁢󠁥󠁮󠁧󠁿"),
+    # England/Scotland/Wales/Northern Ireland have no ISO 3166-1 code of
+    # their own (they're part of GB) — see _FLAG_IMAGE_CODE_OVERRIDES below
+    # for the flagcdn.com subdivision codes their flag images actually use.
+    Country("England", "GB", True),
     Country("Frankreich", "FR", True),
-    Country("Schottland", "GB", True, flag_override="🏴󠁧󠁢󠁳󠁣󠁴󠁿"),
+    Country("Schottland", "GB", True),
     Country("Dänemark", "DK", True),
     Country("Serbien", "RS", True),
     Country("Kroatien", "HR", True),
@@ -61,11 +52,9 @@ COUNTRIES: list[Country] = [
     Country("Schweden", "SE", True),
     Country("Tschechien", "CZ", True),
     Country("Norwegen", "NO", True),
-    Country("Wales", "GB", True, flag_override="🏴󠁧󠁢󠁷󠁬󠁳󠁿"),
+    Country("Wales", "GB", True),
     Country("Rumänien", "RO", True),
-    # Northern Ireland has no official Unicode subdivision flag; the UK flag
-    # is the closest unambiguous option.
-    Country("Nordirland", "GB", True, flag_override="🇬🇧"),
+    Country("Nordirland", "GB", True),
     Country("Griechenland", "GR", True),
     Country("Schweiz", "CH", True),
     Country("Türkei", "TR", True),
@@ -92,8 +81,7 @@ COUNTRIES: list[Country] = [
     Country("Zypern", "CY", True),
     Country("Färöer", "FO", True),
     Country("Malta", "MT", True),
-    # Kosovo's "XK" flag has inconsistent emoji font support outside browsers.
-    Country("Kosovo", "XK", True, flag_override="🇽🇰"),
+    Country("Kosovo", "XK", True),
     Country("Armenien", "AM", True),
     Country("Andorra", "AD", True),
     Country("Moldawien", "MD", True),
@@ -102,7 +90,7 @@ COUNTRIES: list[Country] = [
     Country("Aserbaidschan", "AZ", True),
     Country("Jersey", "JE", True),
     Country("San Marino", "SM", True),
-    Country("DDR", "DE", True, flag_override="🏳️"),  # historical East Germany
+    Country("DDR", "DE", True),  # historical East Germany — see _NO_REAL_FLAG_IMAGE
 
     # ── South America ──
     Country("Brasilien", "BR", False),
@@ -202,7 +190,7 @@ COUNTRIES: list[Country] = [
     # ── Oceania & other ──
     Country("Australien", "AU", False),
     Country("Neuseeland", "NZ", False),
-    Country("Tahiti", "PF", False, flag_override="🏳️"),
+    Country("Tahiti", "PF", False),
     Country("Monaco", "MC", True),  # geographically enclaved in France, plays as its own UEFA-adjacent entity historically
     Country("Martinique", "MQ", False),
 
@@ -228,8 +216,8 @@ COUNTRIES: list[Country] = [
     Country("Dominica", "DM", False),
     # Historical Yugoslavia — no modern ISO code; both parenthetical variants
     # appear in the data as distinct raw strings, so both need entries.
-    Country("Jugoslawien (SFR)", "RS", True, flag_override="🏳️"),
-    Country("Jugoslawien (Bundesrepublik)", "RS", True, flag_override="🏳️"),
+    Country("Jugoslawien (SFR)", "RS", True),
+    Country("Jugoslawien (Bundesrepublik)", "RS", True),
 
     # ── Final long-tail batch (each affects only a handful of players) ──
     Country("Neukaledonien", "NC", False),
@@ -242,7 +230,7 @@ COUNTRIES: list[Country] = [
     Country("Kuba", "CU", False),
     Country("Palästina", "PS", False),
     Country("Seychellen", "SC", False),
-    Country("Niederländische Antillen", "AN", False, flag_override="🏳️"),  # dissolved territory, no current ISO code
+    Country("Niederländische Antillen", "AN", False),  # dissolved territory, no current ISO code
     Country("Pakistan", "PK", False),
     Country("Laos", "LA", False),
     Country("Äthiopien", "ET", False),
@@ -261,19 +249,14 @@ COUNTRY_BY_NAME: dict[str, Country] = {c.name: c for c in COUNTRIES}
 _NAMES_BY_LENGTH_DESC: list[str] = sorted(COUNTRY_BY_NAME, key=len, reverse=True)
 
 
-def country_flag(name: str) -> str | None:
-    country = COUNTRY_BY_NAME.get(name)
-    if country is None:
-        return None
-    return country.flag_override or flag_emoji(country.iso_code)
-
-
 # flagcdn.com's image code per country — usually just the lowercased ISO
-# code, except for a handful matching the flag_override entries above (UK
-# constituent countries use flagcdn's "gb-<subdivision>" convention; Kosovo
-# uses "xk"). Countries with no real current flag (flag_override is the
-# white flag "🏳️" — dissolved states/historical entities) have no image;
-# see fetch_flags.py, which downloads a static/flags/<code>.png per code.
+# code, except for a handful of overrides (UK constituent countries use
+# flagcdn's "gb-<subdivision>" convention; Kosovo uses "xk"). Countries with
+# no real current flag (dissolved states/historical entities — see
+# _NO_REAL_FLAG_IMAGE) have no image; see fetch_flags.py, which downloads a
+# static/flags/<code>.png per code. A nationality with neither a real image
+# nor a downloaded one falls back to a generic icon client-side (see
+# app.py's _cat_display) rather than any per-country substitute.
 _FLAG_IMAGE_CODE_OVERRIDES = {
     "England": "gb-eng",
     "Schottland": "gb-sct",

@@ -217,7 +217,10 @@ def test_dynamic_nationality_recognizes_real_countries() -> None:
     assert "Deutschland" in nats
     assert nats["Deutschland"].id == LEGACY_NATIONALITY_ENTRIES["Deutschland"][0] == "nat_ger"
     assert nats["Deutschland"].label == LEGACY_NATIONALITY_ENTRIES["Deutschland"][1] == "Deutsch"
-    assert nats["Deutschland"].icon  # a real flag emoji, not None
+    # No per-category icon precomputed — app.py's _cat_display resolves a
+    # real flag image (or a shared fallback icon) off `nationality` at
+    # render time instead.
+    assert nats["Deutschland"].icon is None
     assert nats["Deutschland"].difficulty == 1
 
 

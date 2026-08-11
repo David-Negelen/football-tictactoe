@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.countries import COUNTRY_BY_NAME, country_flag, country_flag_image_code, parse_nationality_tokens
+from src.countries import COUNTRY_BY_NAME, country_flag_image_code, parse_nationality_tokens
 
 
 def test_single_nationality_parses_to_one_token() -> None:
@@ -36,20 +36,6 @@ def test_unknown_placeholder_value_is_unparseable() -> None:
 
 def test_completely_unknown_string_is_unparseable() -> None:
     assert parse_nationality_tokens("Nichtexistiertland") == []
-
-
-def test_every_country_has_a_flag() -> None:
-    for name in COUNTRY_BY_NAME:
-        flag = country_flag(name)
-        assert flag, f"{name} has no flag"
-
-
-def test_uk_nations_use_distinct_subdivision_flags_not_the_uk_flag() -> None:
-    # England/Scotland/Wales share ISO code "GB" but must not collapse to
-    # the same rendered flag, or a settings/solve view showing "England"
-    # and "Wales" side by side would be visually indistinguishable.
-    flags = {country_flag("England"), country_flag("Schottland"), country_flag("Wales")}
-    assert len(flags) == 3
 
 
 def test_flag_image_code_uses_lowercase_iso_code_by_default() -> None:

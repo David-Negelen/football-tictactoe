@@ -187,68 +187,62 @@ def api_player_detail(player_id: int):
     )
 
 
-_CAT_ICONS: dict[str, str] = {
-    "nat_ger": "🇩🇪", "nat_eng": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "nat_esp": "🇪🇸",
-    "nat_fra": "🇫🇷", "nat_bra": "🇧🇷", "nat_arg": "🇦🇷",
-    "nat_ned": "🇳🇱", "nat_por": "🇵🇹", "nat_ita": "🇮🇹",
-    "nat_hrv": "🇭🇷", "nat_bel": "🇧🇪", "nat_dnk": "🇩🇰",
-    "nat_swe": "🇸🇪", "nat_tur": "🇹🇷", "nat_aut": "🇦🇹",
-    "nat_pol": "🇵🇱", "nat_sco": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "nat_wal": "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
-    "club_bay": "🔴", "club_bvb": "🟡", "club_b04": "⚫",
-    "club_rbl": "🔴", "club_sge": "⚫", "club_s04": "🔵",
-    "club_hsv": "🔴", "club_svw": "🟢", "club_bmg": "⚫",
-    "club_mnu": "🔴", "club_mci": "🔵", "club_lfc": "🔴",
-    "club_ars": "🔴", "club_che": "🔵", "club_tot": "⚪",
-    "club_rma": "⚪", "club_fcb": "🔵", "club_atm": "🔴",
-    "club_sev": "⚪", "club_val": "🟠", "club_juv": "⚫",
-    "club_int": "🔵", "club_mil": "🔴", "club_psg": "🔵",
-    "club_laz": "🔵",
-    "league_buli": "🇩🇪", "league_pl": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "league_laliga": "🇪🇸",
-    "league_seriea": "🇮🇹",
-    "cont_eur": "🌍", "cont_sam": "🌎", "cont_afr": "🌍", "cont_asia": "🌏",
-    "cont_non_eu": "🗺️",
-    "nat_noneu": "🌍",
-    "init_a": "🔡", "init_b": "🔡", "init_c": "🔡", "init_d": "🔡",
-    "init_e": "🔡", "init_f": "🔡", "init_g": "🔡", "init_h": "🔡",
-    "init_j": "🔡", "init_k": "🔡", "init_l": "🔡", "init_m": "🔡",
-    "init_n": "🔡", "init_o": "🔡", "init_p": "🔡", "init_r": "🔡",
-    "init_s": "🔡", "init_t": "🔡", "init_w": "🔡",
-    "cont_letter_i": "🔠", "cont_letter_u": "🔠", "cont_letter_v": "🔠",
-    "cont_letter_x": "🔠", "cont_letter_y": "🔠", "cont_letter_z": "🔠",
-    "cont_letter_q": "🔠",
-    "age_u23": "🌱", "age_2430": "⚡", "age_30p": "🎖️",
-    "mv_high": "💰", "mv_mid": "💵", "mv_low": "💶",
-    "trophy_ballon": "🏅", "trophy_world_cup": "🏆", "trophy_cl": "🏆",
-    "trophy_liga": "🥇", "trophy_ligue1": "🥇", "trophy_copa": "🏆",
-    "trophy_fifa_cwc": "🏆", "trophy_mls_cup": "🏆", "trophy_u20": "🥇",
-    "trophy_olympic": "🥇", "trophy_leagues_cup": "🏆",
-    "pos_gk": "🧤", "pos_def": "🛡️", "pos_mid": "⚽",
-    "pos_fwd": "⚡", "pos_cb": "🛡️", "pos_lb": "◀️",
-    "pos_rb": "▶️", "pos_dm": "🧲", "pos_cm": "⚙️",
-    "pos_am": "🎯", "pos_st": "⚡", "pos_lw": "◀️", "pos_rw": "▶️",
+# League categories (see category_config.py's LEAGUE_CATEGORIES/
+# FOREIGN_LEAGUE_CATEGORIES) get their league's home country's flag —
+# there's no separate "league crest" artwork, but a flag is an equally
+# unambiguous visual anchor and the images are already downloaded (see
+# fetch_flags.py). German name, matching src/countries.py's COUNTRY_BY_NAME
+# keys (Transfermarkt's own nationality strings).
+_LEAGUE_COUNTRY: dict[str, str] = {
+    "league_buli": "Deutschland", "league_pl": "England", "league_laliga": "Spanien",
+    "league_seriea": "Italien", "league_bra": "Brasilien", "league_arg": "Argentinien",
+    "league_ksa": "Saudi-Arabien", "league_ere": "Niederlande", "league_jup": "Japan",
+}
+
+# The standard German two-letter shorthand for each position — same
+# convention as an actual team sheet, so the badge reads as real football
+# notation rather than an arbitrary abbreviation. Any position id not
+# listed (a future addition to category_config.py) still gets a badge, just
+# with its label's first two letters instead — see _cat_display.
+_POSITION_BADGE: dict[str, str] = {
+    "pos_gk": "TW",
+    "pos_def": "AB", "pos_cb": "IV", "pos_lb": "LV", "pos_rb": "RV", "pos_sw": "LI",
+    "pos_mid": "MF", "pos_cm": "ZM", "pos_dm": "DM", "pos_am": "OM", "pos_rm": "RM", "pos_lm": "LM",
+    "pos_fwd": "ST", "pos_st": "MS", "pos_lw": "LA", "pos_rw": "RA", "pos_ss": "HS",
+}
+# Traditional position-group colors (goalkeeper gold, defense blue, midfield
+# green, attack red) — every id above maps to exactly one group; anything
+# missing falls back to _club_badge_color's per-id hash instead of guessing
+# a group for it.
+_POSITION_GROUP_COLOR: dict[str, str] = {
+    **{pid: "hsl(45, 70%, 38%)" for pid in ("pos_gk",)},
+    **{pid: "hsl(210, 55%, 38%)" for pid in ("pos_def", "pos_cb", "pos_lb", "pos_rb", "pos_sw")},
+    **{pid: "hsl(140, 45%, 32%)" for pid in ("pos_mid", "pos_cm", "pos_dm", "pos_am", "pos_rm", "pos_lm")},
+    **{pid: "hsl(4, 65%, 42%)" for pid in ("pos_fwd", "pos_st", "pos_lw", "pos_rw", "pos_ss")},
 }
 
 
 def _club_badge_color(cat_id: str) -> str:
-    """A deterministic color for a club's fallback badge, derived from its id
-    so the same club always gets the same color across requests/sessions."""
+    """A deterministic color for a badge with no more specific color rule of
+    its own, derived from the category id so the same one always gets the
+    same color across requests/sessions."""
     digest = hashlib.sha1(cat_id.encode("utf-8")).hexdigest()
     hue = int(digest[:4], 16) % 360
     return f"hsl({hue}, 55%, 38%)"
 
 
 def _cat_display(cat) -> dict:
-    # Resolution order: a real image (icon_image — a downloaded flag or club
-    # crest, see fetch_flags.py/fetch_club_logos.py) wins whenever available
-    # and the client renders it as-is; otherwise a hand-picked icon (the ~60
-    # legacy ids this dict was originally built for); otherwise the
-    # category's own icon (set for dynamic nationalities — a flag emoji, see
-    # src/countries.py); otherwise a programmatic fallback by type. This is
-    # what lets ~7,000 dynamically generated categories all get a reasonable
-    # icon without hand-maintaining an ever-growing dict — the old approach
+    # Every icon here is either a real downloaded image (a club crest or
+    # national/league flag — see fetch_flags.py/fetch_club_logos.py), a
+    # colored badge showing real text (a club/position abbreviation, or the
+    # specific letter an initial/contains-letter category is actually
+    # about), or one of a small shared set of line icons (ICON_PATHS in
+    # game.js) — never a system emoji, which renders in fixed,
+    # uncontrollable multi-color glyphs that clash with the rest of the
+    # flat, single-accent design language. Resolved by category *type*, not
+    # a hand-maintained per-id dict — the old id-keyed dict this replaced
     # was already 9 entries short and 8 stale at just 111 categories, which
-    # cannot scale to thousands.
-    icon = _CAT_ICONS.get(cat.id) or getattr(cat, "icon", None)
+    # cannot scale to the ~7,000 categories generated dynamically today.
     display = {
         "id": cat.id,
         "label": cat.label,
@@ -260,26 +254,45 @@ def _cat_display(cat) -> dict:
         logo_file = CLUB_LOGO_MAP.get(getattr(cat, "club_name", None))
         if logo_file:
             display["icon_image"] = f"/static/club_logos/{logo_file}"
-    elif cat.type == CategoryType.NATIONALITY:
-        nationality = getattr(cat, "nationality", None)
-        flag_code = country_flag_image_code(nationality) if nationality else None
+        else:
+            display["icon_letter"] = (cat.label[:1] or "?").upper()
+            display["icon_color"] = _club_badge_color(cat.id)
+        return display
+
+    if cat.type in (CategoryType.NATIONALITY, CategoryType.LEAGUE):
+        country_name = (
+            getattr(cat, "nationality", None) if cat.type == CategoryType.NATIONALITY
+            else _LEAGUE_COUNTRY.get(cat.id)
+        )
+        flag_code = country_flag_image_code(country_name) if country_name else None
         if flag_code and flag_code in _FLAG_CODES_AVAILABLE:
             display["icon_image"] = f"/static/flags/{flag_code}.png"
+        else:
+            # No real flag image (a nationality Transfermarkt records that
+            # isn't in src/countries.py's list yet, a dissolved state with
+            # no current flag, or one of the smaller foreign leagues) —
+            # generic globe rather than guessing at a per-country glyph.
+            display["icon"] = "globe"
+        return display
 
-    if icon:
-        display["icon"] = icon
-    elif cat.type == CategoryType.CLUB:
-        # No generic "colored circle with a letter" emoji exists, so the
-        # client renders this itself — a small colored badge with the
-        # club's first letter — when icon/icon_image are both absent but
-        # icon_letter is set.
-        display["icon"] = None
-        display["icon_letter"] = (cat.label[:1] or "?").upper()
-        display["icon_color"] = _club_badge_color(cat.id)
+    if cat.type == CategoryType.CONTINENT:
+        display["icon"] = "globe"
+    elif cat.type == CategoryType.AGE:
+        display["icon"] = "calendar"
+    elif cat.type == CategoryType.MARKET_VALUE:
+        display["icon"] = "€"  # a plain currency symbol, not emoji — renders as ordinary text in any font
     elif cat.type == CategoryType.AWARD:
-        display["icon"] = "🏆"
-    else:
-        display["icon"] = "⚽"
+        display["icon"] = "trophy"
+    elif cat.type == CategoryType.POSITION:
+        display["icon_letter"] = _POSITION_BADGE.get(cat.id, (cat.label[:2] or "?").upper())
+        display["icon_color"] = _POSITION_GROUP_COLOR.get(cat.id, _club_badge_color(cat.id))
+    elif cat.type in (CategoryType.INITIAL, CategoryType.CONTAINS_LETTER):
+        letter = getattr(cat, "letter", None) or (cat.label[-1] if cat.label else "?")
+        display["icon_letter"] = letter.upper()
+        display["icon_color"] = _club_badge_color(cat.id)
+    # Any other type (there isn't one today — every CategoryType is handled
+    # above) gets no icon key at all; the client's own fallback (a plain SVG
+    # ball, see categoryIconHtml in game.js) takes over.
     return display
 
 
