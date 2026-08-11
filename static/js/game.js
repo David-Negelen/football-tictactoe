@@ -97,6 +97,10 @@ const g = {
   onlineEventSource: null,
   onlineBoardEntered: false,
   onlineFinished: false,
+  // The `version` of the last wrong-guess flash we've already shown (see
+  // applyOnlineState) — undefined until the first state sync, which seeds
+  // it silently instead of flashing a guess that happened before we connected.
+  onlineLastWrongGuessVersion: undefined,
   // editor:
   editor: { row: [null, null, null], col: [null, null, null] },
   editorSavedCode: null,
@@ -463,7 +467,7 @@ function goToMenu() {
   if (g.onlineEventSource) { g.onlineEventSource.close(); g.onlineEventSource = null; }
   clearOnlineSession();
   clearRoundSession();
-  Object.assign(g, { mode: null, onlineCode: null, onlineToken: null, onlineSlot: null, onlineBoardEntered: false, onlineFinished: false });
+  Object.assign(g, { mode: null, onlineCode: null, onlineToken: null, onlineSlot: null, onlineBoardEntered: false, onlineFinished: false, onlineLastWrongGuessVersion: undefined });
   showScreen('mode-select');
 }
 document.getElementById('btn-logo').addEventListener('click', goToMenu);
@@ -934,8 +938,9 @@ function updateStatus() {
       : `<span style="color:var(--text-dim)">Gegner ist dran…</span>`;
     return;
   }
-  // The dot now doubles as a preview of that player's badge color (see
-  // markBadge) — whose turn it is reads at a glance, not just from the glyph.
+  // The dot doubles as a preview of that player's cell color (see
+  // playerColor/cellHtml) — whose turn it is reads at a glance, not just
+  // from the glyph.
   const sym = g.current === 1 ? 'X' : 'O';
   document.getElementById('status-text').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
     <span style="width:8px;height:8px;border-radius:50%;background:${playerColor(g.current)};flex-shrink:0;display:inline-block"></span>
@@ -950,6 +955,19 @@ function setStatus(msg) {
 function setStatusLoading(msg) {
   document.getElementById('status-text').innerHTML =
     `<span style="display:inline-flex;align-items:center;gap:8px;"><span class="tt-spinner"></span>${msg}</span>`;
+}
+
+// Briefly replaces the status line with a one-off message (e.g. "Gegner hat
+// XY versucht – falsch!") — online-only, since it's the one mode where the
+// opponent has no other way to see what just happened on the other client.
+// Reverts to the normal turn indicator on its own once the round is still
+// live; a round that ends mid-flash leaves the result banner alone instead
+// of stomping it back to a turn indicator that's no longer true.
+let onlineFlashTimer = null;
+function flashOnlineMessage(text, duration = 1800) {
+  document.getElementById('status-text').textContent = text;
+  clearTimeout(onlineFlashTimer);
+  onlineFlashTimer = setTimeout(() => { if (g.mode === 'online' && !g.winner) updateStatus(); }, duration);
 }
 
 function updateStreakDisplay() {
@@ -1777,7 +1795,7 @@ function showLobbyError(msg) {
 }
 
 async function createOnlineRoom() {
-  Object.assign(g, { onlineBoardEntered: false, onlineFinished: false });
+  Object.assign(g, { onlineBoardEntered: false, onlineFinished: false, onlineLastWrongGuessVersion: undefined });
   const resp = await fetch('/api/multiplayer/rooms', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ difficulty, league: selectedLeague || undefined }),
@@ -1803,7 +1821,7 @@ async function createOnlineRoom() {
 }
 
 async function joinOnlineRoom(code, { push = true } = {}) {
-  Object.assign(g, { onlineBoardEntered: false, onlineFinished: false });
+  Object.assign(g, { onlineBoardEntered: false, onlineFinished: false, onlineLastWrongGuessVersion: undefined });
   code = code.toUpperCase();
   const resp = await fetch(`/api/multiplayer/rooms/${code}/join`, { method: 'POST' });
   if (!resp.ok) {
@@ -1922,15 +1940,35 @@ function applyOnlineState(data) {
   }
   if (document.getElementById('screen-board').classList.contains('hidden')) return;
 
+  // The opponent's only signal a wrong guess just happened, otherwise
+  // indistinguishable from "their turn just ended" (both just flip
+  // `current`) — see last_wrong_guess in multiplayer.py. `undefined` means
+  // this is the first sync since connecting (fresh load or a resumed
+  // session) — adopt silently instead of flashing a guess that happened
+  // before we were watching.
+  let justFlashedWrongGuess = false;
+  if (g.onlineLastWrongGuessVersion === undefined) {
+    g.onlineLastWrongGuessVersion = data.lastWrongGuess ? data.lastWrongGuess.version : null;
+  } else if (data.lastWrongGuess && data.lastWrongGuess.version !== g.onlineLastWrongGuessVersion) {
+    g.onlineLastWrongGuessVersion = data.lastWrongGuess.version;
+    if (data.lastWrongGuess.slot !== g.onlineSlot) {
+      flashOnlineMessage(`Gegner hat ${data.lastWrongGuess.name} versucht – falsch!`);
+      justFlashedWrongGuess = true;
+    }
+  }
+
   renderBoard();
   if (g.winner) {
     document.getElementById('btn-give-up').disabled = true;
     if (!g.onlineFinished) {
       g.onlineFinished = true;
-      finishOnline();
+      finishOnline(data.endReason);
     }
     updateRematchButtonState(data.rematchRequested || []);
-  } else {
+  } else if (!justFlashedWrongGuess) {
+    // Otherwise this immediately overwrites the flash with the normal turn
+    // indicator in the same tick — flashOnlineMessage's own timeout is what
+    // reverts it once it's actually had time to be seen.
     updateStatus();
   }
 }
@@ -1997,7 +2035,11 @@ async function rematchOnline() {
   await refreshOnlineState();
 }
 
-async function finishOnline() {
+// `reason` (from Room.end_reason — see multiplayer.py) is null for a normal
+// 3-in-a-row/draw, "forfeit" for an explicit give-up, or "disconnect" for
+// the ~20s auto-forfeit timeout — without it, "Du gewinnst!" reads like you
+// were outplayed when the opponent actually just left.
+async function finishOnline(reason) {
   stopTimer();
   setStatus('Runde beendet.');
   stats.online.rounds++;
@@ -2019,7 +2061,12 @@ async function finishOnline() {
     }
     saveStats();
     if (youWon) fireConfetti();
-    showEndBanner(youWon ? 'trophy' : 'loss', youWon ? 'Du gewinnst!' : 'Du verlierst');
+    const titles = {
+      forfeit: youWon ? 'Gegner hat aufgegeben' : 'Aufgegeben',
+      disconnect: youWon ? 'Gegner ist offline' : 'Verbindung verloren',
+    };
+    const title = titles[reason] || (youWon ? 'Du gewinnst!' : 'Du verlierst');
+    showEndBanner(youWon ? 'trophy' : 'loss', title);
   }
   await revealSolutions();
 }

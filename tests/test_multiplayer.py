@@ -96,6 +96,10 @@ def test_apply_move_rejects_wrong_player_but_still_advances_turn(fixture_db_path
         assert room.board[0][0] is None  # cell stays empty
         assert room.current == 2  # turn still passes, matching hot-seat rules
         assert pid in room.used_ids  # can't be retried by either player
+        # The opponent's only signal that a wrong guess just happened.
+        assert room.last_wrong_guess == {
+            "slot": 1, "name": "Dana Diaz", "row": 0, "col": 0, "version": room.version,
+        }
     finally:
         conn.close()
 
@@ -177,6 +181,7 @@ def test_forfeit_gives_the_other_slot_the_win(fixture_categories) -> None:
     assert mp.forfeit(room, creator_token) is True
     assert room.winner == 2
     assert room.win_cells == []
+    assert room.end_reason == "forfeit"
 
     # Forfeiting again after the game is already over should be a no-op.
     assert mp.forfeit(room, creator_token) is False
@@ -190,6 +195,8 @@ def test_public_state_shape(fixture_categories) -> None:
     assert state["yourSlot"] == 1
     assert state["playersConnected"] == 1
     assert state["winner"] is None
+    assert state["lastWrongGuess"] is None
+    assert state["endReason"] is None
 
 
 def test_check_opponent_disconnected_is_false_before_the_timeout(fixture_categories) -> None:
@@ -208,6 +215,7 @@ def test_check_opponent_disconnected_forfeits_after_the_timeout(fixture_categori
     assert room.check_opponent_disconnected(1) is True
     assert room.winner == 1
     assert room.win_cells == []
+    assert room.end_reason == "disconnect"
 
     # Idempotent: calling again after the game is already decided is a no-op.
     assert room.check_opponent_disconnected(1) is False
@@ -263,10 +271,14 @@ def test_reset_room_clears_pending_rematch_requests(fixture_categories) -> None:
     mp.join_room(room.code)
     room.winner = 1
     room.request_rematch(1)
+    room.last_wrong_guess = {"slot": 2, "name": "Dana Diaz", "row": 0, "col": 0, "version": 3}
+    room.end_reason = "forfeit"
 
     mp.reset_room(room, room.rows, room.cols)
     assert room.rematch_requested == set()
     assert room.winner is None
+    assert room.last_wrong_guess is None
+    assert room.end_reason is None
 
 
 def test_public_state_includes_rematch_requested(fixture_categories) -> None:

@@ -52,6 +52,16 @@ class Room:
     last_activity: float = field(default_factory=time.monotonic)
     last_seen: dict = field(default_factory=dict)  # slot (1|2) -> monotonic time of last request
     rematch_requested: set = field(default_factory=set)  # slots that have asked for a rematch this round
+    # Most recent wrong guess this round — the opponent otherwise has no way
+    # to tell a wrong guess apart from "their turn just ended" (both just
+    # flip `current`). `version` here is the room-wide version at the moment
+    # of the guess, letting a client tell a genuinely new wrong guess apart
+    # from the same one still sitting in a state it's already shown.
+    last_wrong_guess: Optional[dict] = None  # {slot, name, row, col, version} | None
+    # Why the round ended, when it wasn't a normal 3-in-a-row/draw — lets the
+    # remaining player be told "opponent gave up"/"opponent disconnected"
+    # instead of a bare "Du gewinnst!" that reads like they were outplayed.
+    end_reason: Optional[str] = None  # None | "forfeit" | "disconnect"
     lock: threading.Lock = field(default_factory=threading.Lock)
     # Remembered from room creation (the creator's settings govern the whole
     # room — see api_mp_create_room) so a rematch can generate a fresh
@@ -97,6 +107,7 @@ class Room:
                 return False
             self.winner = slot
             self.win_cells = []
+            self.end_reason = "disconnect"
             self.version += 1
             self.touch()
             return True
@@ -130,6 +141,8 @@ class Room:
             "playersConnected": len(self.tokens),
             "yourSlot": viewer_slot,
             "rematchRequested": sorted(self.rematch_requested),
+            "lastWrongGuess": self.last_wrong_guess,
+            "endReason": self.end_reason,
         }
 
 
@@ -184,6 +197,8 @@ def reset_room(room: Room, rows: list, cols: list) -> None:
         room.win_cells = []
         room.used_ids = set()
         room.rematch_requested = set()
+        room.last_wrong_guess = None
+        room.end_reason = None
         room.version += 1
         room.touch()
 
@@ -243,6 +258,18 @@ def apply_move(
         if not (row_cat.check_player(player_id, db) and col_cat.check_player(player_id, db)):
             room.current = 2 if slot == 1 else 1
             room.version += 1
+            # The opponent otherwise has no way to tell "wrong guess, my
+            # turn now" apart from a normal turn handoff — see the
+            # last_wrong_guess field doc on Room. Best-effort name lookup:
+            # an unknown player_id still advances the turn either way, it
+            # just falls back to a blank name in that (shouldn't-happen) case.
+            wrong_row = db.execute("SELECT name FROM players WHERE id = ?", (player_id,)).fetchone()
+            room.last_wrong_guess = {
+                "slot": slot,
+                "name": wrong_row["name"] if wrong_row else "",
+                "row": row, "col": col,
+                "version": room.version,
+            }
             room.touch()
             return False, "invalid_player", None
 
@@ -276,6 +303,7 @@ def forfeit(room: Room, token: str) -> bool:
             return False
         room.winner = 2 if slot == 1 else 1
         room.win_cells = []
+        room.end_reason = "forfeit"
         room.version += 1
         room.touch()
         return True
