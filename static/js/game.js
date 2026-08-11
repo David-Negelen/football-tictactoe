@@ -864,12 +864,20 @@ document.getElementById('solution-modal').addEventListener('click', e => {
 // ─── Zell-Interaktion (gemeinsam) ──────────────────────────────────────────────
 
 function markActiveCell(r, c) {
-  document.querySelectorAll('.is-active').forEach(el => el.classList.remove('is-active'));
+  // Scoped to #board — .is-active is a shared class also used by the
+  // difficulty/league/visibility pickers and the header menu toggle, all of
+  // which live in the same document at once (screens are hidden via CSS,
+  // never removed from the DOM). An unscoped query here would silently
+  // clear whichever of those happened to be active whenever a cell opens —
+  // e.g. the setup screen's Schwierigkeit/Liga picker would show no
+  // selection at all on the next visit, even though difficulty/
+  // selectedLeague are still tracking a real value internally.
+  document.querySelectorAll('#board .is-active').forEach(el => el.classList.remove('is-active'));
   document.querySelector(`[data-cell="${r},${c}"]`)?.classList.add('is-active');
 }
 
 function clearActiveCell() {
-  document.querySelectorAll('.is-active').forEach(el => el.classList.remove('is-active'));
+  document.querySelectorAll('#board .is-active').forEach(el => el.classList.remove('is-active'));
 }
 
 function openCell(r, c) {
