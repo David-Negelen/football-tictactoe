@@ -11,7 +11,7 @@
 // earlier commits on why those are exempt.
 const ICON_PATHS = {
   fire: `<path d="M12 2c.5 3-2.5 4.5-2.5 8a2.5 2.5 0 0 0 5 0c0-1-.5-1.8-.9-2.5 1.4 1 2.4 3 2.4 5a4.5 4.5 0 0 1-9 0c0-4 2-6.5 3-7.5.3 1.5 1 2 1.5 1.5-.2-1.7 0-3 .5-4.5Z"/>`,
-  trophy: `<path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M8 5H5a2 2 0 0 0 0 4h1.5"/><path d="M16 5h3a2 2 0 0 1 0 4h-1.5"/><path d="M10 15v3"/><path d="M14 15v3"/><path d="M9 21h6"/>`,
+  trophy: `<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>`,
   handshake: `<path d="M12 3v18"/><path d="M5 8l-3 6a4 4 0 0 0 8 0l-3-6Z"/><path d="M19 8l-3 6a4 4 0 0 0 8 0l-3-6Z"/><path d="M5 8h14"/><path d="M8 21h8"/>`,
   loss: `<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6"/><path d="m15 9-6 6"/>`,
   check: `<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>`,
