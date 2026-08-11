@@ -6,10 +6,10 @@ claim a cell you name a real footballer who satisfies **both** the row and
 column category — validated against a SQLite database of ~49k players —
 then normal tic-tac-toe rules decide the winner.
 
-The Flask app also bundles three smaller tools built on the same dataset:
-a searchable player DB explorer (`/`), a "shared players between two clubs"
-explorer (`/combos`), and a real-lineup guessing game (`/squad-guesser`).
-Tiki-Taka-Toe (`/game`) is the primary product.
+Tiki-Taka-Toe (`/`) is the primary product. The Flask app also bundles two
+smaller tools built on the same dataset: a "shared players between two
+clubs" explorer (`/combos`) and a real-lineup guessing game
+(`/squad-guesser`).
 
 ## Setup
 

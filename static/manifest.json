@@ -2,7 +2,7 @@
   "name": "Tiki-Taka-Toe",
   "short_name": "Tiki-Taka-Toe",
   "description": "Football-themed tic-tac-toe: name a real player who fits both the row and column category.",
-  "start_url": "/game",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#14532d",

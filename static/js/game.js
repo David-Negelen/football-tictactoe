@@ -80,7 +80,7 @@ function esc(v) {
 const g = {
   mode: null,        // 'solo' | 'local' | 'online'
   soloVariant: null,  // null | 'daily' | 'custom' — a solo round that isn't a plain random one
-  soloGridCode: null, // the saved-grid code when soloVariant === 'custom' (see /game/solo/<code>)
+  soloGridCode: null, // the saved-grid code when soloVariant === 'custom' (see /solo/<code>)
   dailyDate: null,    // the server's date string for the currently-loaded daily grid
   rows: [], cols: [],
   board: [[null,null,null],[null,null,null],[null,null,null]],
@@ -183,27 +183,30 @@ function genParams() {
 // A URL identifies a *resource*, not a raw DOM screen name — several of the
 // 6 screen-* divs are just different render states of the same resource
 // (online-lobby/board are both driven by one room's state; board/daily-done
-// are both driven by one day's puzzle), so this maps to /game/solo,
-// /game/local, /game/solo/<code>, /game/online/<code> etc. instead of a
-// single generic /game/board. Setup, an online room, and a saved/shared grid
-// can be reconstructed from the URL alone (server state lives under a code);
-// a plain solo/local round has no server-side representation, so a cold load
-// of its URL instead falls back to tryResumeRound's sessionStorage snapshot
-// (see below) and, failing that, to that mode's setup screen.
+// are both driven by one day's puzzle), so this maps to /solo, /local,
+// /solo/<code>, /online/<code> etc. instead of a single generic /board. The
+// game lives at the site root (see the game() route in app.py) — /combos and
+// /squad-guesser are the only other top-level pages, and both are matched
+// ahead of this router's own catch-all. Setup, an online room, and a saved/
+// shared grid can be reconstructed from the URL alone (server state lives
+// under a code); a plain solo/local round has no server-side representation,
+// so a cold load of its URL instead falls back to tryResumeRound's
+// sessionStorage snapshot (see below) and, failing that, to that mode's
+// setup screen.
 function urlForScreen(name) {
   switch (name) {
-    case 'setup': return `/game/setup/${g.pendingMode}`;
-    case 'online-lobby': return g.onlineCode ? `/game/online/${g.onlineCode}` : '/game/online';
-    case 'daily-done': return '/game/daily';
-    case 'editor': return '/game/editor';
+    case 'setup': return `/setup/${g.pendingMode}`;
+    case 'online-lobby': return g.onlineCode ? `/online/${g.onlineCode}` : '/online';
+    case 'daily-done': return '/daily';
+    case 'editor': return '/editor';
     case 'board':
-      if (g.mode === 'online') return `/game/online/${g.onlineCode}`;
-      if (g.mode === 'solo' && g.soloVariant === 'daily') return '/game/daily';
-      if (g.mode === 'solo' && g.soloVariant === 'custom') return `/game/solo/${g.soloGridCode}`;
-      if (g.mode === 'solo') return '/game/solo';
-      if (g.mode === 'local') return '/game/local';
-      return '/game/board'; // unreachable in practice — g.mode is always set before showScreen('board')
-    case 'mode-select': default: return '/game';
+      if (g.mode === 'online') return `/online/${g.onlineCode}`;
+      if (g.mode === 'solo' && g.soloVariant === 'daily') return '/daily';
+      if (g.mode === 'solo' && g.soloVariant === 'custom') return `/solo/${g.soloGridCode}`;
+      if (g.mode === 'solo') return '/solo';
+      if (g.mode === 'local') return '/local';
+      return '/board'; // unreachable in practice — g.mode is always set before showScreen('board')
+    case 'mode-select': default: return '/';
   }
 }
 
@@ -215,14 +218,14 @@ function urlForScreen(name) {
 function parseLocation() {
   const path = location.pathname;
   let m;
-  if ((m = path.match(/^\/game\/setup\/(solo|local|online-host)\/?$/))) return { screen: 'setup', mode: m[1] };
-  if (/^\/game\/editor\/?$/.test(path)) return { screen: 'editor' };
-  if (/^\/game\/daily\/?$/.test(path)) return { screen: 'daily' };
-  if (/^\/game\/local\/?$/.test(path)) return { screen: 'local' };
-  if ((m = path.match(/^\/game\/solo\/([A-Za-z0-9]+)\/?$/))) return { screen: 'solo-custom', code: m[1] };
-  if (/^\/game\/solo\/?$/.test(path)) return { screen: 'solo' };
-  if ((m = path.match(/^\/game\/online\/([A-Za-z0-9]+)\/?$/))) return { screen: 'online', code: m[1] };
-  if (/^\/game\/online\/?$/.test(path)) return { screen: 'online' };
+  if ((m = path.match(/^\/setup\/(solo|local|online-host)\/?$/))) return { screen: 'setup', mode: m[1] };
+  if (/^\/editor\/?$/.test(path)) return { screen: 'editor' };
+  if (/^\/daily\/?$/.test(path)) return { screen: 'daily' };
+  if (/^\/local\/?$/.test(path)) return { screen: 'local' };
+  if ((m = path.match(/^\/solo\/([A-Za-z0-9]+)\/?$/))) return { screen: 'solo-custom', code: m[1] };
+  if (/^\/solo\/?$/.test(path)) return { screen: 'solo' };
+  if ((m = path.match(/^\/online\/([A-Za-z0-9]+)\/?$/))) return { screen: 'online', code: m[1] };
+  if (/^\/online\/?$/.test(path)) return { screen: 'online' };
   return { screen: 'mode-select' };
 }
 
@@ -288,7 +291,7 @@ function enterFromPath(parsed) {
       // attempt hasn't run yet, and even on failure the code stays worth
       // keeping visible in the URL, e.g. so a stale/expired invite link
       // still shows what room the join UI is pre-filled for).
-      history.replaceState({ screen: 'online-lobby' }, '', parsed.code ? `/game/online/${parsed.code}` : '/game/online');
+      history.replaceState({ screen: 'online-lobby' }, '', parsed.code ? `/online/${parsed.code}` : '/online');
       if (parsed.code) attemptOnlineResume(parsed.code);
       else renderLobbyHome();
       break;
@@ -417,7 +420,7 @@ document.getElementById('btn-setup-continue').addEventListener('click', e => {
   }
 });
 
-// Lets a hard refresh on /game/online/<code> silently re-attach to a room
+// Lets a hard refresh on /online/<code> silently re-attach to a room
 // instead of landing on a bare join screen — the room itself already lives
 // server-side, this is just enough client-side memory of "which seat was
 // mine" to reuse it. sessionStorage (not localStorage): a stale token from a
@@ -1456,7 +1459,7 @@ document.getElementById('end-share').addEventListener('click', () => {
   const daily = loadDailyState();
   const result = daily.completed[g.dailyDate];
   if (!result) return;
-  const text = `⚽ Tiki-Taka-Toe Tagesrätsel ${g.dailyDate}\n${result.correct}/9 richtig · 🔥 ${daily.currentStreak} Tage Serie\n${location.origin}/game`;
+  const text = `⚽ Tiki-Taka-Toe Tagesrätsel ${g.dailyDate}\n${result.correct}/9 richtig · 🔥 ${daily.currentStreak} Tage Serie\n${location.origin}/`;
   copyToClipboard(text);
   const btn = document.getElementById('end-share');
   btn.innerHTML = iconText('check', 'Kopiert', { size: 15 });
@@ -1656,7 +1659,7 @@ document.getElementById('btn-editor-save').addEventListener('click', async e => 
 
 document.getElementById('btn-editor-copy-link').addEventListener('click', () => {
   if (!g.editorSavedCode) return;
-  copyToClipboard(`${location.origin}/game/solo/${g.editorSavedCode}`);
+  copyToClipboard(`${location.origin}/solo/${g.editorSavedCode}`);
   const btn = document.getElementById('btn-editor-copy-link');
   btn.innerHTML = iconText('check', 'Kopiert', { size: 14 });
   setTimeout(() => { btn.innerHTML = iconText('link', 'Link kopieren', { size: 14 }); }, 1500);
@@ -1849,7 +1852,7 @@ function execCommandCopy(text) {
 }
 
 function renderLobbyWaiting(code) {
-  const link = `${location.origin}/game/online/${code}`;
+  const link = `${location.origin}/online/${code}`;
   document.getElementById('online-lobby-body').innerHTML = `
     <div class="tt-card p-6 flex flex-col gap-3 items-center text-center">
       <div class="text-sm" style="color:var(--text-dim)">Warte auf Gegner…</div>
@@ -1930,8 +1933,8 @@ async function joinOnlineRoom(code, { push = true } = {}) {
   await refreshOnlineState();
 }
 
-// Cold-load-only: called from enterFromPath when landing on /game/online/
-// <code> with no live session behind it (a hard refresh, or a fresh tab
+// Cold-load-only: called from enterFromPath when landing on /online/<code>
+// with no live session behind it (a hard refresh, or a fresh tab
 // opened on a shared room link). Tries the sessionStorage seat first —
 // /state doesn't reject a bad/expired token with an HTTP error, it just
 // omits yourSlot, so that field (not resp.ok) is the actual validity
@@ -1983,7 +1986,7 @@ async function refreshOnlineState() {
 function enterOnlineBoard() {
   // No push: this fires automatically once the SSE state poll sees the
   // opponent connect, not from a user click, and the URL doesn't actually
-  // change anyway — /game/online/<code> covers both the lobby and the live
+  // change anyway — /online/<code> covers both the lobby and the live
   // board for a room, the server-fetched state is what decides which one
   // renders.
   showScreen('board', { push: false });
@@ -2348,9 +2351,9 @@ document.addEventListener('keydown', e => {
   // URL state this app had) — kept working as a compat shim since a link
   // in that shape could still be sitting in a chat/bookmark somewhere, but
   // both link generators (renderLobbyWaiting, the editor's copy-link
-  // button) now emit the canonical /game/online/<code> and /game/solo/
-  // <code> paths directly, so this branch is dead weight from here on,
-  // not a format this app still produces.
+  // button) now emit the canonical /online/<code> and /solo/<code> paths
+  // directly, so this branch is dead weight from here on, not a format
+  // this app still produces.
   const params = new URLSearchParams(location.search);
   const joinCode = params.get('join');
   const gridCode = params.get('grid');
@@ -2360,7 +2363,7 @@ document.addEventListener('keydown', e => {
     // 'online' case, which does the same for a code arriving via the path
     // directly.
     const code = joinCode.toUpperCase();
-    history.replaceState({ screen: 'online-lobby' }, '', `/game/online/${code}`);
+    history.replaceState({ screen: 'online-lobby' }, '', `/online/${code}`);
     g.mode = 'online';
     renderScreenDom('online-lobby');
     updateModeChrome();
@@ -2368,7 +2371,7 @@ document.addEventListener('keydown', e => {
   } else if (gridCode) {
     // No pre-emptive replaceState here: unlike the join case above, there's
     // no meaningful "loading" screen to name it after, and loadAndStartCustomGrid
-    // already replaceState's to the real /game/solo/<code> itself once (and
+    // already replaceState's to the real /solo/<code> itself once (and
     // only if) the grid actually loads — claiming {screen:'board'} before
     // that succeeds would leave history.state pointing at a screen that was
     // never actually shown if the fetch fails.
