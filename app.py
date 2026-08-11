@@ -700,7 +700,14 @@ def api_categories():
 
 
 @app.route("/game")
-def game():
+@app.route("/game/<path:subpath>")
+def game(subpath=None):
+    # Client-side router (see the "Router" section in static/js/game.js) owns
+    # every /game/* URL (e.g. /game/setup/solo, /game/online/ABCDE) — the
+    # server's only job is to serve the same shell for all of them so a
+    # direct navigation or hard refresh doesn't 404. subpath itself is never
+    # inspected; game.js reads location.pathname on load to decide what to
+    # show.
     return render_template("game.html")
 
 

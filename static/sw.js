@@ -2,7 +2,7 @@
 // "/game" — see static/js/pwa.js). Never touches "/", "/combos" or
 // "/squad-guesser", which stay outside this service worker's scope.
 
-const CACHE_NAME = 'ttt-shell-v43';
+const CACHE_NAME = 'ttt-shell-v44';
 const SHELL_URLS = [
   '/game',
   '/static/manifest.json',
