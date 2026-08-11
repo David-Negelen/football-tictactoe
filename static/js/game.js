@@ -704,10 +704,12 @@ function cellHtml(r, c) {
     }
     // Local/online: the cell background carries a soft tint of that
     // player's color (not a fully saturated block — two of those side by
-    // side just fight each other), while an X/O mark at full color/opacity
-    // sits centered behind the name as the actual "who owns this cell"
-    // signal — legible as a game mark on its own, before the name is even
-    // read. X and O share one line-icon (matched bounding box, same
+    // side just fight each other), while a big, bold but slightly
+    // translucent (opacity .8, softer than the fully solid stroke it
+    // started as) X/O mark sits centered behind the name as the actual
+    // "who owns this cell" signal — legible as a game mark on its own,
+    // before the name is even read. X and O share one line-icon (matched
+    // bounding box, same
     // stroke-width — see ICON_PATHS) instead of the browser's X/O font glyphs,
     // which don't carry equal visual weight at the same font-size (X's
     // diagonal strokes read "bigger" than O's circle). Text stays the
@@ -723,8 +725,8 @@ function cellHtml(r, c) {
     return `
       <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
            data-cell="${r},${c}" style="background:${bg};border-color:${color};">
-        <svg class="absolute pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
-             style="top:50%;left:50%;transform:translate(-50%,-50%);width:clamp(38px,13vw,58px);height:clamp(38px,13vw,58px);">${markPath}</svg>
+        <svg class="absolute pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"
+             style="top:50%;left:50%;transform:translate(-50%,-50%);width:clamp(46px,16vw,70px);height:clamp(46px,16vw,70px);opacity:.8;">${markPath}</svg>
         <div class="tt-cell-name text-center relative" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
       </div>`;
   }
