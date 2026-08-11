@@ -697,14 +697,20 @@ function cellHtml(r, c) {
     // board at a glance, not just up close on one cell at a time. Text
     // switches to --accent-ink (the same "on solid accent" ink already
     // used by .tt-btn-accent) since it now sits on a bright fill rather
-    // than the dark card background.
+    // than the dark card background. The X/O itself is a big, low-opacity
+    // watermark filling the cell (position:relative + later in the DOM is
+    // what lifts the name above it — an absolutely-positioned box always
+    // paints above a plain static one, regardless of source order, so the
+    // name needs to be "positioned" too to win that stacking fight) rather
+    // than a small corner mark, so the shape reads before the name does.
     const color = playerColor(entry.player);
     const sym = entry.player === 1 ? 'X' : 'O';
     return `
       <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
            data-cell="${r},${c}" style="background:${color};border-color:${color};">
-        <div class="absolute top-1.5 right-1.5 text-sm font-black" style="color:var(--accent-ink)">${sym}</div>
-        <div class="tt-cell-name text-center" style="color:var(--accent-ink)">${esc(formatPlayerName(entry.name))}</div>
+        <div class="absolute inset-0 flex items-center justify-center font-black leading-none pointer-events-none"
+             style="color:var(--accent-ink);opacity:.3;font-size:clamp(2.75rem,11vw,4.5rem);">${sym}</div>
+        <div class="tt-cell-name text-center relative" style="color:var(--accent-ink)">${esc(formatPlayerName(entry.name))}</div>
       </div>`;
   }
 
