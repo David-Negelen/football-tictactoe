@@ -726,7 +726,7 @@ function cellHtml(r, c) {
       <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
            data-cell="${r},${c}" style="background:${bg};border-color:${color};">
         <svg class="absolute pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"
-             style="top:50%;left:50%;transform:translate(-50%,-50%);width:clamp(46px,16vw,70px);height:clamp(46px,16vw,70px);opacity:.8;">${markPath}</svg>
+             style="top:50%;left:50%;transform:translate(-50%,-50%);width:clamp(60px,20vw,90px);height:clamp(60px,20vw,90px);opacity:.6;">${markPath}</svg>
         <div class="tt-cell-name text-center relative" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
       </div>`;
   }
