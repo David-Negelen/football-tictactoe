@@ -28,7 +28,6 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from .categories import Category, ClubCategory, NationalityCategory, TrophyCategory
-from .category_config import LEAGUE_CATEGORIES
 from .countries import COUNTRY_BY_NAME, parse_nationality_tokens
 from .trophy_rules import classify_trophy_title
 
@@ -140,39 +139,37 @@ LEGACY_TROPHY_IDS: dict[str, str] = {
 # much harder than the continent-aggregate ones ("played in Asia" — see
 # CONTINENT_CATEGORIES): naming a SPECIFIC club by name only works as a fair
 # category if a casual player would actually recognize that exact club, not
-# just "some club from that continent". A club earns a spot here one of two
-# ways: it plays in one of the four whitelisted top leagues (LEAGUE_CATEGORIES
-# — Bundesliga/Premier League/La Liga/Serie A, all individually recognizable
-# just from being in a major league a casual fan follows), or it's fame-tiered
-# below regardless of league/continent (Boca Juniors, Al-Hilal, Kaizer Chiefs
-# — genuinely globally known despite not being in a top-4 league). Every
-# other whitelisted-but-untiered club that used to leak in here via the
-# continental "played in X" lists (Chennaiyin FC, GZ Evergrande's Asian
-# neighbors that never made fame tier 2, most of the Africa/South America
-# lists) is deliberately excluded — those lists exist for their own
-# continent-aggregate category, not to seed the general club pool.
+# just "some club from that continent". Every other whitelisted-but-untiered
+# club that used to leak in here via the continental "played in X" lists
+# (Chennaiyin FC, GZ Evergrande's Asian neighbors that never made fame tier 2,
+# most of the Africa/South America lists) is deliberately excluded — those
+# lists exist for their own continent-aggregate category, not to seed the
+# general club pool.
 #
-# Being on the whitelist below only answers "may this club appear at all" —
-# CLUB_FAME_TIER_1/2 (defined first, since this set is built from them)
-# answer "how hard is it". Criteria — would a casual football fan recognize
-# the club and name two of its players, based on the club's fame across its
-# *whole* history, not just this season (e.g. Hamburger SV and FC Schalke 04
-# are tier 1 despite currently playing in the second division)?
+# A club may appear at all ONLY by being named in one of the three tiers
+# below (CLUB_FAME_TIER_1/2/3) — there is no other path in, so add or remove
+# a club by editing these three sets directly. Criteria — would a casual
+# football fan recognize the club and name two of its players, based on the
+# club's fame across its *whole* history, not just this season (e.g. Hamburger
+# SV and FC Schalke 04 are tier 1 despite currently playing in the second
+# division)?
 #   Tier 1: Champions-League/continental-final regulars, multiple major
 #     domestic or continental titles in roughly the last 20 years,
 #     near-universal name recognition.
 #   Tier 2: established, nationally/regionally well-known clubs — not
 #     continental regulars, but a real name with at least one household
 #     player.
-#   Tier 3 (default, not enumerated below): every top-4-league club not
-#     listed above — smaller top-flight clubs that are in the whitelist
-#     purely by virtue of playing in a major league, not by individual fame.
+#   Tier 3: real, checkable clubs a casual player is less likely to
+#     recognize outright (mostly smaller top-flight sides in the four
+#     LEAGUE_CATEGORIES leagues) — whitelisted at the hardest difficulty
+#     rather than excluded, since being in a major league is still enough
+#     to make the club a fair (if hard) category.
 #
 # Every name below must match career_stints.club_name byte-for-byte (see the
 # "Man City" vs "Manchester City" note on LEGACY_CLUB_IDS above for the kind
-# of mismatch that silently produces zero matches) — a typo here just falls
-# through to DEFAULT_CLUB_DIFFICULTY (tier 3) instead of erroring, which is
-# why test_every_fame_tiered_club_name_is_in_the_prominence_whitelist and
+# of mismatch that silently produces zero matches) — a typo here just means
+# the club never appears at all instead of erroring, which is why
+# test_every_fame_tiered_club_name_is_in_the_prominence_whitelist and
 # test_every_league_has_enough_easy_clubs exist in
 # tests/test_dynamic_categories.py: they're the only things that catch it.
 CLUB_FAME_TIER_1: frozenset[str] = frozenset({
@@ -228,17 +225,33 @@ CLUB_FAME_TIER_2: frozenset[str] = frozenset({
     "GZ Evergrande", "Jeonbuk Hyundai",
 })
 
-PROMINENT_CLUB_NAMES: set[str] = {
-    *(name for league in LEAGUE_CATEGORIES for name in league.club_names),
-    *CLUB_FAME_TIER_1,
-    *CLUB_FAME_TIER_2,
-}
+# Every other club in the four LEAGUE_CATEGORIES leagues (category_config.py)
+# that isn't individually fame-tiered above — real top-flight clubs, just not
+# ones most casual players would name unprompted. Add/remove a club here (or
+# to tier 1/2 above) to change what can appear at all; nothing outside these
+# three sets is eligible, regardless of league membership or player count.
+CLUB_FAME_TIER_3: frozenset[str] = frozenset({
+    # Bundesliga
+    "FC Augsburg", "SV Elversberg", "1.FSV Mainz 05", "SC Paderborn",
+    # Premier League
+    "Bournemouth", "FC Brentford", "Coventry City", "FC Fulham",
+    "Hull City", "Ipswich Town",
+    # La Liga
+    "Alavés", "FC Elche", "FC Getafe", "FC Málaga", "CA Osasuna",
+    "Rac. Santander", "UD Levante",
+    # Serie A
+    "Cagliari", "Como", "Frosinone", "Lecce", "Monza", "US Sassuolo",
+    "AC Venezia 1907",
+})
 
-DEFAULT_CLUB_DIFFICULTY = 3  # unlisted above (or a name typo) -> hardest tier
+PROMINENT_CLUB_NAMES: set[str] = CLUB_FAME_TIER_1 | CLUB_FAME_TIER_2 | CLUB_FAME_TIER_3
+
+DEFAULT_CLUB_DIFFICULTY = 3  # unreachable in practice — every whitelisted club is tier 1/2/3
 
 CLUB_DIFFICULTY: dict[str, int] = {
     **{name: 1 for name in CLUB_FAME_TIER_1},
     **{name: 2 for name in CLUB_FAME_TIER_2},
+    **{name: 3 for name in CLUB_FAME_TIER_3},
 }
 
 # Transfermarkt records a distinct "nationality" string per birthplace, which
@@ -264,45 +277,25 @@ NATIONALITY_DENYLIST: frozenset[str] = frozenset({
 # below the old ~20 implicit floor (needed so genuinely small-but-real
 # football nations like Island/Kosovo stay reachable) floods the pool with
 # every barely-populated nationality token instead.
-PROMINENT_NATIONALITIES: frozenset[str] = frozenset({
-    # Fame-tiered below (see NATIONALITY_FAME_TIER_1/2).
-    "Deutschland", "Italien", "Spanien", "Frankreich", "England", "Niederlande",
-    "Brasilien", "Argentinien", "Schottland", "Portugal", "Belgien", "Marokko",
-    "Türkei", "Polen", "Nigeria", "Kroatien", "Dänemark", "Senegal", "Schweden",
-    "Schweiz", "Wales", "Uruguay", "Vereinigte Staaten", "Österreich", "Norwegen",
-    "Kolumbien", "Japan", "Chile", "Mexiko", "Südkorea", "Ägypten",
-    "Irland", "Serbien", "Ghana", "Elfenbeinküste", "Kamerun", "Algerien",
-    "Mali", "Tschechien", "Bosnien-Herzegowina", "Australien", "Nordirland",
-    "Griechenland", "Rumänien", "Ungarn", "Tunesien", "Russland", "Paraguay",
-    "Ukraine", "Kanada", "Island", "Südafrika", "Peru", "Iran", "Ecuador",
-    "Costa Rica",
-    # Real, recognizable-enough football nations that don't clear a fame
-    # tier — whitelisted (may appear, at the default hardest difficulty)
-    # but not called out as easy or medium.
-    "DR Kongo", "Suriname", "Jamaika", "Guinea", "Albanien", "Slowenien",
-    "Bulgarien", "Slowakei", "Finnland", "Kosovo", "Angola", "Kongo",
-    "Nordmazedonien", "Montenegro", "Venezuela", "Israel", "Gabun", "Togo",
-    "Trinidad und Tobago", "Liberia", "Neuseeland",
-})
-
-# Being on the whitelist above only answers "may this nationality appear at
-# all" — this answers "how hard is it", the same fame-not-rarity idea
-# CLUB_FAME_TIER_1/2 applies to clubs (e.g. Ägypten/Egypt has few players in
-# this dataset but is instantly recognizable via Mohamed Salah — the exact
-# rarity-vs-fame gap this replaces).
+#
+# A nationality may appear at all ONLY by being named in one of the three
+# tiers below (NATIONALITY_FAME_TIER_1/2/3) — there is no other path in, so
+# add or remove a country by editing these three sets directly. Being in a
+# tier answers both "may this appear" and "how hard is it" (the same
+# fame-not-rarity idea CLUB_FAME_TIER_1/2/3 applies to clubs — e.g. Ägypten/
+# Egypt has few players in this dataset but is instantly recognizable via
+# Mohamed Salah).
 #   Tier 1: World Cup regulars / recent deep runs, globally recognized star
 #     players, near-universal name recognition as a football nation.
 #   Tier 2: recognizable, established football nations — regular continental
 #     (not necessarily World Cup) participants, or known via a handful of
 #     star players.
-#   Tier 3 (default, not enumerated below): everything else on the
-#     whitelist — a real, checkable nationality, just not one most casual
-#     players would immediately recognize as a football nation.
+#   Tier 3: real, checkable football nations that don't clear a fame tier —
+#     whitelisted at the hardest difficulty rather than excluded.
 #
 # Every name below must match a real, exact token from players.nationality
-# (see parse_nationality_tokens) and be a subset of PROMINENT_NATIONALITIES —
-# a typo here just falls through to DEFAULT_NATIONALITY_DIFFICULTY (tier 3)
-# instead of erroring, which is why
+# (see parse_nationality_tokens) — a typo here just means the country never
+# appears at all instead of erroring, which is why
 # test_every_fame_tiered_nationality_is_in_the_prominence_whitelist exists
 # in tests/test_dynamic_categories.py.
 NATIONALITY_FAME_TIER_1: frozenset[str] = frozenset({
@@ -321,11 +314,26 @@ NATIONALITY_FAME_TIER_2: frozenset[str] = frozenset({
     "Costa Rica",
 })
 
-DEFAULT_NATIONALITY_DIFFICULTY = 3  # whitelisted, but unlisted above -> hardest
+# Real, recognizable-enough football nations that don't clear a fame tier —
+# whitelisted at the hardest difficulty rather than excluded. Add/remove a
+# country here (or to tier 1/2 above) to change what can appear at all.
+NATIONALITY_FAME_TIER_3: frozenset[str] = frozenset({
+    "DR Kongo", "Suriname", "Jamaika", "Guinea", "Albanien", "Slowenien",
+    "Bulgarien", "Slowakei", "Finnland", "Kosovo", "Angola", "Kongo",
+    "Nordmazedonien", "Montenegro", "Venezuela", "Israel", "Gabun", "Togo",
+    "Trinidad und Tobago", "Liberia", "Neuseeland",
+})
+
+PROMINENT_NATIONALITIES: frozenset[str] = (
+    NATIONALITY_FAME_TIER_1 | NATIONALITY_FAME_TIER_2 | NATIONALITY_FAME_TIER_3
+)
+
+DEFAULT_NATIONALITY_DIFFICULTY = 3  # unreachable in practice — every whitelisted nationality is tier 1/2/3
 
 NATIONALITY_DIFFICULTY: dict[str, int] = {
     **{name: 1 for name in NATIONALITY_FAME_TIER_1},
     **{name: 2 for name in NATIONALITY_FAME_TIER_2},
+    **{name: 3 for name in NATIONALITY_FAME_TIER_3},
 }
 
 # Answer pool of 1-2 players is too thin to be a fair puzzle no matter how
@@ -503,13 +511,22 @@ TROPHY_FAME_TIER_2: frozenset[str] = frozenset({
     "Ungarischer Meister", "Ungarischer Pokalsieger",
 })
 
-PROMINENT_TROPHY_TITLES: frozenset[str] = TROPHY_FAME_TIER_1 | TROPHY_FAME_TIER_2
+# Empty by default and deliberately not auto-populated: unlike clubs/
+# nationalities, an obscure trophy isn't a "real but harder" fact — a title
+# nobody's heard of reads as unrecognizable, not merely difficult (see the
+# module docstring). Left here, same shape as CLUB_FAME_TIER_3/
+# NATIONALITY_FAME_TIER_3, purely so a specific title can be added at
+# difficulty 3 by hand if it's judged worth including despite that.
+TROPHY_FAME_TIER_3: frozenset[str] = frozenset()
 
-DEFAULT_TROPHY_DIFFICULTY = 3  # unreachable in practice — every whitelisted title is tier 1 or 2
+PROMINENT_TROPHY_TITLES: frozenset[str] = TROPHY_FAME_TIER_1 | TROPHY_FAME_TIER_2 | TROPHY_FAME_TIER_3
+
+DEFAULT_TROPHY_DIFFICULTY = 3  # unreachable in practice — every whitelisted title is tier 1/2/3
 
 TROPHY_DIFFICULTY: dict[str, int] = {
     **{title: 1 for title in TROPHY_FAME_TIER_1},
     **{title: 2 for title in TROPHY_FAME_TIER_2},
+    **{title: 3 for title in TROPHY_FAME_TIER_3},
 }
 
 
