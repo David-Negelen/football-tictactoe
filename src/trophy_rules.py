@@ -257,10 +257,24 @@ _YOUTH_INTERNATIONAL_ALLOW = re.compile(
     re.IGNORECASE,
 )
 
+# England is a deliberate exception to the "one major cup per country, no
+# League Cups or Super Cups" rule below: English football culture treats the
+# League Cup (Carabao/EFL Cup — a real Wembley final, not a lower-tier
+# regional competition) and the Community Shield (the season-opening
+# FA Cup-winner-vs-league-champion match) as genuinely recognizable
+# silverware in their own right, not just domestic trivia the way most
+# countries' League/Super Cups are.
+_DOMESTIC_CUP_ALLOW_TITLES = {
+    "Englischer Ligapokalsieger",   # League Cup (Carabao/EFL Cup)
+    "Englischer Superpokalsieger",  # Community Shield
+}
+
 
 def classify_trophy_title(title: str) -> bool:
     """True if `title` should become a TrophyCategory."""
     if title in INTERNATIONAL_ALLOW_TITLES:
+        return True
+    if title in _DOMESTIC_CUP_ALLOW_TITLES:
         return True
     if title in EXCLUDE_MINOR_INTERNATIONAL:
         return False

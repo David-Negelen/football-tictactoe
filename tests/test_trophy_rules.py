@@ -20,6 +20,12 @@ INCLUDED_TITLES = [
     # caught by the "Landesmeister" regional-title exclusion pattern (a real
     # bug found and fixed while validating this module against the full
     # real-data title list)
+    # England is a deliberate exception to the Super Cup / League Cup
+    # exclusion below — the Community Shield and the League Cup (Carabao/
+    # EFL Cup) are both genuinely recognizable English silverware, not just
+    # domestic trivia the way most countries' equivalents are.
+    "Englischer Superpokalsieger",
+    "Englischer Ligapokalsieger",
 ]
 
 EXCLUDED_TITLES = [
@@ -38,15 +44,14 @@ EXCLUDED_TITLES = [
     "Southeast Asian Games - Zweiter",  # runner-up, not a win
     "Meister Regionalliga Nord (GER)",
     # A domestic Super Cup is a single exhibition match, not a competition
-    # — every country's has the same low-prestige reputation as England's
-    # Community Shield ("Superpokalsieger"), regardless of what it's called.
-    "Englischer Superpokalsieger",
+    # — every country's has the same low-prestige reputation (England's
+    # Community Shield is the one deliberate exception, see INCLUDED_TITLES
+    # above).
     "Deutscher Superpokalsieger",
     "Spanischer Superpokalsieger",
     # A League Cup is real silverware, but a clear notch below the national
     # cup everywhere the two coexist — only the one "major cup" per country
-    # is kept.
-    "Englischer Ligapokalsieger",
+    # is kept (England's is again the one exception).
     "Deutscher Ligapokalsieger",
     # Second-tier continental club competitions — each confederation's
     # Europa-League-equivalent, not its Champions-League-equivalent (which

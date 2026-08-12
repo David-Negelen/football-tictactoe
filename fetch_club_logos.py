@@ -124,6 +124,32 @@ CLUB_LOGO_QUERIES: list[tuple[str, str]] = [
     # A few extra well-known clubs referenced elsewhere in the app that
     # aren't part of a LEAGUE_CATEGORIES whitelist.
     ("Paris SG", "Paris Saint-Germain F.C."),
+    # Fame-tiered clubs in dynamic_categories.py's CLUB_FAME_TIER_1/2/3 that
+    # aren't in a current top-flight LEAGUE_CATEGORIES roster (mostly
+    # well-known 2nd-division sides, plus a couple of current top-flight
+    # clubs the original list above missed) — the ones actually missing a
+    # logo as of the last audit, not the full tier list (most of it already
+    # has a logo from an earlier run).
+    ("VfL Wolfsburg", "VfL Wolfsburg"),
+    ("Hertha BSC", "Hertha BSC"),
+    ("1.FC Nürnberg", "1. FC Nürnberg"),
+    ("Hannover 96", "Hannover 96"),
+    ("1.FC K'lautern", "1. FC Kaiserslautern"),
+    ("FC St. Pauli", "FC St. Pauli"),
+    ("Karlsruher SC", "Karlsruher SC"),
+    ("Greuther Fürth", "SpVgg Greuther Fürth"),
+    ("Arm. Bielefeld", "Arminia Bielefeld"),
+    ("F. Düsseldorf", "Fortuna Düsseldorf"),
+    ("Holstein Kiel", "Holstein Kiel"),
+    ("Darmstadt 98", "SV Darmstadt 98"),
+    ("E. Braunschweig", "Eintracht Braunschweig"),
+    ("VfL Bochum", "VfL Bochum"),
+    ("RCD Mallorca", "RCD Mallorca"),
+    ("FC Girona", "Girona FC"),
+    ("Sampdoria", "U.C. Sampdoria"),
+    ("Hellas Verona", "Hellas Verona F.C."),
+    ("US Palermo", "Palermo F.C."),
+    ("Bari", "S.S.C. Bari"),
 ]
 
 USER_AGENT = "football-tictactoe-logo-fetcher/1.0 (local hobby project; contact via repo)"
