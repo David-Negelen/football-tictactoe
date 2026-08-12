@@ -1481,7 +1481,7 @@ document.getElementById('end-share').addEventListener('click', () => {
   const daily = loadDailyState();
   const result = daily.completed[g.dailyDate];
   if (!result) return;
-  const text = `Tiki-Taka-Toe Tagesrätsel ${g.dailyDate}\n${result.correct}/9 richtig · ${daily.currentStreak} Tage Serie\n${location.origin}/`;
+  const text = `Tiki-Taka-Toe Tagesrätsel ${g.dailyDate}\n${result.correct}/9 richtig · ${daily.currentStreak} Tag${daily.currentStreak === 1 ? '' : 'e'} Serie\n${location.origin}/`;
   copyToClipboard(text);
   const btn = document.getElementById('end-share');
   btn.innerHTML = iconText('check', 'Kopiert', { size: 15 });

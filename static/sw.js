@@ -4,7 +4,7 @@
 // "/combos" and "/squad-guesser" pages — see the fetch handler below, which
 // explicitly bypasses both so this cache never touches them.
 
-const CACHE_NAME = 'ttt-shell-v63';
+const CACHE_NAME = 'ttt-shell-v64';
 const SHELL_URLS = [
   '/',
   '/static/manifest.json',
