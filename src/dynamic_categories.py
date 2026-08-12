@@ -427,8 +427,8 @@ TROPHY_FAME_TIER_1: frozenset[str] = frozenset({
 
 TROPHY_FAME_TIER_2: frozenset[str] = frozenset({
     "Deutscher Meister", "Deutscher Pokalsieger",
-    "Englischer Meister", "Englischer Pokalsieger",
-    "Englischer Ligapokalsieger", "Englischer Superpokalsieger",
+    "Englischer Meister", 
+    #"Englischer Pokalsieger","Englischer Ligapokalsieger", "Englischer Superpokalsieger",
     "Französischer Meister", "Französischer Pokalsieger",
     "Italienischer Meister", "Italienischer Pokalsieger",
     "Spanischer Meister", "Spanischer Pokalsieger",
