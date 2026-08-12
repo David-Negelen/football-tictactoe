@@ -241,13 +241,42 @@ def test_dynamic_trophy_applies_the_semantic_filter_and_legacy_ids(fixture_db_pa
             (pid, "Torschützenkönig", now),
         )
         conn.commit()
-        trophies = {t.trophy_title: t for t in build_dynamic_trophies(conn)}
+        trophies = {t.label: t for t in build_dynamic_trophies(conn)}
     finally:
         conn.close()
 
     assert "Weltmeister" in trophies
     assert trophies["Weltmeister"].id == LEGACY_TROPHY_IDS["Weltmeister"] == "trophy_world_cup"
     assert "Torschützenkönig" not in trophies  # individual award, filtered out
+
+
+def test_aliased_trophy_titles_merge_into_one_category(fixture_db_path: Path) -> None:
+    # "Europapokal-der-Landesmeister-Sieger" is the pre-1992 name for the
+    # same competition as "UEFA Champions League-Sieger" — a player who won
+    # it under the old name must still count for the (single) merged
+    # category, not fall through the cracks or produce a second category.
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        old_winner = conn.execute("SELECT id FROM players WHERE name = 'Alan Adler'").fetchone()[0]
+        new_winner = conn.execute("SELECT id FROM players WHERE name = 'Carl Cole'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO player_trophies (player_id, title, trophy_count, source_url, created_at) VALUES (?, ?, 1, NULL, ?)",
+            (old_winner, "Europapokal-der-Landesmeister-Sieger", now),
+        )
+        conn.execute(
+            "INSERT INTO player_trophies (player_id, title, trophy_count, source_url, created_at) VALUES (?, ?, 1, NULL, ?)",
+            (new_winner, "UEFA Champions League-Sieger", now),
+        )
+        conn.commit()
+        trophies = {t.label: t for t in build_dynamic_trophies(conn)}
+    finally:
+        conn.close()
+
+    assert "Europapokal-der-Landesmeister-Sieger" not in trophies  # folded into the canonical entry
+    cl = trophies["UEFA Champions League-Sieger"]
+    assert cl.check_player(old_winner, sqlite3.connect(fixture_db_path))
+    assert cl.check_player(new_winner, sqlite3.connect(fixture_db_path))
 
 
 def test_default_prominence_whitelist_excludes_an_obscure_trophy(fixture_db_path: Path) -> None:
@@ -265,7 +294,7 @@ def test_default_prominence_whitelist_excludes_an_obscure_trophy(fixture_db_path
             (pid, "Intertoto-Cup-Sieger", now),
         )
         conn.commit()
-        trophies = {t.trophy_title for t in build_dynamic_trophies(conn)}
+        trophies = {t.label for t in build_dynamic_trophies(conn)}
     finally:
         conn.close()
 
@@ -286,7 +315,7 @@ def test_trophy_difficulty_comes_from_the_fame_table_not_player_count(fixture_db
         # A single winner in the whole dataset — a rarity-based scheme would
         # call that hard. Explicitly tiering it as famous must win anyway.
         trophies = {
-            t.trophy_title: t
+            t.label: t
             for t in build_dynamic_trophies(
                 conn, prominent_titles=frozenset({"Weltmeister"}), trophy_difficulty={"Weltmeister": 1}
             )

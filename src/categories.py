@@ -203,30 +203,41 @@ class AwardCategory(Category):
 
 
 class TrophyCategory(Category):
-    """Player must have won a specific trophy title at least once."""
+    """Player must have won a specific trophy at least once. `trophy_titles`
+    accepts either one title or a list of them — Transfermarkt records
+    whichever name a competition went by when the trophy was won, so a
+    renamed competition (e.g. the European Cup becoming the Champions
+    League) is matched under any of its historical names and presented as
+    one category, rather than splitting winners across two board cells for
+    what's really the same honor."""
 
-    def __init__(self, id: str, label: str, trophy_title: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
+    def __init__(
+        self, id: str, label: str, trophy_titles: str | list[str], icon: Optional[str] = None, difficulty: int = 1
+    ) -> None:
         super().__init__(id=id, label=label, type=CategoryType.AWARD, icon=icon, difficulty=difficulty)
-        self.trophy_title = trophy_title
+        self.trophy_titles = [trophy_titles] if isinstance(trophy_titles, str) else list(trophy_titles)
+
+    def _placeholders(self) -> str:
+        return ",".join("?" * len(self.trophy_titles))
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
         row = conn.execute(
-            "SELECT 1 FROM player_trophies WHERE player_id = ? AND title = ? LIMIT 1",
-            (player_id, self.trophy_title),
+            f"SELECT 1 FROM player_trophies WHERE player_id = ? AND title IN ({self._placeholders()}) LIMIT 1",
+            (player_id, *self.trophy_titles),
         ).fetchone()
         return row is not None
 
     def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
         rows = conn.execute(
-            "SELECT DISTINCT player_id FROM player_trophies WHERE title = ?",
-            (self.trophy_title,),
+            f"SELECT DISTINCT player_id FROM player_trophies WHERE title IN ({self._placeholders()})",
+            self.trophy_titles,
         ).fetchall()
         return {row[0] for row in rows}
 
     def sql_filter(self) -> tuple[str, list]:
         return (
-            "EXISTS (SELECT 1 FROM player_trophies pt WHERE pt.player_id = p.id AND pt.title = ?)",
-            [self.trophy_title],
+            f"EXISTS (SELECT 1 FROM player_trophies pt WHERE pt.player_id = p.id AND pt.title IN ({self._placeholders()}))",
+            list(self.trophy_titles),
         )
 
 

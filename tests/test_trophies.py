@@ -70,6 +70,6 @@ def test_trophy_category_checks_player_trophies(tmp_path: Path) -> None:
         assert category.check_player(int(player_id), conn)
         assert int(player_id) in category.eligible_player_ids(conn)
         assert category.sql_filter() == (
-            "EXISTS (SELECT 1 FROM player_trophies pt WHERE pt.player_id = p.id AND pt.title = ?)",
+            "EXISTS (SELECT 1 FROM player_trophies pt WHERE pt.player_id = p.id AND pt.title IN (?))",
             ["Weltmeister"],
         )
