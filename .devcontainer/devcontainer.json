@@ -1,0 +1,36 @@
+{
+  "name": "Tiki-Taka-Toe",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  // The Dockerfile's own CMD starts gunicorn, which is right for production
+  // but would occupy the container's main process before you get a shell —
+  // override it so the container just stays up and `make run` (the Flask
+  // dev server, per the Makefile) is a deliberate step, not automatic.
+  "overrideCommand": true,
+  "forwardPorts": [5001],
+  "portsAttributes": {
+    "5001": { "label": "Tiki-Taka-Toe", "onAutoForward": "notify" }
+  },
+  "remoteEnv": {
+    // Dev-only: verbose logging locally. TRUSTED_PROXY_COUNT is
+    // deliberately left unset here — see app.py's ProxyFix comment — there's
+    // no reverse proxy in front of a local dev container, so setting it
+    // would let X-Forwarded-For spoof the rate limiter for no reason.
+    "FLASK_DEBUG": "1"
+  },
+  // Dockerfile's image already has requirements.txt installed, but the repo
+  // itself is bind-mounted live over that (not baked from the image build),
+  // so re-run on create in case requirements.txt has moved on since the
+  // image was last built.
+  "postCreateCommand": "pip install --no-cache-dir -r requirements.txt",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python3"
+      }
+    }
+  }
+}
