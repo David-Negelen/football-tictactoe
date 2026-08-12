@@ -175,17 +175,13 @@ LEGACY_TROPHY_IDS: dict[str, str] = {
 CLUB_FAME_TIER_1: frozenset[str] = frozenset({
     # Bundesliga
     "Bayern München", "Bor. Dortmund", "B. Leverkusen", "RB Leipzig",
-    "FC Schalke 04", "Hamburger SV", "E. Frankfurt", "Werder Bremen",
+    "FC Schalke 04", 
     # Premier League
     "Arsenal", "Chelsea", "Liverpool", "Man City", "Manchester Utd.",
-    "Tottenham", "Newcastle", "Aston Villa", "FC Everton",
     # La Liga
     "Real Madrid", "FC Barcelona", "Atlético Madrid", "FC Sevilla",
-    "FC Valencia", "Athletic Bilbao", "Real Sociedad", "FC Villarreal",
-    "Betis Sevilla",
     # Serie A
-    "Juventus", "Milan", "Inter", "SSC Neapel", "AS Rom", "Lazio Rom",
-    "Atalanta", "AC Florenz", "AC Parma",
+    "Juventus", "Milan", "Inter", 
     # Other Europe (from LEGACY_CLUB_IDS, no whitelisted league of their own)
     # — Paris SG stays individual: Ligue 1 has no other fame-tiered club, so
     # a one-club "league" category would be a worse, less recognizable
@@ -200,42 +196,14 @@ CLUB_FAME_TIER_1: frozenset[str] = frozenset({
 CLUB_FAME_TIER_2: frozenset[str] = frozenset({
     # Bundesliga
     "Bor. M'gladbach", "1.FC Köln", "VfL Wolfsburg", "VfB Stuttgart",
-    "SC Freiburg", "TSG Hoffenheim", "Union Berlin",
+    "Hamburger SV", "E. Frankfurt",
     # Premier League
-    "Leeds United", "Nottingham", "Crystal Palace", "AFC Sunderland",
-    "Brighton",
+    "Brighton",  "FC Everton", "Tottenham", "Newcastle", "Aston Villa",
     # La Liga
-    "Celta Vigo", "Rayo Vallecano", "Esp. Barcelona", "Dep. La Coruña",
+    "FC Valencia", "Athletic Bilbao", "Real Sociedad", "FC Villarreal",
+    "Betis Sevilla",
     # Serie A
-    "FC Turin", "FC Bologna", "Genua CFC", "Udinese",
-    # South America — Uruguay/Colombia don't have enough fame-tiered clubs
-    # of their own for a FOREIGN_LEAGUE_CATEGORIES entry (unlike Brazil/
-    # Argentina, folded into Brasilianische Serie A/Argentinische Liga
-    # above), so these stay individual.
-    "Peñarol", "Nacional", "Atl. Nacional",
-    # Africa — spans 5 different countries' leagues (Tunisia, Morocco,
-    # Egypt, South Africa, DR Congo), so there's no single "league" to
-    # group these under the way Brazil/Argentina/Saudi Arabia got one.
-    "Esperance", "Wydad AC", "Raja Casablanca", "Zamalek", "Kaizer Chiefs",
-    "Sundowns", "TP Mazembe",
-    # Asia — GZ Evergrande (China) and Jeonbuk Hyundai (South Korea) are
-    # each the only fame-tiered club in their league, same reasoning as
-    # Paris SG above; Saudi Pro League and J-League had enough (4 and 3) to
-    # become their own FOREIGN_LEAGUE_CATEGORIES entries instead.
-    "GZ Evergrande", "Jeonbuk Hyundai",
-    # Well-known 2nd-division clubs (not in the current top-flight
-    # LEAGUE_CATEGORIES rosters, so not otherwise reachable at all) — big,
-    # historically prominent names a casual fan would still recognize.
-    # 2. Bundesliga
-    "Hertha BSC", "1.FC Nürnberg", "Hannover 96", "1.FC K'lautern",
-    "FC St. Pauli", "1860 München",
-    # English Championship
-    "West Brom", "Sheffield Wed.", "Sheffield Utd.", "Middlesbrough",
-    "Stoke City", "Derby County", "FC Watford", "Norwich City",
-    # Spanish Segunda / recent La Liga risers
-    "RCD Mallorca", "FC Girona",
-    # Italian Serie B
-    "Sampdoria", "Hellas Verona", "US Palermo", "Bari",
+    "SSC Neapel", "AS Rom", "Lazio Rom", "Atalanta", "AC Florenz", "AC Parma",
 })
 
 # Every other club in the four LEAGUE_CATEGORIES leagues (category_config.py)
@@ -245,33 +213,25 @@ CLUB_FAME_TIER_2: frozenset[str] = frozenset({
 # three sets is eligible, regardless of league membership or player count.
 CLUB_FAME_TIER_3: frozenset[str] = frozenset({
     # Bundesliga
-    "FC Augsburg", "SV Elversberg", "1.FSV Mainz 05", "SC Paderborn",
+    "FC Augsburg", "1.FSV Mainz 05", "Union Berlin",  "Werder Bremen",
+    "SC Freiburg", "TSG Hoffenheim", "Hertha BSC", "1.FC Nürnberg",
+    "Hannover 96", "1.FC K'lautern", "FC St. Pauli",
     # Premier League
     "Bournemouth", "FC Brentford", "Coventry City", "FC Fulham",
-    "Hull City", "Ipswich Town",
+    "Leeds United", "Nottingham", "Crystal Palace",
     # La Liga
     "Alavés", "FC Elche", "FC Getafe", "FC Málaga", "CA Osasuna",
-    "Rac. Santander", "UD Levante",
+    "Rac. Santander", "UD Levante", "Celta Vigo", "Rayo Vallecano",
+    "Esp. Barcelona", "Dep. La Coruña", "RCD Mallorca", "FC Girona",
     # Serie A
     "Cagliari", "Como", "Frosinone", "Lecce", "Monza", "US Sassuolo",
-    "AC Venezia 1907",
+    "FC Turin", "FC Bologna", "Genua CFC", "Udinese",
+    "AC Venezia 1907", "Sampdoria", "Hellas Verona", "US Palermo", "Bari",
     # More 2nd-division clubs — still real, checkable names, just a notch
     # below CLUB_FAME_TIER_2's second-division entries above.
     # 2. Bundesliga
     "Karlsruher SC", "Greuther Fürth", "Arm. Bielefeld", "F. Düsseldorf",
     "Holstein Kiel", "Darmstadt 98", "E. Braunschweig", "VfL Bochum",
-    "MSV Duisburg", "Dynamo Dresden", "Erzgebirge Aue", "1.FC Magdeburg",
-    "VfL Osnabrück", "Hansa Rostock", "Energie Cottbus", "Alem. Aachen",
-    # English Championship
-    "QPR", "Wigan Athletic", "Millwall", "Preston NE", "Cardiff City",
-    "Swansea City", "Birmingham City", "Blackburn", "Bristol City",
-    "Luton Town", "Plymouth Argyle", "FC Portsmouth",
-    # Spanish Segunda
-    "Real Oviedo", "Sporting Gijón", "FC Cádiz", "UD Almería",
-    "UD Las Palmas", "SD Eibar", "CD Leganés", "SD Huesca",
-    # Italian Serie B
-    "Brescia", "Reggina", "Cremonese", "Perugia", "Cosenza", "AC Pisa",
-    "Catania Calcio", "Ternana", "Spezia", "Chievo Verona",
 })
 
 PROMINENT_CLUB_NAMES: set[str] = CLUB_FAME_TIER_1 | CLUB_FAME_TIER_2 | CLUB_FAME_TIER_3
@@ -330,28 +290,24 @@ NATIONALITY_DENYLIST: frozenset[str] = frozenset({
 # in tests/test_dynamic_categories.py.
 NATIONALITY_FAME_TIER_1: frozenset[str] = frozenset({
     "Deutschland", "Italien", "Spanien", "Frankreich", "England", "Niederlande",
-    "Brasilien", "Argentinien", "Schottland", "Portugal", "Belgien", "Marokko",
-    "Türkei", "Polen", "Nigeria", "Kroatien", "Dänemark", "Senegal", "Schweden",
-    "Schweiz", "Wales", "Uruguay", "Vereinigte Staaten", "Österreich", "Norwegen",
-    "Kolumbien", "Japan", "Chile", "Mexiko", "Südkorea", "Ägypten",
+    "Brasilien", "Argentinien", "Portugal", 
 })
 
 NATIONALITY_FAME_TIER_2: frozenset[str] = frozenset({
-    "Irland", "Serbien", "Ghana", "Elfenbeinküste", "Kamerun", "Algerien",
-    "Mali", "Tschechien", "Bosnien-Herzegowina", "Australien", "Nordirland",
-    "Griechenland", "Rumänien", "Ungarn", "Tunesien", "Russland", "Paraguay",
-    "Ukraine", "Kanada", "Island", "Südafrika", "Peru", "Iran", "Ecuador",
-    "Costa Rica",
+    "Belgien", "Marokko",
+    "Türkei", "Polen", "Kroatien", 
+    "Schweiz", "Österreich", "Norwegen",
 })
 
 # Real, recognizable-enough football nations that don't clear a fame tier —
 # whitelisted at the hardest difficulty rather than excluded. Add/remove a
 # country here (or to tier 1/2 above) to change what can appear at all.
 NATIONALITY_FAME_TIER_3: frozenset[str] = frozenset({
-    "DR Kongo", "Suriname", "Jamaika", "Guinea", "Albanien", "Slowenien",
-    "Bulgarien", "Slowakei", "Finnland", "Kosovo", "Angola", "Kongo",
-    "Nordmazedonien", "Montenegro", "Venezuela", "Israel", "Gabun", "Togo",
-    "Trinidad und Tobago", "Liberia", "Neuseeland",
+    "Nigeria", "Dänemark", "Senegal", "Schweden", "Uruguay",
+    "Vereinigte Staaten", "Ukraine", "Kanada", "Island",
+    "Ghana", "Elfenbeinküste", "Tschechien", "Bosnien-Herzegowina", 
+    "Griechenland", "Russland", "Kolumbien", "Japan", "Chile", "Mexiko",
+    "Südkorea", "Ägypten", "Schottland", 
 })
 
 PROMINENT_NATIONALITIES: frozenset[str] = (
