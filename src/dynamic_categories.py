@@ -223,6 +223,19 @@ CLUB_FAME_TIER_2: frozenset[str] = frozenset({
     # Paris SG above; Saudi Pro League and J-League had enough (4 and 3) to
     # become their own FOREIGN_LEAGUE_CATEGORIES entries instead.
     "GZ Evergrande", "Jeonbuk Hyundai",
+    # Well-known 2nd-division clubs (not in the current top-flight
+    # LEAGUE_CATEGORIES rosters, so not otherwise reachable at all) — big,
+    # historically prominent names a casual fan would still recognize.
+    # 2. Bundesliga
+    "Hertha BSC", "1.FC Nürnberg", "Hannover 96", "1.FC K'lautern",
+    "FC St. Pauli", "1860 München",
+    # English Championship
+    "West Brom", "Sheffield Wed.", "Sheffield Utd.", "Middlesbrough",
+    "Stoke City", "Derby County", "FC Watford", "Norwich City",
+    # Spanish Segunda / recent La Liga risers
+    "RCD Mallorca", "FC Girona",
+    # Italian Serie B
+    "Sampdoria", "Hellas Verona", "US Palermo", "Bari",
 })
 
 # Every other club in the four LEAGUE_CATEGORIES leagues (category_config.py)
@@ -242,6 +255,23 @@ CLUB_FAME_TIER_3: frozenset[str] = frozenset({
     # Serie A
     "Cagliari", "Como", "Frosinone", "Lecce", "Monza", "US Sassuolo",
     "AC Venezia 1907",
+    # More 2nd-division clubs — still real, checkable names, just a notch
+    # below CLUB_FAME_TIER_2's second-division entries above.
+    # 2. Bundesliga
+    "Karlsruher SC", "Greuther Fürth", "Arm. Bielefeld", "F. Düsseldorf",
+    "Holstein Kiel", "Darmstadt 98", "E. Braunschweig", "VfL Bochum",
+    "MSV Duisburg", "Dynamo Dresden", "Erzgebirge Aue", "1.FC Magdeburg",
+    "VfL Osnabrück", "Hansa Rostock", "Energie Cottbus", "Alem. Aachen",
+    # English Championship
+    "QPR", "Wigan Athletic", "Millwall", "Preston NE", "Cardiff City",
+    "Swansea City", "Birmingham City", "Blackburn", "Bristol City",
+    "Luton Town", "Plymouth Argyle", "FC Portsmouth",
+    # Spanish Segunda
+    "Real Oviedo", "Sporting Gijón", "FC Cádiz", "UD Almería",
+    "UD Las Palmas", "SD Eibar", "CD Leganés", "SD Huesca",
+    # Italian Serie B
+    "Brescia", "Reggina", "Cremonese", "Perugia", "Cosenza", "AC Pisa",
+    "Catania Calcio", "Ternana", "Spezia", "Chievo Verona",
 })
 
 PROMINENT_CLUB_NAMES: set[str] = CLUB_FAME_TIER_1 | CLUB_FAME_TIER_2 | CLUB_FAME_TIER_3
