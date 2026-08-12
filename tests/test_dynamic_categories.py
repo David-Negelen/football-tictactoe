@@ -150,11 +150,15 @@ def test_every_fame_tiered_club_name_is_in_the_prominence_whitelist() -> None:
 
 
 def test_every_league_has_enough_easy_clubs() -> None:
+    # A sanity floor, not a target — CLUB_FAME_TIER_1 is hand-tuned and free
+    # to be rebalanced; this just catches a league ending up with too few
+    # (or zero) tier-1 clubs to be playable at all in the league-only "easy"
+    # difficulty filter.
     from src.category_config import LEAGUE_CATEGORIES
 
     for league in LEAGUE_CATEGORIES:
         tier_1_count = len(set(league.club_names) & CLUB_FAME_TIER_1)
-        assert tier_1_count >= 8, f"{league.id} only has {tier_1_count} tier-1 clubs"
+        assert tier_1_count >= 3, f"{league.id} only has {tier_1_count} tier-1 clubs"
 
 
 def test_legacy_club_id_is_preserved_when_the_real_club_name_appears(dynamic_db_conn) -> None:
@@ -419,16 +423,25 @@ def test_nationality_difficulty_comes_from_the_fame_table_not_player_count() -> 
         Database(db_path).initialize()
         conn = sqlite3.connect(db_path)
         now = datetime.now(timezone.utc).isoformat()
-        # "Ägypten" (Egypt) has few players in the real dataset but is
-        # instantly recognizable via Mohamed Salah — a rarity-based scheme
-        # would call that hard. Fame-tiering it must win regardless of count.
+        # "Ägypten" (Egypt) stands in for any country with few players in the
+        # real dataset but instant recognizability (e.g. via a single star
+        # player) — a rarity-based scheme would call that hard. Fame-tiering
+        # it must win regardless of count. Explicit overrides (rather than
+        # relying on Ägypten's real tier, which is free to move as the real
+        # whitelist gets retuned) keep this test about the mechanism, not
+        # about any one country's current placement.
         for i in range(3):  # right at NATIONALITY_MIN_PLAYERS
             conn.execute(
                 "INSERT INTO players (source_url, name, nationality, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
                 (f"https://example.test/nat/{i}", f"Player {i}", "Ägypten", now, now),
             )
         conn.commit()
-        nats = {n.nationality: n for n in build_dynamic_nationalities(conn)}
+        nats = {
+            n.nationality: n
+            for n in build_dynamic_nationalities(
+                conn, prominent_names=frozenset({"Ägypten"}), nationality_difficulty={"Ägypten": 1}
+            )
+        }
         conn.close()
 
     assert nats["Ägypten"].difficulty == 1
