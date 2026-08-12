@@ -426,7 +426,12 @@ TROPHY_FAME_TIER_1: frozenset[str] = frozenset({
     # whitelisted.
     "UEFA Champions League-Sieger",
     "Europa-League-Sieger",
-    "FIFA-Klub-Weltmeister", "Weltpokalsieger", "FIFA Interkontinental-Pokal-Sieger",
+    # "Weltpokalsieger" (1960-2004 Intercontinental Cup) and "FIFA
+    # Interkontinental-Pokal-Sieger" (2024- revived Intercontinental Cup,
+    # after FIFA freed up the "Club World Cup" name for the new 32-team
+    # 2025+ tournament) are the same "world's best club that year" lineage
+    # as this one under its 2000s-2023 name — see TROPHY_ALIASES.
+    "FIFA-Klub-Weltmeister",
     "Copa Libertadores-Sieger",
     # Domestic league + one major cup for NATIONALITY_FAME_TIER_1's nations.
     "Argentinischer Meister", "Argentinischer Pokalsieger",
@@ -540,6 +545,8 @@ TROPHY_ALIASES: dict[str, str] = {
     "CONCACAF-Championship-Sieger": "Gold-Cup-Sieger",
     "CONCACAF-Champions-Cup-Sieger": "CONCACAF-Champions-League-Sieger",
     "Ukrainischer Meister ": "Ukrainischer Meister",  # trailing-space scrape variant
+    "Weltpokalsieger": "FIFA-Klub-Weltmeister",
+    "FIFA Interkontinental-Pokal-Sieger": "FIFA-Klub-Weltmeister",
 }
 
 
