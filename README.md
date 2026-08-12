@@ -71,6 +71,16 @@ independently of app code) — mount it as a volume, or copy it in after the
 container starts. `FLASK_DEBUG` defaults to off; only set it to `1` for local
 debugging, never in production.
 
+**Once there's a real reverse proxy/load balancer in front of this**
+(nginx, Caddy, a PaaS's edge LB — needed for a real domain + HTTPS), set
+`TRUSTED_PROXY_COUNT=1` in the container's environment (or however many
+proxies actually sit in front of it — usually 1). This tells the app to
+trust that proxy's `X-Forwarded-For` header when doing per-IP rate
+limiting, so every user gets their own limit instead of everyone sharing
+the proxy's IP. Leave it unset (the default) for anything without a
+trusted proxy in front — setting it with no real proxy there would let any
+client spoof their IP via that header and dodge rate limits entirely.
+
 CI (`.github/workflows/ci.yml`) runs the test suite and a Docker build check
 on every push/PR to `main`.
 

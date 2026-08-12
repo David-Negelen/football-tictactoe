@@ -30,6 +30,27 @@ DB_PATH = os.path.join(BASE_DIR, "data", "tictactoe.db")
 
 app = Flask(__name__)
 
+# Rate limiting below keys off request.remote_addr — accurate only for a
+# direct connection. Once this app sits behind a real reverse proxy/load
+# balancer, request.remote_addr becomes the proxy's own IP for every
+# request unless something explicitly trusts that proxy's X-Forwarded-For
+# header. ProxyFix does that — but blindly trusting X-Forwarded-For with no
+# real proxy in front would let any client just set that header themselves
+# to spoof a different IP and dodge rate limits entirely, so this stays off
+# by default and only activates when TRUSTED_PROXY_COUNT is explicitly set
+# (in the deployment's environment, not committed here) to the number of
+# proxies actually sitting in front of this process — usually 1 for a
+# single nginx/Caddy/PaaS edge load balancer. Sets x_proto/x_host too so
+# request.scheme/request.host come out right behind HTTPS-terminating
+# proxies, even though nothing here reads them yet.
+_trusted_proxy_count = int(os.environ.get("TRUSTED_PROXY_COUNT", "0"))
+if _trusted_proxy_count > 0:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(  # type: ignore[method-assign]
+        app.wsgi_app, x_for=_trusted_proxy_count, x_proto=_trusted_proxy_count, x_host=_trusted_proxy_count
+    )
+
 # Plain stdout/stderr logging — gunicorn (see Dockerfile's --access-logfile/
 # --error-logfile) and `docker logs`/journald/etc. already capture whatever
 # a process prints, so there's no separate log-shipping setup to stand up
@@ -49,13 +70,9 @@ logging.basicConfig(
 # gunicorn worker would keep its own, disjoint set of counters, letting a
 # client bypass a limit just by getting routed to a different worker.
 #
-# Keyed by get_remote_address, i.e. request.remote_addr — accurate for a
-# direct connection, but this app isn't deployed behind a reverse proxy yet
-# (see README's Deployment section); once it is, request.remote_addr will
-# just be the proxy's own IP for every request unless that proxy's specific
-# forwarding header is explicitly trusted (e.g. via ProxyFix), so revisit
-# this when that's actually set up rather than trusting X-Forwarded-For
-# blindly now with no proxy in front to have set it.
+# Keyed by get_remote_address, i.e. request.remote_addr — see the
+# TRUSTED_PROXY_COUNT/ProxyFix block above for why that's only the real
+# client IP once a trusted reverse proxy is actually in front of this.
 #
 # default_limits is the floor for every route below that doesn't declare its
 # own @limiter.limit(...) — the handful of routes that do are either
