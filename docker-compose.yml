@@ -1,0 +1,52 @@
+# Production deploy: app + Caddy (reverse proxy / automatic HTTPS) + Umami (analytics).
+# Usage on the server: copy this repo + a real .env, then `docker compose up -d`.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      TRUSTED_PROXY_COUNT: "1"
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "5001"
+
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD}@umami-db:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET}
+    depends_on:
+      - umami-db
+    expose:
+      - "3000"
+
+  umami-db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD}
+    volumes:
+      - umami_db_data:/var/lib/postgresql/data
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+      - umami
+
+volumes:
+  umami_db_data:
+  caddy_data:
+  caddy_config:

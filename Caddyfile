@@ -1,0 +1,11 @@
+# Replace both domains below with your real ones, then `docker compose up -d`.
+# Caddy fetches and renews Let's Encrypt certs automatically for whatever
+# domain(s) it sees here — no manual TLS setup needed.
+
+yourdomain.com {
+    reverse_proxy app:5001
+}
+
+analytics.yourdomain.com {
+    reverse_proxy umami:3000
+}
