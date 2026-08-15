@@ -307,6 +307,12 @@ def _cat_display(cat) -> dict:
         letter = getattr(cat, "letter", None) or (cat.label[-1] if cat.label else "?")
         display["icon_letter"] = letter.upper()
         display["icon_color"] = _club_badge_color(cat.id)
+    elif cat.type == CategoryType.TEAMMATE:
+        # No player-photo field exists anywhere in the dataset (see
+        # src/db.py's players schema) — same "no real per-entity image"
+        # situation as AGE/MARKET_VALUE/AWARD above, so this falls back to
+        # a shared line icon rather than a per-anchor image.
+        display["icon"] = "users"
     # Any other type (there isn't one today — every CategoryType is handled
     # above) gets no icon key at all; the client's own fallback (a plain SVG
     # ball, see categoryIconHtml in game.js) takes over.
@@ -344,6 +350,14 @@ GENERAL_EXTRA_CLUBS = 1
 # trophies (~490 of ~620 broad categories) would otherwise dominate random
 # sampling by sheer count.
 GENERAL_MAX_AWARD = 1
+
+# Same reasoning as GENERAL_MAX_AWARD, applied to TEAMMATE ("played with
+# X") categories: "played for this club AND was a teammate of this one
+# specific famous player" is just as narrow/hyper-specific a fact as a
+# trophy pairing, so it gets its own independent cap rather than sharing
+# AWARD's budget (a puzzle could otherwise land one trophy cell and one
+# teammate cell, still narrow overall).
+GENERAL_MAX_TEAMMATE = 1
 
 # League-scoped puzzles (see _resolve_pool/LEAGUE_POOLS): the whole point of
 # picking a league is to see that league's own clubs. Unlike the general
@@ -448,19 +462,28 @@ def _sample_general_puzzle_categories(
     # a fair hard question).
     n_broad_slots = 3 - GENERAL_EXTRA_CLUBS
     award_candidates = [c for c in candidate_broad if c.type == CategoryType.AWARD]
-    other_candidates = [c for c in candidate_broad if c.type != CategoryType.AWARD]
+    teammate_candidates = [c for c in candidate_broad if c.type == CategoryType.TEAMMATE]
+    other_candidates = [c for c in candidate_broad if c.type not in (CategoryType.AWARD, CategoryType.TEAMMATE)]
     max_award = min(GENERAL_MAX_AWARD, len(award_candidates))
     n_award = rng.randint(0, max_award) if max_award > 0 else 0
-    # Capped at GENERAL_MAX_AWARD unconditionally — never topped up beyond
-    # it even if other_candidates falls short of filling the remaining
-    # slots (that shortfall means this club triple just doesn't have enough
-    # valid categories under the cap; return None and let the caller retry
-    # with a fresh club triple instead of silently exceeding the cap).
-    n_other = min(len(other_candidates), n_broad_slots - n_award)
-    if n_award + n_other < n_broad_slots:
+    max_teammate = min(GENERAL_MAX_TEAMMATE, len(teammate_candidates), n_broad_slots - n_award)
+    n_teammate = rng.randint(0, max_teammate) if max_teammate > 0 else 0
+    # Capped at GENERAL_MAX_AWARD/GENERAL_MAX_TEAMMATE unconditionally —
+    # never topped up beyond either even if other_candidates falls short of
+    # filling the remaining slots (that shortfall means this club triple
+    # just doesn't have enough valid categories under the caps; return None
+    # and let the caller retry with a fresh club triple instead of silently
+    # exceeding a cap).
+    n_other = min(len(other_candidates), n_broad_slots - n_award - n_teammate)
+    if n_award + n_teammate + n_other < n_broad_slots:
         return None
 
-    chosen_broad = extra_clubs + rng.sample(award_candidates, n_award) + rng.sample(other_candidates, n_other)
+    chosen_broad = (
+        extra_clubs
+        + rng.sample(award_candidates, n_award)
+        + rng.sample(teammate_candidates, n_teammate)
+        + rng.sample(other_candidates, n_other)
+    )
     rng.shuffle(chosen_clubs)
     rng.shuffle(chosen_broad)
     return (chosen_clubs, chosen_broad) if rng.random() < 0.5 else (chosen_broad, chosen_clubs)
@@ -484,7 +507,14 @@ def _sample_league_puzzle_categories(league_clubs: list, broad: list, n_clubs_ta
     exclusion: at most 3 broad slots exist per puzzle (LEAGUE_CLUB_LAYOUTS'
     floor of 3 clubs), the trophy group is kept whole on one side (below) so
     trophy x trophy cells never occur, and the caller's bounds check + retry
-    loop rejects any sample that comes out too thin anyway.
+    loop rejects any sample that comes out too thin anyway. TEAMMATE
+    categories carry the same (in fact sharper) thinness risk once wrapped
+    in LeagueScopedCategory — "was a teammate of this one specific player"
+    AND "was a teammate of that other specific player" AND "played in this
+    league" starts from an already-small pool and intersects it twice —
+    confirmed empirically: Bundesliga generation failed ~3/8 attempts with
+    two TEAMMATE categories landing on opposite sides, 0/8 once grouped the
+    same way as nat/trophy below.
     """
     n_clubs = min(n_clubs_target, len(league_clubs))
     if n_clubs <= 0:
@@ -500,19 +530,20 @@ def _sample_league_puzzle_categories(league_clubs: list, broad: list, n_clubs_ta
     chosen_broad = rng.sample(broad, n_broad)
     nat = [c for c in chosen_broad if c.type == CategoryType.NATIONALITY]
     award = [c for c in chosen_broad if c.type == CategoryType.AWARD]
-    other = [c for c in chosen_broad if c.type not in (CategoryType.NATIONALITY, CategoryType.AWARD)]
+    teammate = [c for c in chosen_broad if c.type == CategoryType.TEAMMATE]
+    other = [c for c in chosen_broad if c.type not in (CategoryType.NATIONALITY, CategoryType.AWARD, CategoryType.TEAMMATE)]
 
-    # Clubs and non-nationality/non-trophy categories can be placed
-    # individually (a club x club or club x nationality cell is a normal,
-    # fine question); the nationality and trophy groups, if they have more
-    # than one member, must each stay whole on one side, unlike the general
-    # pool's _sample_general_puzzle_categories (which needs no such grouping
-    # at all — see its docstring for why).
+    # Clubs and non-nationality/non-trophy/non-teammate categories can be
+    # placed individually (a club x club or club x nationality cell is a
+    # normal, fine question); the nationality/trophy/teammate groups, if
+    # they have more than one member, must each stay whole on one side,
+    # unlike the general pool's _sample_general_puzzle_categories (which
+    # needs no such grouping at all — see its docstring for why).
     singles = chosen_clubs + other
     rng.shuffle(singles)
     side_a: list = []
     side_b: list = []
-    for group in (nat, award, *([c] for c in singles)):
+    for group in (nat, award, teammate, *([c] for c in singles)):
         (side_a if len(side_a) + len(group) <= 3 else side_b).extend(group)
 
     rng.shuffle(side_a)

@@ -27,7 +27,15 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass, field
 
-from .categories import Category, ClubCategory, NationalityCategory, TrophyCategory
+from .categories import (
+    Category,
+    ClubCategory,
+    NationalityCategory,
+    TeammateCategory,
+    TrophyCategory,
+    _season_year_sql,
+    strip_jersey_prefix,
+)
 from .countries import COUNTRY_BY_NAME, parse_nationality_tokens
 from .trophy_rules import classify_trophy_title
 
@@ -496,14 +504,122 @@ def build_dynamic_trophies(
     return categories
 
 
+# The player-fame gate for "played with X" anchors reuses the trophy-
+# prominence signal above (PROMINENT_TROPHY_TITLES) rather than a new
+# hand-curated "famous players" list, which would duplicate exactly what
+# this file already exists to avoid (see module docstring). market_value
+# doesn't work as a fame signal here — it's NULL for most retired legends
+# in the real dataset (Zidane, Maldini, Beckenbauer all NULL).
+TEAMMATE_MIN_ANCHOR_TROPHIES = 3   # 879 candidate anchors in the real dataset
+
+# Bare viability floor — same idea as CLUB_MIN_PLAYERS: a teammate pool of
+# 1-4 players is too thin to be a fair puzzle no matter how famous the
+# anchor is.
+TEAMMATE_MIN_PLAYERS = 5
+
+# Difficulty tiers derived from prominent-trophy count, mirroring
+# CLUB_FAME_TIER_1/2/3's hand-picked-threshold approach (thresholds picked
+# against the real dataset: ~68 anchors at tier 1, ~301 more at tier 2,
+# the remaining ~510 at tier 3).
+TEAMMATE_FAME_TIER_1_MIN = 6
+TEAMMATE_FAME_TIER_2_MIN = 4
+
+
+def _teammate_difficulty(prominent_trophy_count: int) -> int:
+    if prominent_trophy_count >= TEAMMATE_FAME_TIER_1_MIN:
+        return 1
+    if prominent_trophy_count >= TEAMMATE_FAME_TIER_2_MIN:
+        return 2
+    return 3
+
+
+def build_dynamic_teammates(
+    conn: sqlite3.Connection,
+    prominent_trophy_titles: frozenset[str] = PROMINENT_TROPHY_TITLES,
+    overlap_club_names: frozenset[str] = PROMINENT_CLUB_NAMES,
+    min_anchor_trophies: int = TEAMMATE_MIN_ANCHOR_TROPHIES,
+    min_players: int = TEAMMATE_MIN_PLAYERS,
+) -> list[TeammateCategory]:
+    """One TeammateCategory per anchor player famous enough (>= min_anchor_trophies
+    prominent trophy wins) to make "played with X" a recognizable category,
+    with a real enough teammate pool (>= min_players) to be a fair puzzle
+    cell. Pool size is computed with a single batched query across all
+    candidate anchors (not one query per anchor) — a naive per-anchor
+    self-join against the full career_stints table (548k rows) measured
+    ~12s at startup for 879 anchors; pre-filtering to just the
+    prominent-club rows (~70k) into a temp table with the season->year
+    conversion precomputed once brings the whole thing under 1.5s.
+    """
+    if not prominent_trophy_titles:
+        return []
+    ph_tr = ",".join("?" * len(prominent_trophy_titles))
+    anchor_rows = conn.execute(
+        f"SELECT player_id, COUNT(*) AS n FROM player_trophies "
+        f"WHERE title IN ({ph_tr}) GROUP BY player_id HAVING n >= ?",
+        [*prominent_trophy_titles, min_anchor_trophies],
+    ).fetchall()
+    if not anchor_rows:
+        return []
+    anchor_trophy_count = {pid: n for pid, n in anchor_rows}
+    anchor_ids = list(anchor_trophy_count)
+
+    ph_club = ",".join("?" * len(overlap_club_names))
+    conn.execute("DROP TABLE IF EXISTS temp.teammate_pool_stints")
+    conn.execute(
+        f"CREATE TEMP TABLE teammate_pool_stints AS "
+        f"SELECT player_id, club_name, "
+        f"({_season_year_sql('start_season')}) AS start_year, "
+        f"({_season_year_sql('end_season')}) AS end_year "
+        f"FROM career_stints WHERE club_name IN ({ph_club})",
+        list(overlap_club_names),
+    )
+    conn.execute("CREATE INDEX idx_teammate_pool_stints_club ON teammate_pool_stints(club_name)")
+
+    overlap = (
+        "((a.start_year IS NULL) OR (cs.end_year IS NULL) OR (a.start_year <= cs.end_year)) "
+        "AND ((cs.start_year IS NULL) OR (a.end_year IS NULL) OR (cs.start_year <= a.end_year))"
+    )
+    ph_anchor = ",".join("?" * len(anchor_ids))
+    pool_rows = conn.execute(
+        f"SELECT a.player_id, COUNT(DISTINCT cs.player_id) FROM teammate_pool_stints a "
+        f"JOIN teammate_pool_stints cs ON cs.club_name = a.club_name AND cs.player_id != a.player_id AND {overlap} "
+        f"WHERE a.player_id IN ({ph_anchor}) GROUP BY a.player_id",
+        anchor_ids,
+    ).fetchall()
+    conn.execute("DROP TABLE teammate_pool_stints")
+
+    pool_size = dict(pool_rows)
+    eligible_ids = [pid for pid in anchor_ids if pool_size.get(pid, 0) >= min_players]
+    if not eligible_ids:
+        return []
+
+    ph_p = ",".join("?" * len(eligible_ids))
+    rows = conn.execute(
+        f"SELECT id, name, source_url FROM players WHERE id IN ({ph_p})", eligible_ids
+    ).fetchall()
+
+    categories = []
+    for pid, raw_name, source_url in rows:
+        name = strip_jersey_prefix(raw_name)
+        difficulty = _teammate_difficulty(anchor_trophy_count[pid])
+        # Keyed on source_url (unique, stable identity string) rather than
+        # the local autoincrement players.id, which can shift across a DB
+        # rebuild/rescrape.
+        cat_id = _stable_id("teammate", source_url or f"{pid}:{name}")
+        label = f"Mit {name} gespielt"
+        categories.append(TeammateCategory(cat_id, label, pid, overlap_club_names, difficulty=difficulty))
+    return categories
+
+
 @dataclass
 class DynamicCatalog:
     clubs: list[ClubCategory] = field(default_factory=list)
     nationalities: list[NationalityCategory] = field(default_factory=list)
     trophies: list[TrophyCategory] = field(default_factory=list)
+    teammates: list[TeammateCategory] = field(default_factory=list)
 
     def all(self) -> list[Category]:
-        return [*self.clubs, *self.nationalities, *self.trophies]
+        return [*self.clubs, *self.nationalities, *self.trophies, *self.teammates]
 
 
 def build_all(conn: sqlite3.Connection) -> DynamicCatalog:
@@ -511,6 +627,7 @@ def build_all(conn: sqlite3.Connection) -> DynamicCatalog:
         clubs=build_dynamic_clubs(conn),
         nationalities=build_dynamic_nationalities(conn),
         trophies=build_dynamic_trophies(conn),
+        teammates=build_dynamic_teammates(conn),
     )
 
 

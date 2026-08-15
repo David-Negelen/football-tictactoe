@@ -16,6 +16,7 @@ class CategoryType(str, Enum):
     CONTAINS_LETTER = "contains_letter"
     AGE = "age"
     MARKET_VALUE = "market_value"
+    TEAMMATE = "teammate"
 
 
 class Category:
@@ -148,6 +149,13 @@ class PositionCategory(Category):
         return "p.position LIKE ?", [f"{self.position_prefix}%"]
 
 
+def strip_jersey_prefix(name: str) -> str:
+    """Remove leading jersey-number prefix like '#16 ' from a DB player name."""
+    if name.startswith("#") and " " in name:
+        return name.split(" ", 1)[1]
+    return name
+
+
 class AwardCategory(Category):
     """Player must appear in a manually maintained list of award winners.
 
@@ -164,10 +172,7 @@ class AwardCategory(Category):
 
     @staticmethod
     def _strip_prefix(name: str) -> str:
-        """Remove leading jersey-number prefix like '#16 ' from a DB player name."""
-        if name.startswith("#") and " " in name:
-            return name.split(" ", 1)[1]
-        return name
+        return strip_jersey_prefix(name)
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
         row = conn.execute("SELECT name FROM players WHERE id = ?", (player_id,)).fetchone()
@@ -301,6 +306,103 @@ class ContinentCategory(Category):
             f"EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name IN ({self._ph()}))",
             list(self.club_names),
         )
+
+
+def _season_year_sql(col: str) -> str:
+    """SQL expression converting a career_stints season-string column
+    ('XX/XX', or for a handful of real pre-1930 rows 'XXXX/XX') into a
+    comparable year integer. Two-digit seasons are disambiguated with a
+    pivot at 30 ('00'-'29' -> 2000-2029, '30'-'99' -> 1930-1999) — matching
+    the scraped data's own convention of switching to an explicit 4-digit
+    year for anything before 1930. Returns NULL when the column is NULL
+    (an open-ended stint — see _stints_overlap_sql)."""
+    return (
+        "CASE "
+        f"WHEN {col} IS NULL THEN NULL "
+        f"WHEN LENGTH({col}) = 7 THEN CAST(SUBSTR({col}, 1, 4) AS INTEGER) "
+        f"WHEN CAST(SUBSTR({col}, 1, 2) AS INTEGER) <= 29 THEN 2000 + CAST(SUBSTR({col}, 1, 2) AS INTEGER) "
+        f"ELSE 1900 + CAST(SUBSTR({col}, 1, 2) AS INTEGER) "
+        "END"
+    )
+
+
+def _stints_overlap_sql(a_start: str, a_end: str, b_start: str, b_end: str) -> str:
+    """Boolean SQL: do two career_stints rows (already known to share a
+    club_name) overlap in time? A NULL start_season means "earliest known
+    stint, unbounded early"; a NULL end_season means "still ongoing,
+    unbounded late" (confirmed against the real dataset — e.g. Messi's
+    Inter Miami row has end_season NULL) — so NULLs widen the interval
+    rather than excluding the row."""
+    a_s, a_e = _season_year_sql(a_start), _season_year_sql(a_end)
+    b_s, b_e = _season_year_sql(b_start), _season_year_sql(b_end)
+    return (
+        f"(({a_start} IS NULL) OR ({b_end} IS NULL) OR (({a_s}) <= ({b_e}))) "
+        f"AND (({b_start} IS NULL) OR ({a_end} IS NULL) OR (({b_s}) <= ({a_e})))"
+    )
+
+
+class TeammateCategory(Category):
+    """Player must have overlapped in time (by season) with a fixed anchor
+    player at the same club. Overlap matching is restricted to
+    `overlap_club_names` (dynamic_categories.PROMINENT_CLUB_NAMES in
+    practice — the same whitelist ClubCategory draws from) — mandatory
+    here, not just a fame nicety: career_stints.club_name also carries
+    placeholder values like "Karriereende" (27k+ rows) that would otherwise
+    make any two unrelated retired players sharing that non-club "club" in
+    the same season register as having "played together"."""
+
+    def __init__(self, id: str, label: str, anchor_player_id: int, overlap_club_names,
+                 icon: Optional[str] = None, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.TEAMMATE, icon=icon, difficulty=difficulty)
+        self.anchor_player_id = anchor_player_id
+        self.overlap_club_names = list(overlap_club_names)
+
+    def _club_ph(self) -> str:
+        return ",".join("?" * len(self.overlap_club_names))
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        if player_id == self.anchor_player_id:
+            return False
+        overlap = _stints_overlap_sql("a.start_season", "a.end_season", "cs.start_season", "cs.end_season")
+        row = conn.execute(
+            f"""
+            SELECT 1
+            FROM career_stints cs
+            JOIN career_stints a ON a.club_name = cs.club_name AND a.player_id = ?
+            WHERE cs.player_id = ?
+              AND cs.club_name IN ({self._club_ph()})
+              AND {overlap}
+            LIMIT 1
+            """,
+            [self.anchor_player_id, player_id, *self.overlap_club_names],
+        ).fetchone()
+        return row is not None
+
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        overlap = _stints_overlap_sql("a.start_season", "a.end_season", "cs.start_season", "cs.end_season")
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT cs.player_id
+            FROM career_stints cs
+            JOIN career_stints a ON a.club_name = cs.club_name AND a.player_id = ?
+            WHERE cs.player_id != ?
+              AND cs.club_name IN ({self._club_ph()})
+              AND {overlap}
+            """,
+            [self.anchor_player_id, self.anchor_player_id, *self.overlap_club_names],
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        overlap = _stints_overlap_sql("a.start_season", "a.end_season", "cs.start_season", "cs.end_season")
+        sql = (
+            f"p.id != ? AND EXISTS ("
+            f"SELECT 1 FROM career_stints cs "
+            f"JOIN career_stints a ON a.club_name = cs.club_name AND a.player_id = ? "
+            f"WHERE cs.player_id = p.id AND cs.club_name IN ({self._club_ph()}) AND {overlap}"
+            f")"
+        )
+        return sql, [self.anchor_player_id, self.anchor_player_id, *self.overlap_club_names]
 
 
 # SQL expression to strip the "#<number> " jersey prefix and return the bare name.
