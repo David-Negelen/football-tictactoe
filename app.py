@@ -137,6 +137,13 @@ def get_db() -> sqlite3.Connection:
 _startup_conn = get_db()
 try:
     _dynamic_catalog = dynamic_categories.build_all(_startup_conn)
+    # Per-league "played with X" anchors (players famous mainly to that
+    # league's own fans, e.g. Bundesliga's Kahn/Ballack) — built separately
+    # from build_all() since they're deliberately excluded from the general
+    # catalog below (see build_dynamic_league_teammates/build_league_pools).
+    _league_teammates = dynamic_categories.build_dynamic_league_teammates(
+        _startup_conn, category_config.LEAGUE_CATEGORIES
+    )
 finally:
     _startup_conn.close()
 
@@ -147,7 +154,7 @@ CATEGORY_BY_ID: dict = {cat.id: cat for cat in ALL_CATEGORIES}
 # game modes (Bundesliga/Premier League/La Liga/Serie A — the only
 # leagues with a hand-curated club list, see category_config.LEAGUE_CATEGORIES).
 LEAGUE_POOLS: dict = dynamic_categories.build_league_pools(
-    category_config.LEAGUE_CATEGORIES, ALL_CATEGORIES, _dynamic_catalog
+    category_config.LEAGUE_CATEGORIES, ALL_CATEGORIES, _dynamic_catalog, _league_teammates
 )
 # /api/game/validate and /api/game/solve look categories up by id from
 # whatever the client submits — for a league-mode puzzle that includes the

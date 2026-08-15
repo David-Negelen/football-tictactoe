@@ -567,6 +567,7 @@ def build_dynamic_teammates(
     prominent_trophy_titles: frozenset[str] = PROMINENT_TROPHY_TITLES,
     overlap_club_names: frozenset[str] = PROMINENT_CLUB_NAMES,
     min_players: int = TEAMMATE_MIN_PLAYERS,
+    id_prefix: str = "teammate",
 ) -> list[TeammateCategory]:
     """One TeammateCategory per anchor player in `anchor_urls` (matched on
     players.source_url — see TEAMMATE_ANCHOR_SOURCE_URLS for why not name)
@@ -644,10 +645,91 @@ def build_dynamic_teammates(
         # Keyed on source_url (unique, stable identity string) rather than
         # the local autoincrement players.id, which can shift across a DB
         # rebuild/rescrape.
-        cat_id = _stable_id("teammate", source_url or f"{pid}:{name}")
+        cat_id = _stable_id(id_prefix, source_url or f"{pid}:{name}")
         label = f"Mit {name} gespielt"
         categories.append(TeammateCategory(cat_id, label, pid, overlap_club_names, difficulty=difficulty))
     return categories
+
+
+# Per-league "played with X" anchors — players famous mainly to that
+# league's own fans rather than globally (TEAMMATE_ANCHOR_SOURCE_URLS
+# above), so this whole category only makes sense scoped to that league's
+# own puzzles: see build_dynamic_league_teammates/build_league_pools for
+# how visibility is restricted, and note overlap_club_names there is the
+# league's own club list, not the global PROMINENT_CLUB_NAMES — a "played
+# with Kahn" match should require the overlap to have actually happened
+# at a Bundesliga club, not anywhere in Kahn's career. Same source_url
+# rationale as the global whitelist (name matching is unsafe — see there).
+TEAMMATE_ANCHOR_SOURCE_URLS_BY_LEAGUE: dict[str, dict[str, str]] = {
+    "league_buli": {
+        "Oliver Kahn": "https://www.transfermarkt.de/oliver-kahn/profil/spieler/206",
+        "Michael Ballack": "https://www.transfermarkt.de/michael-ballack/profil/spieler/63",
+        "Franck Ribéry": "https://www.transfermarkt.de/franck-ribery/profil/spieler/22068",
+        "Miroslav Klose": "https://www.transfermarkt.de/miroslav-klose/profil/spieler/10",
+        "Robert Lewandowski": "https://www.transfermarkt.de/robert-lewandowski/profil/spieler/38253",
+        "Bastian Schweinsteiger": "https://www.transfermarkt.de/bastian-schweinsteiger/profil/spieler/2514",
+        "Mario Götze": "https://www.transfermarkt.de/mario-gotze/profil/spieler/74842",
+        "Manuel Neuer": "https://www.transfermarkt.de/manuel-neuer/profil/spieler/17259",
+    },
+    "league_pl": {
+        "Wayne Rooney": "https://www.transfermarkt.de/wayne-rooney/profil/spieler/3332",
+        "Steven Gerrard": "https://www.transfermarkt.de/steven-gerrard/profil/spieler/3109",
+        "Didier Drogba": "https://www.transfermarkt.de/didier-drogba/profil/spieler/3924",
+        "Sergio Agüero": "https://www.transfermarkt.de/sergio-aguero/profil/spieler/26399",
+        "Harry Kane": "https://www.transfermarkt.de/harry-kane/profil/spieler/132098",
+        "John Terry": "https://www.transfermarkt.de/john-terry/profil/spieler/3160",
+        "Frank Lampard": "https://www.transfermarkt.de/frank-lampard/profil/spieler/3163",
+    },
+    "league_laliga": {
+        "Sergio Ramos": "https://www.transfermarkt.de/sergio-ramos/profil/spieler/25557",
+        "Xavi": "https://www.transfermarkt.de/xavi/profil/spieler/7607",
+        "Andrés Iniesta": "https://www.transfermarkt.de/andres-iniesta/profil/spieler/7600",
+        "Karim Benzema": "https://www.transfermarkt.de/karim-benzema/profil/spieler/18922",
+        "Raúl": "https://www.transfermarkt.de/raul/profil/spieler/7349",
+        "Sergio Busquets": "https://www.transfermarkt.de/sergio-busquets/profil/spieler/65230",
+    },
+    "league_seriea": {
+        "Francesco Totti": "https://www.transfermarkt.de/francesco-totti/profil/spieler/5958",
+        "Alessandro Del Piero": "https://www.transfermarkt.de/alessandro-del-piero/profil/spieler/4289",
+        "Paolo Maldini": "https://www.transfermarkt.de/paolo-maldini/profil/spieler/5803",
+        "Andrea Pirlo": "https://www.transfermarkt.de/andrea-pirlo/profil/spieler/5817",
+        "Gianluigi Buffon": "https://www.transfermarkt.de/gianluigi-buffon/profil/spieler/5023",
+        "Zlatan Ibrahimović": "https://www.transfermarkt.de/zlatan-ibrahimovic/profil/spieler/3455",
+    },
+}
+
+
+def build_dynamic_league_teammates(
+    conn: sqlite3.Connection,
+    league_categories: list,
+    anchor_urls_by_league: dict[str, dict[str, str]] = TEAMMATE_ANCHOR_SOURCE_URLS_BY_LEAGUE,
+    prominent_trophy_titles: frozenset[str] = PROMINENT_TROPHY_TITLES,
+    min_players: int = TEAMMATE_MIN_PLAYERS,
+) -> dict[str, list[TeammateCategory]]:
+    """League id -> that league's own "played with X" categories, built with
+    the league's own club list as overlap_club_names (not the global
+    PROMINENT_CLUB_NAMES — see TEAMMATE_ANCHOR_SOURCE_URLS_BY_LEAGUE).
+    `id_prefix` is namespaced per league so a player who happened to appear
+    as an anchor in more than one league's whitelist wouldn't collide on
+    category id (doesn't happen with the current lists, but isn't assumed).
+    Returned separately from DynamicCatalog.all() — these are meant to
+    populate a league's own LEAGUE_POOLS entry only, never the general/
+    unscoped catalog (see build_league_pools).
+    """
+    result: dict[str, list[TeammateCategory]] = {}
+    for league in league_categories:
+        urls = anchor_urls_by_league.get(league.id)
+        if not urls:
+            continue
+        result[league.id] = build_dynamic_teammates(
+            conn,
+            anchor_urls=frozenset(urls.values()),
+            prominent_trophy_titles=prominent_trophy_titles,
+            overlap_club_names=frozenset(league.club_names),
+            min_players=min_players,
+            id_prefix=f"teammate_{league.id}",
+        )
+    return result
 
 
 @dataclass
@@ -670,7 +752,12 @@ def build_all(conn: sqlite3.Connection) -> DynamicCatalog:
     )
 
 
-def build_league_pools(league_categories: list, all_categories: list[Category], catalog: DynamicCatalog) -> dict[str, list[Category]]:
+def build_league_pools(
+    league_categories: list,
+    all_categories: list[Category],
+    catalog: DynamicCatalog,
+    league_teammates: dict[str, list[Category]] | None = None,
+) -> dict[str, list[Category]]:
     """League id -> a category pool scoped to that league, for league-only
     game modes. Clubs are filtered to the league's own (small, curated) club
     list directly — no wrapping needed. Every other type gets wrapped in
@@ -681,9 +768,18 @@ def build_league_pools(league_categories: list, all_categories: list[Category], 
     benefit): a wrapped category with too few real answers just fails the
     puzzle-generator's existing bounds check and gets retried, the same way
     it already handles the full ~7,000-category unscoped pool.
+
+    `league_teammates` (see build_dynamic_league_teammates) adds each
+    league's own "played with X" anchors on top, unwrapped — those are
+    already computed with that league's own club list as overlap_club_names,
+    so wrapping them again with LeagueScopedCategory would be redundant, and
+    they're deliberately absent from `all_categories`/the general pool (a
+    Bundesliga-only legend has no business anchoring a category in "Alle
+    Ligen" mode or another league's puzzles).
     """
     from .categories import CategoryType, LeagueScopedCategory
 
+    league_teammates = league_teammates or {}
     pools: dict[str, list[Category]] = {}
     for league in league_categories:
         club_names = set(league.club_names)
@@ -693,5 +789,5 @@ def build_league_pools(league_categories: list, all_categories: list[Category], 
             for cat in all_categories
             if cat.type not in (CategoryType.CLUB, CategoryType.LEAGUE, CategoryType.CONTINENT)
         ]
-        pools[league.id] = league_clubs + wrapped
+        pools[league.id] = league_clubs + wrapped + league_teammates.get(league.id, [])
     return pools

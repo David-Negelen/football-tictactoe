@@ -24,6 +24,7 @@ from src.dynamic_categories import (
     TROPHY_FAME_TIER_1,
     TROPHY_FAME_TIER_2,
     build_dynamic_clubs,
+    build_dynamic_league_teammates,
     build_dynamic_nationalities,
     build_dynamic_teammates,
     build_dynamic_trophies,
@@ -519,6 +520,81 @@ def test_league_pools_scope_clubs_to_the_leagues_own_club_list(dynamic_db_conn) 
     pools = build_league_pools([league], catalog.clubs, catalog)
     pool_club_names = {c.club_name for c in pools["league_test"] if hasattr(c, "club_name")}
     assert pool_club_names == {"Bayern München"}  # Testville FC etc. excluded — not in this league
+
+
+def test_build_dynamic_league_teammates_scopes_overlap_to_the_leagues_own_clubs(fixture_db_path: Path) -> None:
+    from src.categories import LeagueCategory
+
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        # Alan Adler and Bella Bauer overlap at TEAMMATE_TEST_CLUB (in the
+        # league) — real teammates. Carl Cole only overlaps Alan at
+        # "Karriereende" (not a league club) — must NOT count, even though
+        # the seasons line up, because build_dynamic_league_teammates should
+        # scope overlap to the league's own club_names, not the global
+        # PROMINENT_CLUB_NAMES whitelist.
+        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB, start_season="20/21", end_season=None)
+        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB, start_season="20/21", end_season=None)
+        _add_career_stint(conn, "Carl Cole", "Karriereende", start_season="20/21", end_season=None)
+        _add_career_stint(conn, "Alan Adler", "Karriereende", start_season="20/21", end_season=None)
+        conn.commit()
+
+        alan_url = _player_source_url(conn, "Alan Adler")
+        bella_id, carl_id = _player_id(conn, "Bella Bauer"), _player_id(conn, "Carl Cole")
+
+        league = LeagueCategory("league_test", "Test League", [TEAMMATE_TEST_CLUB], difficulty=1)
+        result = build_dynamic_league_teammates(
+            conn, [league],
+            anchor_urls_by_league={"league_test": {"Alan Adler": alan_url}},
+            prominent_trophy_titles=TEAMMATE_TEST_TROPHY_TITLES,
+            min_players=1,
+        )
+        cat = result["league_test"][0]
+        assert cat.check_player(bella_id, conn)
+        assert not cat.check_player(carl_id, conn)
+    finally:
+        conn.close()
+
+
+def test_build_dynamic_league_teammates_skips_leagues_without_a_whitelist_entry(fixture_db_path: Path) -> None:
+    from src.categories import LeagueCategory
+
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        league = LeagueCategory("league_no_anchors", "No Anchors League", [TEAMMATE_TEST_CLUB], difficulty=1)
+        result = build_dynamic_league_teammates(conn, [league], anchor_urls_by_league={})
+    finally:
+        conn.close()
+    assert "league_no_anchors" not in result
+
+
+def test_league_pools_include_league_specific_teammates_unwrapped(fixture_db_path: Path) -> None:
+    from src.categories import LeagueCategory
+    from src.dynamic_categories import DynamicCatalog
+
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
+        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
+        conn.commit()
+        alan_url = _player_source_url(conn, "Alan Adler")
+
+        league = LeagueCategory("league_test", "Test League", [TEAMMATE_TEST_CLUB], difficulty=1)
+        league_teammates = build_dynamic_league_teammates(
+            conn, [league],
+            anchor_urls_by_league={"league_test": {"Alan Adler": alan_url}},
+            prominent_trophy_titles=TEAMMATE_TEST_TROPHY_TITLES,
+            min_players=1,
+        )
+        catalog = DynamicCatalog()
+        pools = build_league_pools([league], [], catalog, league_teammates)
+    finally:
+        conn.close()
+    labels = {c.label for c in pools["league_test"]}
+    assert labels == {"Mit Alan Adler gespielt"}
+    # Unwrapped — a plain TeammateCategory, not a LeagueScopedCategory
+    # wrapping one (which would carry a `.base` attribute).
+    assert not hasattr(pools["league_test"][0], "base")
 
 
 def test_build_dynamic_teammates_only_anchors_whitelisted_players(fixture_db_path: Path) -> None:
