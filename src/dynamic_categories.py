@@ -511,18 +511,19 @@ def build_dynamic_trophies(
 # no reliable purely data-driven "is this player famous to a casual
 # player" signal — market_value doesn't work either, it's NULL for most
 # retired legends in the real dataset: Zidane, Maldini, Beckenbauer all
-# NULL). Keep this list short and genuinely iconic.
+# NULL).
 #
-# Every pick here should also have racked up 7+ distinct career clubs
-# (COUNT(DISTINCT club_name) in career_stints) — a one-club legend (Kahn,
-# Neuer, Totti, Maldini, Buffon, Gerrard all failed this and were swapped
-# out below) gives "played with X" a thin, single-era answer pool
-# concentrated at one club; a well-traveled player's teammate pool spans
-# many clubs and eras instead, which makes for a richer category. This
-# isn't enforced by a test (it'd need the real 179MB dataset, which the
-# fixture-based suite deliberately doesn't depend on — see conftest.py) —
-# just check manually before adding a name:
-#   SELECT COUNT(DISTINCT club_name) FROM career_stints WHERE player_id = ?
+# Deliberately leans toward well-traveled squad/journeyman players over
+# "greatest of all time" megastars (Messi/Ronaldo-tier were the original
+# picks here — swapped out for being too obvious/one-note) — a player
+# whose career touched many mid-table clubs across several countries
+# still makes a fair, checkable "played with X" fact, and gives a much
+# richer answer pool spread across clubs/eras than a marquee name whose
+# recognition comes from 2-3 superclubs. Every pick still needs a real
+# pool: verify before adding via TeammateCategory(id, label, player_id,
+# PROMINENT_CLUB_NAMES).eligible_player_ids(conn) against the real DB —
+# not enforced by a test, since that needs the real 179MB dataset the
+# fixture-based suite deliberately doesn't depend on (see conftest.py).
 #
 # Keyed on players.source_url (the Transfermarkt profile URL), NOT name —
 # two real correctness bugs found while building this: (1) "Pedro" alone
@@ -538,27 +539,16 @@ def build_dynamic_trophies(
 # _stable_id) — sidesteps both problems entirely.
 TEAMMATE_ANCHOR_SOURCE_URLS: dict[str, str] = {
     # display name (for readability only) -> source_url (the actual match key)
-    "Lionel Messi": "https://www.transfermarkt.de/lionel-messi/profil/spieler/28003",
-    "Cristiano Ronaldo": "https://www.transfermarkt.de/cristiano-ronaldo/profil/spieler/8198",
-    "Thierry Henry": "https://www.transfermarkt.de/thierry-henry/profil/spieler/3207",
-    "Samuel Eto'o": "https://www.transfermarkt.de/samuel-etoo/profil/spieler/4257",
-    "Dani Alves": "https://www.transfermarkt.de/dani-alves/profil/spieler/15951",
-    "Ángel Di María": "https://www.transfermarkt.de/angel-di-maria/profil/spieler/45320",
-    "Álvaro Morata": "https://www.transfermarkt.de/alvaro-morata/profil/spieler/128223",
-    "Sami Khedira": "https://www.transfermarkt.de/sami-khedira/profil/spieler/29401",
-    "Lucas Hernández": "https://www.transfermarkt.de/lucas-hernandez/profil/spieler/281963",
-    "Pedro": "https://www.transfermarkt.de/pedro/profil/spieler/65278",
-    # Well-traveled multi-league icons (same profile as Zlatan Ibrahimović
-    # in league_seriea below — many clubs, many countries, still instantly
-    # recognizable):
-    "Ronaldinho": "https://www.transfermarkt.de/ronaldinho/profil/spieler/3373",
-    "Ronaldo": "https://www.transfermarkt.de/ronaldo/profil/spieler/3140",  # the Brazilian "R9", not CR7
-    "Luís Figo": "https://www.transfermarkt.de/luis-figo/profil/spieler/3446",
-    "David Villa": "https://www.transfermarkt.de/david-villa/profil/spieler/7980",
-    "Radamel Falcao": "https://www.transfermarkt.de/radamel-falcao/profil/spieler/39152",
-    "Diego Forlán": "https://www.transfermarkt.de/diego-forlan/profil/spieler/3408",
-    "Andriy Shevchenko": "https://www.transfermarkt.de/andriy-shevchenko/profil/spieler/3522",
-    "Luis Suárez": "https://www.transfermarkt.de/luis-suarez/profil/spieler/44352",  # the Uruguayan striker, not the Colombian "Luis Suárez" (id 38560)
+    "Kevin-Prince Boateng": "https://www.transfermarkt.de/kevin-prince-boateng/profil/spieler/16922",  # 20 clubs
+    "Marco Borriello": "https://www.transfermarkt.de/marco-borriello/profil/spieler/5825",  # 20 clubs
+    "Alberto Gilardino": "https://www.transfermarkt.de/alberto-gilardino/profil/spieler/5878",  # 18 clubs
+    "Antonio Cassano": "https://www.transfermarkt.de/antonio-cassano/profil/spieler/5962",  # 12 clubs
+    "Roberto Soldado": "https://www.transfermarkt.de/roberto-soldado/profil/spieler/34870",  # 14 clubs
+    "Mario Balotelli": "https://www.transfermarkt.de/mario-balotelli/profil/spieler/45146",  # 16 clubs
+    "Nicolas Anelka": "https://www.transfermarkt.de/nicolas-anelka/profil/spieler/3226",  # 16 clubs
+    "Diego Costa": "https://www.transfermarkt.de/diego-costa/profil/spieler/44779",  # 16 clubs
+    "Dimitar Berbatov": "https://www.transfermarkt.de/dimitar-berbatov/profil/spieler/65",  # 12 clubs
+    "Robbie Keane": "https://www.transfermarkt.de/robbie-keane/profil/spieler/3144",  # 14 clubs
 }
 TEAMMATE_ANCHOR_URLS: frozenset[str] = frozenset(TEAMMATE_ANCHOR_SOURCE_URLS.values())
 
@@ -673,55 +663,45 @@ def build_dynamic_teammates(
     return categories
 
 
-# Per-league "played with X" anchors — players famous mainly to that
-# league's own fans rather than globally (TEAMMATE_ANCHOR_SOURCE_URLS
-# above), so this whole category only makes sense scoped to that league's
-# own puzzles: see build_dynamic_league_teammates/build_league_pools for
-# how visibility is restricted, and note overlap_club_names there is the
-# league's own club list, not the global PROMINENT_CLUB_NAMES — a "played
-# with Kahn" match should require the overlap to have actually happened
-# at a Bundesliga club, not anywhere in Kahn's career. Same source_url
-# rationale as the global whitelist (name matching is unsafe — see there).
+# Per-league "played with X" anchors — same journeyman-over-megastar
+# philosophy as TEAMMATE_ANCHOR_SOURCE_URLS above, scoped to squad players
+# whose careers ran mainly through that league's own (often mid-table)
+# clubs rather than global icons. Overlap_club_names in
+# build_dynamic_league_teammates is the league's own current club list
+# (category_config.LEAGUE_CATEGORIES), not the global PROMINENT_CLUB_NAMES
+# — a "played with Kruse" match should require the overlap to have
+# actually happened at a Bundesliga club, not anywhere in Kruse's career.
+# This whole category only makes sense scoped to that league's own
+# puzzles: see build_dynamic_league_teammates/build_league_pools for how
+# visibility is restricted. Same source_url rationale as the global
+# whitelist (name matching is unsafe — see there).
 TEAMMATE_ANCHOR_SOURCE_URLS_BY_LEAGUE: dict[str, dict[str, str]] = {
     "league_buli": {
-        "Michael Ballack": "https://www.transfermarkt.de/michael-ballack/profil/spieler/63",
-        "Franck Ribéry": "https://www.transfermarkt.de/franck-ribery/profil/spieler/22068",
-        "Miroslav Klose": "https://www.transfermarkt.de/miroslav-klose/profil/spieler/10",
-        "Robert Lewandowski": "https://www.transfermarkt.de/robert-lewandowski/profil/spieler/38253",
-        "Bastian Schweinsteiger": "https://www.transfermarkt.de/bastian-schweinsteiger/profil/spieler/2514",
-        "Mario Götze": "https://www.transfermarkt.de/mario-gotze/profil/spieler/74842",
-        # Kahn (4 clubs) and Neuer (5) swapped out — one-club legends give a
-        # thin, single-era pool (see the 7+ distinct clubs note above).
-        "Lukas Podolski": "https://www.transfermarkt.de/lukas-podolski/profil/spieler/15185",
-        "Arjen Robben": "https://www.transfermarkt.de/arjen-robben/profil/spieler/4360",
+        "Max Kruse": "https://www.transfermarkt.de/max-kruse/profil/spieler/36182",
+        "Anthony Ujah": "https://www.transfermarkt.de/anthony-ujah/profil/spieler/142281",
+        "Anthony Modeste": "https://www.transfermarkt.de/anthony-modeste/profil/spieler/50512",
+        "Kevin Volland": "https://www.transfermarkt.de/kevin-volland/profil/spieler/82009",
+        "Marko Marin": "https://www.transfermarkt.de/marko-marin/profil/spieler/35251",
     },
     "league_pl": {
-        "Wayne Rooney": "https://www.transfermarkt.de/wayne-rooney/profil/spieler/3332",
-        "Didier Drogba": "https://www.transfermarkt.de/didier-drogba/profil/spieler/3924",
-        "Sergio Agüero": "https://www.transfermarkt.de/sergio-aguero/profil/spieler/26399",
-        "Harry Kane": "https://www.transfermarkt.de/harry-kane/profil/spieler/132098",
-        "John Terry": "https://www.transfermarkt.de/john-terry/profil/spieler/3160",
-        "Frank Lampard": "https://www.transfermarkt.de/frank-lampard/profil/spieler/3163",
-        # Gerrard (5 clubs, one-club legend) swapped out — see the 7+ note above.
-        "David Beckham": "https://www.transfermarkt.de/david-beckham/profil/spieler/3139",
+        "Darren Bent": "https://www.transfermarkt.de/darren-bent/profil/spieler/13239",
+        "Steve Sidwell": "https://www.transfermarkt.de/steve-sidwell/profil/spieler/13427",
+        "Craig Bellamy": "https://www.transfermarkt.de/craig-bellamy/profil/spieler/3297",
+        "Danny Murphy": "https://www.transfermarkt.de/danny-murphy/profil/spieler/3221",
+        "Nicklas Bendtner": "https://www.transfermarkt.de/nicklas-bendtner/profil/spieler/34557",
     },
     "league_laliga": {
-        "Sergio Ramos": "https://www.transfermarkt.de/sergio-ramos/profil/spieler/25557",
-        "Xavi": "https://www.transfermarkt.de/xavi/profil/spieler/7607",
-        "Andrés Iniesta": "https://www.transfermarkt.de/andres-iniesta/profil/spieler/7600",
-        "Karim Benzema": "https://www.transfermarkt.de/karim-benzema/profil/spieler/18922",
-        "Raúl": "https://www.transfermarkt.de/raul/profil/spieler/7349",
-        "Sergio Busquets": "https://www.transfermarkt.de/sergio-busquets/profil/spieler/65230",
+        "Sandro Ramírez": "https://www.transfermarkt.de/sandro-ramirez/profil/spieler/199369",
+        "Munir El Haddadi": "https://www.transfermarkt.de/munir-el-haddadi/profil/spieler/223725",
+        "Aritz Aduriz": "https://www.transfermarkt.de/aritz-aduriz/profil/spieler/29124",
+        "Michu": "https://www.transfermarkt.de/michu/profil/spieler/70789",
     },
     "league_seriea": {
-        "Alessandro Del Piero": "https://www.transfermarkt.de/alessandro-del-piero/profil/spieler/4289",
-        "Andrea Pirlo": "https://www.transfermarkt.de/andrea-pirlo/profil/spieler/5817",
-        "Zlatan Ibrahimović": "https://www.transfermarkt.de/zlatan-ibrahimovic/profil/spieler/3455",
-        # Totti (3 clubs), Maldini (4), Buffon (6) swapped out — one-club
-        # (or near one-club) legends, thin pool — see the 7+ note above.
-        "Christian Vieri": "https://www.transfermarkt.de/christian-vieri/profil/spieler/5797",
-        "Fabio Cannavaro": "https://www.transfermarkt.de/fabio-cannavaro/profil/spieler/5775",
-        "Roberto Baggio": "https://www.transfermarkt.de/roberto-baggio/profil/spieler/4153",
+        "Ciro Immobile": "https://www.transfermarkt.de/ciro-immobile/profil/spieler/105521",
+        "Andrea Belotti": "https://www.transfermarkt.de/andrea-belotti/profil/spieler/167727",
+        "Simone Zaza": "https://www.transfermarkt.de/simone-zaza/profil/spieler/96828",
+        "Emanuele Giaccherini": "https://www.transfermarkt.de/emanuele-giaccherini/profil/spieler/84835",
+        "Fabio Quagliarella": "https://www.transfermarkt.de/fabio-quagliarella/profil/spieler/22328",
     },
 }
 
