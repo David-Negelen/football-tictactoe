@@ -84,16 +84,20 @@ TEAMMATE_TEST_TROPHY_TITLES = frozenset({"Test Trophy A", "Test Trophy B", "Test
 TEAMMATE_TEST_CLUB = "Teammate Test FC"
 
 
-def _build_teammates(conn, **kwargs):
-    kwargs.setdefault("prominent_trophy_titles", TEAMMATE_TEST_TROPHY_TITLES)
-    kwargs.setdefault("overlap_club_names", frozenset({TEAMMATE_TEST_CLUB}))
-    kwargs.setdefault("min_anchor_trophies", 3)
-    kwargs.setdefault("min_players", 1)
-    return build_dynamic_teammates(conn, **kwargs)
-
-
 def _player_id(conn, name: str) -> int:
     return conn.execute("SELECT id FROM players WHERE name = ?", (name,)).fetchone()[0]
+
+
+def _player_source_url(conn, name: str) -> str:
+    return conn.execute("SELECT source_url FROM players WHERE name = ?", (name,)).fetchone()[0]
+
+
+def _build_teammates(conn, anchor_player_names=("Alan Adler",), **kwargs):
+    kwargs.setdefault("anchor_urls", frozenset(_player_source_url(conn, n) for n in anchor_player_names))
+    kwargs.setdefault("prominent_trophy_titles", TEAMMATE_TEST_TROPHY_TITLES)
+    kwargs.setdefault("overlap_club_names", frozenset({TEAMMATE_TEST_CLUB}))
+    kwargs.setdefault("min_players", 1)
+    return build_dynamic_teammates(conn, **kwargs)
 
 
 @pytest.fixture
@@ -517,17 +521,19 @@ def test_league_pools_scope_clubs_to_the_leagues_own_club_list(dynamic_db_conn) 
     assert pool_club_names == {"Bayern München"}  # Testville FC etc. excluded — not in this league
 
 
-def test_build_dynamic_teammates_requires_min_prominent_trophies(fixture_db_path: Path) -> None:
+def test_build_dynamic_teammates_only_anchors_whitelisted_players(fixture_db_path: Path) -> None:
+    # Anchor eligibility is a hand-picked whitelist (TEAMMATE_ANCHOR_URLS in
+    # production), not a trophy-count threshold — a player not on the
+    # whitelist never anchors a category, no matter how big their teammate
+    # pool is.
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _grant_trophies(conn, "Alan Adler", ["Test Trophy A", "Test Trophy B"])  # only 2 -> not an anchor
-        _grant_trophies(conn, "Carl Cole", ["Test Trophy A", "Test Trophy B", "Test Trophy C"])  # 3 -> anchor
         _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
         _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
         _add_career_stint(conn, "Carl Cole", TEAMMATE_TEST_CLUB)
         _add_career_stint(conn, "Dana Diaz", TEAMMATE_TEST_CLUB)
         conn.commit()
-        anchors = {t.anchor_player_id for t in _build_teammates(conn)}
+        anchors = {t.anchor_player_id for t in _build_teammates(conn, anchor_player_names=("Carl Cole",))}
         alan_id, carl_id = _player_id(conn, "Alan Adler"), _player_id(conn, "Carl Cole")
     finally:
         conn.close()
@@ -535,10 +541,54 @@ def test_build_dynamic_teammates_requires_min_prominent_trophies(fixture_db_path
     assert carl_id in anchors
 
 
+def test_build_dynamic_teammates_disambiguates_same_name_players_by_source_url(fixture_db_path: Path) -> None:
+    # A real bug found while building this: matching anchors by display name
+    # is unsafe — "Pedro" alone matches 3 distinct real players in the
+    # actual dataset (one legend, two unrelated obscure ones with the same
+    # name). Two fixture players sharing a name here must resolve to
+    # exactly the one whose source_url is on the whitelist, not both.
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        famous_id = conn.execute(
+            "INSERT INTO players (source_url, name, created_at, updated_at) VALUES (?, 'Pedro', ?, ?)",
+            ("https://example.test/pedro/famous", now, now),
+        ).lastrowid
+        obscure_id = conn.execute(
+            "INSERT INTO players (source_url, name, created_at, updated_at) VALUES (?, 'Pedro', ?, ?)",
+            ("https://example.test/pedro/obscure", now, now),
+        ).lastrowid
+        # Both same-named players get their own real stint at the same club,
+        # in the same season — if anchor selection matched on name, either
+        # (or both) could end up chosen; a working URL-keyed lookup must
+        # pick exactly the whitelisted one.
+        conn.execute(
+            "INSERT INTO career_stints (player_id, club_name, start_season, end_season, start_date, end_date) "
+            "VALUES (?, ?, '20/21', NULL, NULL, NULL)", (famous_id, TEAMMATE_TEST_CLUB),
+        )
+        conn.execute(
+            "INSERT INTO career_stints (player_id, club_name, start_season, end_season, start_date, end_date) "
+            "VALUES (?, ?, '20/21', NULL, NULL, NULL)", (obscure_id, TEAMMATE_TEST_CLUB),
+        )
+        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
+        conn.commit()
+        anchors = {
+            t.anchor_player_id
+            for t in build_dynamic_teammates(
+                conn, anchor_urls=frozenset({"https://example.test/pedro/famous"}),
+                prominent_trophy_titles=TEAMMATE_TEST_TROPHY_TITLES,
+                overlap_club_names=frozenset({TEAMMATE_TEST_CLUB}), min_players=1,
+            )
+        }
+    finally:
+        conn.close()
+    assert famous_id in anchors
+    assert obscure_id not in anchors
+
+
 def test_build_dynamic_teammates_requires_season_overlap(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _grant_trophies(conn, "Alan Adler", list(TEAMMATE_TEST_TROPHY_TITLES))
         _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB, start_season="96/97", end_season="98/99")
         _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB, start_season="10/11", end_season="12/13")  # no overlap
         _add_career_stint(conn, "Carl Cole", TEAMMATE_TEST_CLUB, start_season="97/98", end_season="99/00")  # overlaps
@@ -556,7 +606,6 @@ def test_build_dynamic_teammates_requires_season_overlap(fixture_db_path: Path) 
 def test_build_dynamic_teammates_treats_null_end_season_as_ongoing(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _grant_trophies(conn, "Alan Adler", list(TEAMMATE_TEST_TROPHY_TITLES))
         _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB, start_season="20/21", end_season=None)  # ongoing
         _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB, start_season="22/23", end_season="23/24")
         conn.commit()
@@ -571,7 +620,6 @@ def test_build_dynamic_teammates_treats_null_end_season_as_ongoing(fixture_db_pa
 def test_build_dynamic_teammates_treats_null_start_season_as_unbounded_early(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _grant_trophies(conn, "Alan Adler", list(TEAMMATE_TEST_TROPHY_TITLES))
         _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB, start_season=None, end_season="05/06")  # earliest known stint
         _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB, start_season="04/05", end_season="06/07")
         conn.commit()
@@ -594,7 +642,6 @@ def test_build_dynamic_teammates_ignores_non_whitelisted_clubs(fixture_db_path: 
     # fame nicety.
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _grant_trophies(conn, "Alan Adler", list(TEAMMATE_TEST_TROPHY_TITLES))
         _add_career_stint(conn, "Alan Adler", "Karriereende", start_season="20/21", end_season=None)
         _add_career_stint(conn, "Bella Bauer", "Karriereende", start_season="20/21", end_season=None)
         conn.commit()
@@ -607,7 +654,6 @@ def test_build_dynamic_teammates_ignores_non_whitelisted_clubs(fixture_db_path: 
 def test_build_dynamic_teammates_below_min_players_floor_is_dropped(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _grant_trophies(conn, "Alan Adler", list(TEAMMATE_TEST_TROPHY_TITLES))
         _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
         _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)  # exactly 1 overlapping teammate
         conn.commit()
@@ -629,12 +675,16 @@ def test_teammate_difficulty_comes_from_prominent_trophy_count(fixture_db_path: 
         for name in ("Alan Adler", "Carl Cole", "Bella Bauer", "Dana Diaz"):
             _add_career_stint(conn, name, TEAMMATE_TEST_CLUB)
         conn.commit()
+        anchor_urls = frozenset(
+            _player_source_url(conn, n) for n in ("Alan Adler", "Carl Cole", "Bella Bauer")
+        )
         cats = {
             t.anchor_player_id: t
             for t in build_dynamic_teammates(
-                conn, prominent_trophy_titles=frozenset(titles),
+                conn, anchor_urls=anchor_urls,
+                prominent_trophy_titles=frozenset(titles),
                 overlap_club_names=frozenset({TEAMMATE_TEST_CLUB}),
-                min_anchor_trophies=3, min_players=1,
+                min_players=1,
             )
         }
         alan_id, carl_id, bella_id = (
@@ -650,7 +700,6 @@ def test_teammate_difficulty_comes_from_prominent_trophy_count(fixture_db_path: 
 def test_teammate_category_label_and_id(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _grant_trophies(conn, "Alan Adler", list(TEAMMATE_TEST_TROPHY_TITLES))
         _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
         _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
         conn.commit()
@@ -665,7 +714,6 @@ def test_teammate_category_label_and_id(fixture_db_path: Path) -> None:
 def test_building_teammates_twice_produces_identical_ids(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _grant_trophies(conn, "Alan Adler", list(TEAMMATE_TEST_TROPHY_TITLES))
         _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
         _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
         conn.commit()
@@ -699,11 +747,12 @@ def test_teammate_categories_agree_across_check_eligible_and_sql(dynamic_db_conn
         _add_career_stint(dynamic_db_conn, name, TEAMMATE_TEST_CLUB, start_season=start, end_season=end)
     dynamic_db_conn.commit()
 
+    anchor_urls = frozenset(_player_source_url(dynamic_db_conn, n) for n in players[:2])
     teammates = build_dynamic_teammates(
         dynamic_db_conn,
+        anchor_urls=anchor_urls,
         prominent_trophy_titles=frozenset(titles),
         overlap_club_names=frozenset({TEAMMATE_TEST_CLUB}),
-        min_anchor_trophies=3,
         min_players=1,
     )
     assert teammates, "fixture setup must produce at least one teammate category"

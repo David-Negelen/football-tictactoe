@@ -504,23 +504,51 @@ def build_dynamic_trophies(
     return categories
 
 
-# The player-fame gate for "played with X" anchors reuses the trophy-
-# prominence signal above (PROMINENT_TROPHY_TITLES) rather than a new
-# hand-curated "famous players" list, which would duplicate exactly what
-# this file already exists to avoid (see module docstring). market_value
-# doesn't work as a fame signal here — it's NULL for most retired legends
-# in the real dataset (Zidane, Maldini, Beckenbauer all NULL).
-TEAMMATE_MIN_ANCHOR_TROPHIES = 3   # 879 candidate anchors in the real dataset
+# Anchor eligibility for "played with X" is a deliberately small, hand-
+# picked whitelist — unlike clubs/nationalities/trophies above, this is
+# NOT threshold-derived from the data (a trophy-count cutoff pulled in
+# hundreds of merely-good players, not just recognizable legends; there's
+# no reliable purely data-driven "is this player famous to a casual
+# player" signal — market_value doesn't work either, it's NULL for most
+# retired legends in the real dataset: Zidane, Maldini, Beckenbauer all
+# NULL). Keep this list short and genuinely iconic.
+#
+# Keyed on players.source_url (the Transfermarkt profile URL), NOT name —
+# two real correctness bugs found while building this: (1) "Pedro" alone
+# matches 3 distinct real players in the dataset (a Barcelona/Chelsea
+# legend plus two unrelated obscure ones) — name collisions among common
+# names are real, not hypothetical; (2) an accented name typed as a
+# Python string literal here ("Ángel Di María", "Álvaro Morata") can be a
+# different Unicode normalization form than the same name as stored in
+# SQLite, so a name-based `=`/`IN` comparison can silently match zero
+# rows even though the player exists — this happened here and both
+# players were dropped without any error. source_url is plain ASCII and
+# already the unique-identity column the rest of this file uses (see
+# _stable_id) — sidesteps both problems entirely.
+TEAMMATE_ANCHOR_SOURCE_URLS: dict[str, str] = {
+    # display name (for readability only) -> source_url (the actual match key)
+    "Lionel Messi": "https://www.transfermarkt.de/lionel-messi/profil/spieler/28003",
+    "Cristiano Ronaldo": "https://www.transfermarkt.de/cristiano-ronaldo/profil/spieler/8198",
+    "Thierry Henry": "https://www.transfermarkt.de/thierry-henry/profil/spieler/3207",
+    "Samuel Eto'o": "https://www.transfermarkt.de/samuel-etoo/profil/spieler/4257",
+    "Dani Alves": "https://www.transfermarkt.de/dani-alves/profil/spieler/15951",
+    "Ángel Di María": "https://www.transfermarkt.de/angel-di-maria/profil/spieler/45320",
+    "Álvaro Morata": "https://www.transfermarkt.de/alvaro-morata/profil/spieler/128223",
+    "Sami Khedira": "https://www.transfermarkt.de/sami-khedira/profil/spieler/29401",
+    "Lucas Hernández": "https://www.transfermarkt.de/lucas-hernandez/profil/spieler/281963",
+    "Pedro": "https://www.transfermarkt.de/pedro/profil/spieler/65278",
+}
+TEAMMATE_ANCHOR_URLS: frozenset[str] = frozenset(TEAMMATE_ANCHOR_SOURCE_URLS.values())
 
 # Bare viability floor — same idea as CLUB_MIN_PLAYERS: a teammate pool of
 # 1-4 players is too thin to be a fair puzzle no matter how famous the
 # anchor is.
 TEAMMATE_MIN_PLAYERS = 5
 
-# Difficulty tiers derived from prominent-trophy count, mirroring
-# CLUB_FAME_TIER_1/2/3's hand-picked-threshold approach (thresholds picked
-# against the real dataset: ~68 anchors at tier 1, ~301 more at tier 2,
-# the remaining ~510 at tier 3).
+# Difficulty is still derived from prominent-trophy count (not anchor
+# selection anymore — see TEAMMATE_ANCHOR_NAMES above) — mirrors
+# CLUB_FAME_TIER_1/2/3's hand-picked-threshold approach, just applied to
+# the fixed whitelist instead of the whole dataset.
 TEAMMATE_FAME_TIER_1_MIN = 6
 TEAMMATE_FAME_TIER_2_MIN = 4
 
@@ -535,33 +563,44 @@ def _teammate_difficulty(prominent_trophy_count: int) -> int:
 
 def build_dynamic_teammates(
     conn: sqlite3.Connection,
+    anchor_urls: frozenset[str] = TEAMMATE_ANCHOR_URLS,
     prominent_trophy_titles: frozenset[str] = PROMINENT_TROPHY_TITLES,
     overlap_club_names: frozenset[str] = PROMINENT_CLUB_NAMES,
-    min_anchor_trophies: int = TEAMMATE_MIN_ANCHOR_TROPHIES,
     min_players: int = TEAMMATE_MIN_PLAYERS,
 ) -> list[TeammateCategory]:
-    """One TeammateCategory per anchor player famous enough (>= min_anchor_trophies
-    prominent trophy wins) to make "played with X" a recognizable category,
+    """One TeammateCategory per anchor player in `anchor_urls` (matched on
+    players.source_url — see TEAMMATE_ANCHOR_SOURCE_URLS for why not name)
     with a real enough teammate pool (>= min_players) to be a fair puzzle
-    cell. Pool size is computed with a single batched query across all
-    candidate anchors (not one query per anchor) — a naive per-anchor
-    self-join against the full career_stints table (548k rows) measured
-    ~12s at startup for 879 anchors; pre-filtering to just the
-    prominent-club rows (~70k) into a temp table with the season->year
-    conversion precomputed once brings the whole thing under 1.5s.
+    cell. `prominent_trophy_titles` only feeds difficulty tiering here, not
+    anchor selection. Pool size is computed with a single batched query
+    across all candidate anchors (not one query per anchor) — a naive
+    per-anchor self-join against the full career_stints table (548k rows)
+    measured ~12s at startup for a few hundred anchors; pre-filtering to
+    just the prominent-club rows (~70k) into a temp table with the
+    season->year conversion precomputed once brings the whole thing well
+    under 1s for a whitelist this size.
     """
-    if not prominent_trophy_titles:
+    if not anchor_urls:
         return []
-    ph_tr = ",".join("?" * len(prominent_trophy_titles))
-    anchor_rows = conn.execute(
-        f"SELECT player_id, COUNT(*) AS n FROM player_trophies "
-        f"WHERE title IN ({ph_tr}) GROUP BY player_id HAVING n >= ?",
-        [*prominent_trophy_titles, min_anchor_trophies],
+    ph_urls = ",".join("?" * len(anchor_urls))
+    name_rows = conn.execute(
+        f"SELECT id FROM players WHERE source_url IN ({ph_urls})",
+        list(anchor_urls),
     ).fetchall()
-    if not anchor_rows:
+    anchor_ids = [row[0] for row in name_rows]
+    if not anchor_ids:
         return []
-    anchor_trophy_count = {pid: n for pid, n in anchor_rows}
-    anchor_ids = list(anchor_trophy_count)
+
+    anchor_trophy_count: dict[int, int] = {}
+    if prominent_trophy_titles:
+        ph_tr = ",".join("?" * len(prominent_trophy_titles))
+        ph_anchor_ids = ",".join("?" * len(anchor_ids))
+        trophy_rows = conn.execute(
+            f"SELECT player_id, COUNT(*) FROM player_trophies "
+            f"WHERE player_id IN ({ph_anchor_ids}) AND title IN ({ph_tr}) GROUP BY player_id",
+            [*anchor_ids, *prominent_trophy_titles],
+        ).fetchall()
+        anchor_trophy_count = dict(trophy_rows)
 
     ph_club = ",".join("?" * len(overlap_club_names))
     conn.execute("DROP TABLE IF EXISTS temp.teammate_pool_stints")
@@ -601,7 +640,7 @@ def build_dynamic_teammates(
     categories = []
     for pid, raw_name, source_url in rows:
         name = strip_jersey_prefix(raw_name)
-        difficulty = _teammate_difficulty(anchor_trophy_count[pid])
+        difficulty = _teammate_difficulty(anchor_trophy_count.get(pid, 0))
         # Keyed on source_url (unique, stable identity string) rather than
         # the local autoincrement players.id, which can shift across a DB
         # rebuild/rescrape.
