@@ -90,6 +90,13 @@ const g = {
   usedIds: new Set(),
   activeCell: null,   // {r, c}
   streak: { 1: 0, 2: 0 },
+  // local retake mode only (see setRetakeMode/checkWinnerLocal/retakeLocal):
+  retakeMode: false,  // chosen at setup time, fixed for the whole round
+  phase: 'fill',       // 'fill' | 'retake' — flips once the grid fills with no winner
+  // A 3-in-a-row formed during the retake phase doesn't win outright — the
+  // opponent gets exactly one more turn to break it by retaking one of its
+  // cells (see checkPendingThreatOutcome). null once there's nothing pending.
+  pendingThreat: null, // null | { owner: 1|2, lines: [[[r,c],[r,c],[r,c]], ...] }
   elapsedSeconds: 0,
   solution: null,     // filled in after the round ends
   // solo:
@@ -165,6 +172,7 @@ let stats = loadStats();
 
 let selectedLeague = '';
 let onlineVisibility = 'private'; // 'private' | 'public' — see setVisibility, only used when hosting
+let retakeMode = false; // see setRetakeMode, only used when starting a 1v1 Lokal round
 
 function genParams() {
   const p = new URLSearchParams({ difficulty: String(difficulty) });
@@ -359,6 +367,20 @@ document.querySelectorAll('.visibility-btn').forEach(btn => {
   btn.addEventListener('click', () => setVisibility(btn.dataset.visibility));
 });
 
+// Local-only (see setup-retake-picker, toggled visible in enterSetupScreen):
+// once the grid fills up, instead of ending in a draw, players keep taking
+// turns retaking the opponent's cells — see checkWinnerLocal/retakeLocal.
+function setRetakeMode(value) {
+  retakeMode = value;
+  document.querySelectorAll('.retake-btn').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.retake === (value ? '1' : '0'));
+  });
+}
+
+document.querySelectorAll('.retake-btn').forEach(btn => {
+  btn.addEventListener('click', () => setRetakeMode(btn.dataset.retake === '1'));
+});
+
 document.querySelectorAll('[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => selectMode(btn.dataset.mode));
 });
@@ -379,6 +401,8 @@ function enterSetupScreen(pendingMode, { push = true } = {}) {
   document.getElementById('setup-load-code').value = '';
   // Room visibility only makes sense when hosting a room in the first place.
   document.getElementById('setup-visibility-picker').classList.toggle('hidden', pendingMode !== 'online-host');
+  // Retake mode is a 1v1 Lokal-only variant for now (see setRetakeMode).
+  document.getElementById('setup-retake-picker').classList.toggle('hidden', pendingMode !== 'local');
   showScreen('setup', { push });
 }
 
@@ -454,6 +478,7 @@ function saveRoundSession() {
     rows: g.rows, cols: g.cols, board: g.board, current: g.current,
     usedIds: [...g.usedIds], streak: g.streak, elapsedSeconds: g.elapsedSeconds,
     soloAttempted: g.soloAttempted, soloCorrect: g.soloCorrect,
+    retakeMode: g.retakeMode, phase: g.phase, pendingThreat: g.pendingThreat,
   }));
 }
 
@@ -479,6 +504,7 @@ function tryResumeRound(match) {
     winner: null, winCells: [], usedIds: new Set(saved.usedIds || []),
     streak: saved.streak || { 1: 0, 2: 0 }, elapsedSeconds: saved.elapsedSeconds || 0,
     soloAttempted: saved.soloAttempted || 0, soloCorrect: saved.soloCorrect || 0, solution: null,
+    retakeMode: saved.retakeMode || false, phase: saved.phase || 'fill', pendingThreat: saved.pendingThreat || null,
   });
   showScreen('board', { push: false });
   updateModeChrome();
@@ -584,12 +610,21 @@ function renderBoard() {
   fitBoardText(board);
 }
 
-// Filled/missed cells have nothing to do on tap; an empty cell before the
-// round ends opens the player search; an empty cell after the round ends
-// (once solutions are loaded) opens the full-answer sheet instead — same
-// data-cell wiring either way, the state at click time decides.
+// A cell already owned by the opponent, while the retake phase is live, can
+// still be tapped (to retake it) — every other filled cell is inert. Only
+// applies in 1v1 Lokal; solo/online cells are never retake targets.
+function isRetakeTarget(r, c) {
+  const entry = g.board[r][c];
+  return !g.winner && g.mode === 'local' && g.phase === 'retake' && !!entry && entry.player !== g.current;
+}
+
+// Filled/missed cells have nothing to do on tap, except a retake-phase cell
+// owned by the opponent; an empty cell before the round ends opens the
+// player search; an empty cell after the round ends (once solutions are
+// loaded) opens the full-answer sheet instead — same data-cell wiring
+// either way, the state at click time decides.
 function handleCellClick(r, c) {
-  if (g.board[r][c]) return;
+  if (g.board[r][c] && !isRetakeTarget(r, c)) return;
   if (g.winner !== null) {
     if (g.solution) openSolutionSheet(r, c);
     return;
@@ -764,8 +799,14 @@ function cellHtml(r, c) {
     const color = playerColor(entry.player);
     const bg = entry.player === 1 ? 'var(--accent-cell-bg)' : 'var(--o-cell-bg)';
     const markPath = entry.player === 1 ? ICON_PATHS.x : ICON_PATHS.o;
+    // Retake mode: a threatened cell (part of a pending 3-in-a-row awaiting
+    // defense) gets a dashed ring; a cell the current player could tap right
+    // now to retake it gets a pointer cursor — see checkPendingThreatOutcome
+    // and isRetakeTarget.
+    const isThreatened = g.pendingThreat?.lines.some(line => line.some(([tr, tc]) => tr === r && tc === c));
+    const retakeable = isRetakeTarget(r, c);
     return `
-      <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
+      <div class="tt-cell ${isWin ? 'is-win' : ''} ${isThreatened ? 'is-threat' : ''} ${retakeable ? 'is-retake-target' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
            data-cell="${r},${c}" style="background:${bg};border-color:${color};">
         <svg class="absolute pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"
              style="top:50%;left:50%;transform:translate(-50%,-50%);width:clamp(60px,20vw,90px);height:clamp(60px,20vw,90px);opacity:.6;">${markPath}</svg>
@@ -824,9 +865,10 @@ function refreshCell(r, c) {
   const newEl = tmp.firstElementChild;
   existing.replaceWith(newEl);
   fitBoardText(newEl);
-  if (!g.board[r][c]) {
-    newEl.addEventListener('click', () => handleCellClick(r, c));
-  }
+  // Always rebound, not just for empty cells — a filled cell can still be a
+  // live retake target (see handleCellClick/isRetakeTarget), which
+  // handleCellClick itself is what actually gates.
+  newEl.addEventListener('click', () => handleCellClick(r, c));
 }
 
 // A newly-filled cell can turn a previously-unambiguous last name into a
@@ -895,7 +937,8 @@ function clearActiveCell() {
 }
 
 function openCell(r, c) {
-  if (g.winner || g.board[r][c]) return;
+  if (g.winner) return;
+  if (g.board[r][c] && !isRetakeTarget(r, c)) return;
   if (g.mode === 'online' && g.onlineSlot && g.current !== g.onlineSlot) return;
   g.activeCell = { r, c };
   markActiveCell(r, c);
@@ -1005,9 +1048,21 @@ function updateStatus() {
   // playerColor/cellHtml) — whose turn it is reads at a glance, not just
   // from the glyph.
   const sym = g.current === 1 ? 'X' : 'O';
+  // Retake mode: a pending threat is always against g.current (the other
+  // player raised it last turn, then the turn passed) — see
+  // checkPendingThreatOutcome/retakeLocal. Spell out that this is their one
+  // chance to defend, since a normal turn-indicator dot alone doesn't say
+  // "the game ends now if you don't".
+  if (g.pendingThreat) {
+    const threatSym = g.pendingThreat.owner === 1 ? 'X' : 'O';
+    document.getElementById('status-text').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;color:${playerColor(g.current)}">
+      ⚠️ ${threatSym} gewinnt gleich – ${sym} muss jetzt kontern!
+    </span>`;
+    return;
+  }
   document.getElementById('status-text').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
     <span style="width:8px;height:8px;border-radius:50%;background:${playerColor(g.current)};flex-shrink:0;display:inline-block"></span>
-    ${sym} ist dran
+    ${sym} ist dran${g.phase === 'retake' ? ' – Feld zurückerobern' : ''}
   </span>`;
 }
 
@@ -1151,6 +1206,7 @@ async function newLocalRound() {
     board: [[null,null,null],[null,null,null],[null,null,null]],
     current: 1, winner: null, usedIds: new Set(), activeCell: null, winCells: [],
     streak: { 1: 0, 2: 0 }, elapsedSeconds: 0, solution: null,
+    retakeMode, phase: 'fill', pendingThreat: null,
   });
   updateStreakDisplay();
   updateTimerDisplay();
@@ -1170,6 +1226,11 @@ async function newLocalRound() {
   saveRoundSession();
 }
 
+// Fill-phase win check — unchanged from classic mode even in retake mode: a
+// 3-in-a-row while cells are still empty wins outright, same as always. The
+// only retake-mode-specific branch is what a *full board with no winner*
+// means: normally that's a draw, but retake mode instead opens the retake
+// phase (see retakeLocal) rather than ending the round.
 function checkWinnerLocal() {
   for (const line of WIN_LINES) {
     const vals = line.map(([r, c]) => g.board[r][c]?.player);
@@ -1179,7 +1240,10 @@ function checkWinnerLocal() {
       return;
     }
   }
-  if (g.board.flat().every(c => c !== null)) g.winner = 'draw';
+  if (g.board.flat().every(c => c !== null)) {
+    if (g.retakeMode) g.phase = 'retake';
+    else g.winner = 'draw';
+  }
 }
 
 function placeLocal(r, c, playerId, name, club) {
@@ -1192,9 +1256,72 @@ function placeLocal(r, c, playerId, name, club) {
   saveStats();
 
   checkWinnerLocal();
-  refreshFilledCells();
-  if (g.winner) { endGameLocal(); return; }
+  // Flip before rendering (not after) — refreshFilledCells reads g.current
+  // to decide which cells are retake targets (see isRetakeTarget), so the
+  // render has to see whoever's turn it actually is next, not the mover who
+  // just went. Doesn't matter for the win case (isRetakeTarget is always
+  // false once g.winner is set).
+  if (g.winner) { refreshFilledCells(); endGameLocal(); return; }
   g.current = g.current === 1 ? 2 : 1;
+  refreshFilledCells();
+  updateStatus();
+  saveRoundSession();
+}
+
+function linesFullyOwnedBy(player) {
+  return WIN_LINES.filter(line => line.every(([r, c]) => g.board[r][c]?.player === player));
+}
+
+// Called once per retake-phase turn, right after that turn's action (a
+// placed retake, or a wrong guess that placed nothing) is fully resolved.
+// If the OTHER player left a threat pending last turn, this is the "did you
+// defend it" check: any one of the threatened lines still intact means the
+// defense failed and the threat owner wins now. A fork (two lines from one
+// move) is always defensible with a single retake because both lines
+// necessarily share the cell that move just played — so "every line
+// broken" is the right bar, not "at least one".
+function checkPendingThreatOutcome() {
+  if (!g.pendingThreat) return false;
+  const stillIntact = g.pendingThreat.lines.some(line =>
+    line.every(([r, c]) => g.board[r][c]?.player === g.pendingThreat.owner)
+  );
+  if (stillIntact) {
+    g.winner = g.pendingThreat.owner;
+    g.winCells = g.pendingThreat.lines.flat();
+    g.pendingThreat = null;
+    return true;
+  }
+  g.pendingThreat = null;
+  return false;
+}
+
+// Once the grid is full (see checkWinnerLocal), retake mode replaces
+// further placement with retaking: g.current overwrites one of the
+// opponent's cells with their own pick (see handleCellClick/openCell for
+// the "opponent's cells only" restriction). A resulting 3-in-a-row doesn't
+// win immediately — it becomes a pending threat the opponent gets exactly
+// one more turn to break (checkPendingThreatOutcome, called at the top of
+// their next turn).
+function retakeLocal(r, c, playerId, name, club) {
+  const previous = g.board[r][c];
+  g.usedIds.delete(previous.id);
+  g.board[r][c] = { status: 'correct', player: g.current, id: playerId, name, club };
+  g.usedIds.add(playerId);
+
+  g.streak[g.current]++;
+  stats.local.correct++;
+  if (g.streak[g.current] > stats.local.bestStreak) stats.local.bestStreak = g.streak[g.current];
+  saveStats();
+
+  if (!checkPendingThreatOutcome()) {
+    const newLines = linesFullyOwnedBy(g.current);
+    g.pendingThreat = newLines.length ? { owner: g.current, lines: newLines } : null;
+  }
+
+  // Same flip-before-render reasoning as placeLocal.
+  if (g.winner) { refreshFilledCells(); endGameLocal(); return; }
+  g.current = g.current === 1 ? 2 : 1;
+  refreshFilledCells();
   updateStatus();
   saveRoundSession();
 }
@@ -1208,7 +1335,8 @@ async function localSelectPlayer(pid, name, club, r, c) {
   const data = await resp.json();
   if (data.valid) {
     closeModal();
-    placeLocal(r, c, pid, name, club);
+    if (g.phase === 'retake') retakeLocal(r, c, pid, name, club);
+    else placeLocal(r, c, pid, name, club);
   } else {
     stats.local.wrong++;
     g.streak[g.current] = 0;
@@ -1218,7 +1346,15 @@ async function localSelectPlayer(pid, name, club, r, c) {
     err.classList.remove('hidden');
     setTimeout(() => {
       closeModal();
+      // A wrong guess doesn't touch the board, so a threat left pending by
+      // the opponent stands unbroken — this is exactly the "failed to
+      // defend in time" case (see checkPendingThreatOutcome). No-op outside
+      // the retake phase, since g.pendingThreat is only ever set there.
+      if (checkPendingThreatOutcome()) { endGameLocal(); return; }
       g.current = g.current === 1 ? 2 : 1;
+      // Board contents didn't change, but which cells count as retake
+      // targets did (see isRetakeTarget) — re-render to match.
+      if (g.phase === 'retake') refreshFilledCells();
       updateStatus();
       saveRoundSession();
     }, 1500);

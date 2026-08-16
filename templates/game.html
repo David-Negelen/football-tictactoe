@@ -138,6 +138,13 @@
        neutral ring that layers on top of either player's fill instead of
        overriding it. */
     .tt-cell.is-win { box-shadow: 0 0 0 2px var(--text) inset; }
+    /* Retake mode only (see checkPendingThreatOutcome/isRetakeTarget): a
+       threatened cell (part of a pending 3-in-a-row) gets a dashed ring so
+       the defender can see exactly which cell(s) to retake; any cell
+       currently tappable to retake it gets a pointer cursor. */
+    .tt-cell.is-threat { outline: 2px dashed var(--accent); outline-offset: -2px; }
+    .tt-cell.is-retake-target { cursor: pointer; }
+    .tt-cell.is-retake-target:hover { box-shadow: 0 0 0 2px var(--accent) inset; }
 
     /* Generic fallback icons (globe/calendar/trophy/ball, and the "€"
        market-value glyph) — no real crest/flag artwork exists for these, so
@@ -330,6 +337,16 @@
               <img src="/static/flags/it.png" alt="" width="16" height="12" style="flex-shrink:0">Serie A</button>
           </div>
         </div>
+      </div>
+      <!-- Only relevant (and only shown) for 1v1 Lokal — see enterSetupScreen,
+           which toggles this alongside setup-load-grid/setup-visibility-picker. -->
+      <div id="setup-retake-picker" class="hidden">
+        <div class="tt-label mb-2">Spielmodus</div>
+        <div class="tt-card flex overflow-hidden">
+          <button data-retake="0" class="retake-btn tt-pill is-active flex-1 px-2.5 py-2 text-xs">Klassisch</button>
+          <button data-retake="1" class="retake-btn tt-pill flex-1 px-2.5 py-2 text-xs" style="border-left:1px solid var(--card-border);">Retake</button>
+        </div>
+        <p class="text-xs mt-2" style="color:var(--text-dim)">Retake: Ist das Grid voll, erobert ihr abwechselnd ein gegnerisches Feld zurück, statt unentschieden zu spielen. Eine Dreierreihe gewinnt erst, wenn sie im nächsten Zug nicht durchbrochen wird.</p>
       </div>
       <!-- Only relevant (and only shown) when hosting a 1v1 Online room —
            see enterSetupScreen, which toggles this alongside setup-load-grid. -->
