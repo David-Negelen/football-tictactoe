@@ -20,11 +20,10 @@ class CategoryType(str, Enum):
 
 
 class Category:
-    def __init__(self, id: str, label: str, type: CategoryType, icon: Optional[str] = None, difficulty: int = 1) -> None:
+    def __init__(self, id: str, label: str, type: CategoryType, difficulty: int = 1) -> None:
         self.id = id
         self.label = label
         self.type = type
-        self.icon = icon
         self.difficulty = difficulty
         self._eligible_ids_cache: Optional[set[int]] = None
 
@@ -62,8 +61,8 @@ class Category:
 class ClubCategory(Category):
     """Player must have a career stint at the given club (exact name match against career_stints.club_name)."""
 
-    def __init__(self, id: str, label: str, club_name: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.CLUB, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, club_name: str, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.CLUB, difficulty=difficulty)
         self.club_name = club_name
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -96,8 +95,8 @@ class NationalityCategory(Category):
     also match "Nigeria", "Guinea" would match "Guinea-Bissau", etc.
     """
 
-    def __init__(self, id: str, label: str, nationality: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.NATIONALITY, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, nationality: str, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.NATIONALITY, difficulty=difficulty)
         self.nationality = nationality
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -127,8 +126,8 @@ class PositionCategory(Category):
     (e.g. "Abwehr") to match all defenders.
     """
 
-    def __init__(self, id: str, label: str, position_prefix: str, icon: Optional[str] = None, difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.POSITION, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, position_prefix: str, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.POSITION, difficulty=difficulty)
         self.position_prefix = position_prefix
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -156,57 +155,6 @@ def strip_jersey_prefix(name: str) -> str:
     return name
 
 
-class AwardCategory(Category):
-    """Player must appear in a manually maintained list of award winners.
-
-    Names are matched case-insensitively against players.name. The scraper
-    stores active players with a jersey-number prefix (e.g. "#16 Rodri"), so
-    the prefix is stripped before comparing.
-    Keep the list updated as new winners are announced.
-    """
-
-    def __init__(self, id: str, label: str, player_names: list[str], icon: Optional[str] = None, difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.AWARD, icon=icon, difficulty=difficulty)
-        self.player_names = player_names
-        self._lower_names = {n.lower() for n in player_names}
-
-    @staticmethod
-    def _strip_prefix(name: str) -> str:
-        return strip_jersey_prefix(name)
-
-    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
-        row = conn.execute("SELECT name FROM players WHERE id = ?", (player_id,)).fetchone()
-        if row is None:
-            return False
-        return self._strip_prefix(row[0]).lower() in self._lower_names
-
-    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
-        if not self._lower_names:
-            return set()
-        placeholders = ",".join("?" * len(self._lower_names))
-        # Match both names stored with and without the jersey-number prefix.
-        rows = conn.execute(
-            f"""
-            SELECT id FROM players
-            WHERE LOWER(
-                CASE WHEN name LIKE '#% %' THEN SUBSTR(name, INSTR(name, ' ') + 1)
-                     ELSE name
-                END
-            ) IN ({placeholders})
-            """,
-            list(self._lower_names),
-        ).fetchall()
-        return {row[0] for row in rows}
-
-    def sql_filter(self) -> tuple[str, list]:
-        placeholders = ",".join("?" * len(self._lower_names))
-        sql = (
-            f"LOWER(CASE WHEN p.name LIKE '#% %' THEN SUBSTR(p.name, INSTR(p.name, ' ') + 1)"
-            f" ELSE p.name END) IN ({placeholders})"
-        )
-        return sql, list(self._lower_names)
-
-
 class TrophyCategory(Category):
     """Player must have won a specific trophy at least once. `trophy_titles`
     accepts either one title or a list of them — Transfermarkt records
@@ -217,9 +165,9 @@ class TrophyCategory(Category):
     what's really the same honor."""
 
     def __init__(
-        self, id: str, label: str, trophy_titles: str | list[str], icon: Optional[str] = None, difficulty: int = 1
+        self, id: str, label: str, trophy_titles: str | list[str], difficulty: int = 1
     ) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.AWARD, icon=icon, difficulty=difficulty)
+        super().__init__(id=id, label=label, type=CategoryType.AWARD, difficulty=difficulty)
         self.trophy_titles = [trophy_titles] if isinstance(trophy_titles, str) else list(trophy_titles)
 
     def _placeholders(self) -> str:
@@ -249,8 +197,8 @@ class TrophyCategory(Category):
 class LeagueCategory(Category):
     """Player must have a career stint at any first-team club in the league."""
 
-    def __init__(self, id: str, label: str, club_names: list[str], icon: Optional[str] = None, difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.LEAGUE, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, club_names: list[str], difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.LEAGUE, difficulty=difficulty)
         self.club_names = club_names
 
     def _ph(self) -> str:
@@ -280,8 +228,8 @@ class LeagueCategory(Category):
 class ContinentCategory(Category):
     """Player must have a career stint at any club on the given continent."""
 
-    def __init__(self, id: str, label: str, club_names: list[str], icon: Optional[str] = None, difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.CONTINENT, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, club_names: list[str], difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.CONTINENT, difficulty=difficulty)
         self.club_names = club_names
 
     def _ph(self) -> str:
@@ -319,9 +267,8 @@ class TeammateCategory(Category):
     already done this computation correctly across every competition it
     tracks."""
 
-    def __init__(self, id: str, label: str, anchor_player_id: int,
-                 icon: Optional[str] = None, difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.TEAMMATE, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, anchor_player_id: int, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.TEAMMATE, difficulty=difficulty)
         self.anchor_player_id = anchor_player_id
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -380,8 +327,8 @@ _MV_EXPR = (
 class InitialCategory(Category):
     """Player whose first name OR last name starts with the given letter."""
 
-    def __init__(self, id: str, label: str, letter: str, icon: Optional[str] = None, difficulty: int = 2) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.INITIAL, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, letter: str, difficulty: int = 2) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.INITIAL, difficulty=difficulty)
         self.letter = letter.upper()
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -416,8 +363,8 @@ class InitialCategory(Category):
 class ContainsLetterCategory(Category):
     """Player whose name contains the given letter anywhere (case-insensitive)."""
 
-    def __init__(self, id: str, label: str, letter: str, icon: Optional[str] = None, difficulty: int = 3) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.CONTAINS_LETTER, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, letter: str, difficulty: int = 3) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.CONTAINS_LETTER, difficulty=difficulty)
         self.letter = letter.upper()
 
     def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
@@ -442,8 +389,8 @@ class AgeCategory(Category):
     """Player whose age falls in [min_age, max_age] (inclusive, in years)."""
 
     def __init__(self, id: str, label: str, min_age: Optional[int] = None, max_age: Optional[int] = None,
-                 icon: Optional[str] = None, difficulty: int = 2) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.AGE, icon=icon, difficulty=difficulty)
+                 difficulty: int = 2) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.AGE, difficulty=difficulty)
         self.min_age = min_age
         self.max_age = max_age
 
@@ -483,8 +430,8 @@ class MarketValueCategory(Category):
     """
 
     def __init__(self, id: str, label: str, min_value: Optional[float] = None, max_value: Optional[float] = None,
-                 icon: Optional[str] = None, difficulty: int = 2) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.MARKET_VALUE, icon=icon, difficulty=difficulty)
+                 difficulty: int = 2) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.MARKET_VALUE, difficulty=difficulty)
         self.min_value = min_value
         self.max_value = max_value
 
@@ -537,8 +484,8 @@ _EUROPEAN_NATIONALITIES: list[str] = [
 class NonEuropeanNationalityCategory(Category):
     """Player holds no European nationality (no UEFA/European national string appears in their nationality field)."""
 
-    def __init__(self, id: str, label: str, icon: Optional[str] = None, difficulty: int = 2) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.NATIONALITY, icon=icon, difficulty=difficulty)
+    def __init__(self, id: str, label: str, difficulty: int = 2) -> None:
+        super().__init__(id=id, label=label, type=CategoryType.NATIONALITY, difficulty=difficulty)
 
     @staticmethod
     def _condition() -> tuple[str, list]:
@@ -577,8 +524,8 @@ class LeagueScopedCategory(Category):
     Category class — same as every other subclass.
     """
 
-    def __init__(self, base: Category, league_club_names: list[str], id: str, label: str, icon: Optional[str] = None) -> None:
-        super().__init__(id=id, label=label, type=base.type, icon=icon or base.icon, difficulty=base.difficulty)
+    def __init__(self, base: Category, league_club_names: list[str], id: str, label: str) -> None:
+        super().__init__(id=id, label=label, type=base.type, difficulty=base.difficulty)
         self.base = base
         self.league_club_names = league_club_names
         # Forwarded so app.py's _cat_display() can resolve a real flag/crest

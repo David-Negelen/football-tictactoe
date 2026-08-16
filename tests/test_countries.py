@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.countries import COUNTRY_BY_NAME, country_flag_image_code, parse_nationality_tokens
+from src.countries import country_flag_image_code, parse_nationality_tokens
 
 
 def test_single_nationality_parses_to_one_token() -> None:

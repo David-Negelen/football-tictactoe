@@ -45,16 +45,13 @@ def test_league_scoped_category_excludes_players_outside_the_league(fixture_db_p
         conn.close()
 
 
-def test_league_scoped_category_forwards_nationality_and_icon_from_base() -> None:
-    # app.py's _cat_display() resolves a real flag/crest image (and the
-    # icon fallback) off these attributes — without forwarding them, a
-    # wrapped nationality category in a league pool would silently lose its
-    # icon entirely, since LeagueScopedCategory itself has no icon of its
-    # own and previously didn't copy the base's.
-    base = NationalityCategory("t_nat", "Testland", "Testland", icon="test-icon")
+def test_league_scoped_category_forwards_nationality_from_base() -> None:
+    # app.py's _cat_display() resolves a real flag/crest image off this
+    # attribute — without forwarding it, a wrapped nationality category in a
+    # league pool would silently lose its flag entirely.
+    base = NationalityCategory("t_nat", "Testland", "Testland")
     scoped = LeagueScopedCategory(base, ["Testville FC"], id="t_nat__testville", label="Testland (Testville FC)")
     assert scoped.nationality == "Testland"
-    assert scoped.icon == "test-icon"
 
 
 def test_league_scoped_category_forwards_club_name_from_base() -> None:
