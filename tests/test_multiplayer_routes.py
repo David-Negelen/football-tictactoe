@@ -305,4 +305,55 @@ def test_rematch_rejects_while_the_round_is_still_running(app_client) -> None:
         content_type="application/json",
     )
     assert resp.status_code == 409
+
+
+# ─── GET /api/game/solve?code=... (online) ──────────────────────────────────
+# A ?code=/&token= pair routes /api/game/solve through the room's own
+# server-side state instead of trusting client-supplied row/col IDs — the
+# one mode with a real opponent this could unfairly advantage (see
+# api_game_solve's docstring).
+
+def test_solve_with_code_rejects_unknown_room(app_client) -> None:
+    resp = app_client.get("/api/game/solve?code=ZZZZZ&token=x")
+    assert resp.status_code == 404
     assert resp.get_json()["error"]
+
+
+def test_solve_with_code_rejects_a_token_not_in_the_room(app_client, fixture_categories) -> None:
+    room, _token = _direct_room(fixture_categories)
+    resp = app_client.get(f"/api/game/solve?code={room.code}&token=not-a-real-token")
+    assert resp.status_code == 403
+    assert resp.get_json()["error"]
+
+
+def test_solve_with_code_rejects_while_the_round_is_still_running(app_client, fixture_categories) -> None:
+    room, token = _direct_room(fixture_categories)
+    resp = app_client.get(f"/api/game/solve?code={room.code}&token={token}")
+    assert resp.status_code == 409
+
+
+def test_solve_with_code_returns_the_room_grid_once_the_round_ends(app_client, fixture_categories) -> None:
+    room, token = _direct_room(fixture_categories)
+    room.winner = 1
+    resp = app_client.get(f"/api/game/solve?code={room.code}&token={token}")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    # Same categories/order as _direct_room: [t_club, t_nat, t_pos] x
+    # [t_mv, t_trophy, t_age] — t_club (Testville FC) x t_trophy (Testcup)
+    # = Alan, Carl, Gina, Kara, matching test_solve_returns_grid_matching_
+    # eligible_sets in test_game_routes.py.
+    assert data["grid"][0][1]["count"] == 4
+
+
+def test_solve_with_code_ignores_client_supplied_row_col_ids(app_client, fixture_categories) -> None:
+    """A malicious client can't override which categories get solved by also
+    passing ?rows=/&cols= alongside a valid code/token — the room's own
+    categories always win once code is present."""
+    room, token = _direct_room(fixture_categories)
+    room.winner = 1
+    resp = app_client.get(
+        f"/api/game/solve?code={room.code}&token={token}&rows=t_nat,t_pos,t_club&cols=t_age,t_mv,t_trophy"
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["grid"][0][1]["count"] == 4

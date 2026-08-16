@@ -630,10 +630,11 @@ function refreshFilledCells() {
 
 async function revealSolutions() {
   if (!g.rows.length || !g.cols.length) return;
-  const rowIds = g.rows.map(c => c.id).join(',');
-  const colIds = g.cols.map(c => c.id).join(',');
+  const params = g.mode === 'online'
+    ? `code=${encodeURIComponent(g.onlineCode)}&token=${encodeURIComponent(g.onlineToken)}`
+    : `rows=${g.rows.map(c => c.id).join(',')}&cols=${g.cols.map(c => c.id).join(',')}`;
   try {
-    const resp = await fetch(`/api/game/solve?rows=${rowIds}&cols=${colIds}`);
+    const resp = await fetch(`/api/game/solve?${params}`);
     if (!resp.ok) return;
     const data = await resp.json();
     g.solution = data.grid;

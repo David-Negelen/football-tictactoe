@@ -866,18 +866,41 @@ def api_game_search():
 @app.route("/api/game/solve")
 @limiter.limit(RATE_LIMIT_MODERATE)
 def api_game_solve():
-    """Return valid players for every cell in the grid (for the solve view)."""
-    row_ids = request.args.get("rows", "").split(",")
-    col_ids = request.args.get("cols", "").split(",")
-    if len(row_ids) != 3 or len(col_ids) != 3:
-        return jsonify({"error": "Need exactly 3 row and 3 col IDs"}), 400
+    """Return valid players for every cell in the grid (for the solve view).
 
-    cats: dict = {}
-    for cat_id in row_ids + col_ids:
-        cat = CATEGORY_BY_ID.get(cat_id)
-        if not cat:
-            return jsonify({"error": f"Invalid category: {cat_id}"}), 400
-        cats[cat_id] = cat
+    Online is the one mode with a real opponent this could unfairly
+    advantage — a client fetching every valid answer mid-round would beat
+    someone who can't do the same. Gated on the room's own server-side
+    state instead of trusting client-supplied row/col IDs (same pattern as
+    api_mp_move: token -> seated slot, then room.winner must already be
+    set). Solo/Local/Daily/Custom have no opponent to harm, so they stay on
+    the honor-system trust model already documented on the Daily Grid
+    section above — nothing server-verified there either.
+    """
+    code = request.args.get("code")
+    if code:
+        room = mp.get_room(code)
+        if room is None:
+            return jsonify({"error": "Raum nicht gefunden"}), 404
+        if mp.room_slot_for_token(room, request.args.get("token", "")) is None:
+            return jsonify({"error": "Nicht in diesem Raum"}), 403
+        if room.winner is None:
+            return jsonify({"error": "Runde läuft noch"}), 409
+        row_ids = [c.id for c in room.rows]
+        col_ids = [c.id for c in room.cols]
+        cats = {c.id: c for c in [*room.rows, *room.cols]}
+    else:
+        row_ids = request.args.get("rows", "").split(",")
+        col_ids = request.args.get("cols", "").split(",")
+        if len(row_ids) != 3 or len(col_ids) != 3:
+            return jsonify({"error": "Need exactly 3 row and 3 col IDs"}), 400
+
+        cats = {}
+        for cat_id in row_ids + col_ids:
+            cat = CATEGORY_BY_ID.get(cat_id)
+            if not cat:
+                return jsonify({"error": f"Invalid category: {cat_id}"}), 400
+            cats[cat_id] = cat
 
     db = get_db()
     try:
