@@ -851,3 +851,21 @@ def test_ensure_teammate_data_scraped_skips_anchor_urls_not_in_the_local_dataset
     finally:
         conn.close()
     assert fake.calls == []
+
+
+def test_ensure_teammate_data_scraped_stops_once_time_budget_is_used_up(fixture_db_path: Path) -> None:
+    # This runs synchronously at app startup (see app.py), blocking every
+    # route from serving until it returns — max_seconds bounds that so a
+    # slow/blocked network can't turn it into an effectively unbounded
+    # hang. A budget of 0 means there's no time left before the very first
+    # check, so no anchor should get scraped this boot.
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        alan_url = _player_source_url(conn, "Alan Adler")
+        carl_url = _player_source_url(conn, "Carl Cole")
+        fake = _FakeScraper({})
+
+        ensure_teammate_data_scraped(conn, anchor_urls=frozenset({alan_url, carl_url}), scraper=fake, max_seconds=0)
+    finally:
+        conn.close()
+    assert fake.calls == []

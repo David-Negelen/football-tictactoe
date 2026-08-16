@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import re
 import sqlite3
+import time
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -636,6 +637,7 @@ def ensure_teammate_data_scraped(
     conn: sqlite3.Connection,
     anchor_urls: frozenset[str] = TEAMMATE_ANCHOR_URLS,
     scraper=None,
+    max_seconds: float = 90.0,
 ) -> None:
     """Populates player_teammates for any whitelisted anchor that doesn't
     have data yet — the "scrape on demand when we add a player" routine:
@@ -649,7 +651,17 @@ def ensure_teammate_data_scraped(
     TransfermarktScraper; in production it's left None and only
     instantiated lazily, the first time there's actual work to do (so an
     app boot where every anchor is already scraped never imports
-    src.scraper or touches the network at all).
+    src.scraper or touches the network at all). When lazily built, it
+    gets a tighter HttpClient than the module default (8s timeout, 1
+    retry, instead of 20s/3 retries meant for an attended `src/cli.py`
+    import run) — this call is unattended, blocking every route from
+    serving until it returns (see app.py), so a single stalled/blocked
+    page must fail fast rather than eating up to ~90s of retries by
+    itself. `max_seconds` is a second, coarser belt-and-suspenders cap on
+    top of that: once the total time already spent here crosses it, any
+    remaining un-scraped anchors are skipped for this boot (retried on
+    the next one, same as any other scrape failure below) instead of
+    piling on more multi-page scrapes.
 
     Not called from build_all()/build_dynamic_teammates() — this is a
     separate, explicit step (see app.py) so the rest of the dynamic
@@ -657,7 +669,11 @@ def ensure_teammate_data_scraped(
     """
     if not anchor_urls:
         return
+    deadline = time.monotonic() + max_seconds
     for url in anchor_urls:
+        if time.monotonic() >= deadline:
+            print(f"  ✗ teammate-scrape budget ({max_seconds:.0f}s) used up — skipping remaining anchors this boot")
+            break
         anchor_row = conn.execute("SELECT id FROM players WHERE source_url = ?", (url,)).fetchone()
         if anchor_row is None:
             continue
@@ -669,8 +685,9 @@ def ensure_teammate_data_scraped(
             continue
 
         if scraper is None:
+            from .http import HttpClient
             from .scraper import TransfermarktScraper
-            scraper = TransfermarktScraper()
+            scraper = TransfermarktScraper(HttpClient(timeout_seconds=8, max_retries=1, backoff_base=1.0))
 
         print(f"  ↻ no shared-match data yet for player {anchor_id} ({url}) — scraping...")
         try:
