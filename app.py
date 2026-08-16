@@ -796,31 +796,71 @@ def api_game_new():
     return jsonify({"rows": [_cat_display(c) for c in rows], "cols": [_cat_display(c) for c in cols]})
 
 
+def _search_relevance(row: sqlite3.Row, query_norm: str) -> tuple:
+    """Ranks a search result: an exact word match ("messi" hitting the word
+    "Messi") beats a mere prefix match ("messi" hitting the start of
+    "Messias"), which beats a substring-only match — plain alphabetical
+    order among LIKE '%word%' matches surfaced exactly this bug (a
+    globally famous "Messi" buried under an obscure "Messias" because M-e-s
+    sorts after M-e-s-s-i alphabetically). Ties within a tier break toward
+    the more decorated player (see PROMINENT_TROPHY_TITLES below) — a
+    search is almost always for the player the searcher already knows, not
+    an alphabetical accident that happens to share a substring.
+    """
+    name_norm = _normalize(row["name"])
+    words = name_norm.split()
+    if name_norm == query_norm or query_norm in words:
+        tier = 0
+    elif name_norm.startswith(query_norm) or any(w.startswith(query_norm) for w in words):
+        tier = 1
+    else:
+        tier = 2
+    return (tier, -row["fame"], row["name"])
+
+
 @app.route("/api/game/search")
 @limiter.limit(RATE_LIMIT_MODERATE)
 def api_game_search():
-    """Search all players by name (no category filter) — category check happens on validate."""
+    """Search all players by name (no category filter) — category check
+    happens on validate. See _search_relevance for how results are ranked."""
     q = request.args.get("q", "").strip()
     if len(q) < 3:
         return jsonify({"players": []})
+    query_norm = _normalize(q)
 
     where_parts = []
     params: list = []
-    for word in _normalize(q).split():
+    for word in query_norm.split():
         where_parts.append("normalize(p.name) LIKE ?")
         params.append(f"%{word}%")
     where = "WHERE " + " AND ".join(where_parts)
 
+    prominent_titles = list(dynamic_categories.PROMINENT_TROPHY_TITLES)
+    fame_case = " OR ".join(["pt.title = ?"] * len(prominent_titles))
+
     db = get_db()
     try:
         rows_db = db.execute(
-            f"SELECT p.id, p.name, p.current_club_name, p.nationality, p.age "
-            f"FROM players p {where} ORDER BY p.name LIMIT 20",
-            params,
+            f"""
+            SELECT p.id, p.name, p.current_club_name, p.nationality, p.age,
+                   COALESCE(SUM(CASE WHEN {fame_case} THEN pt.trophy_count ELSE 0 END), 0) AS fame
+            FROM players p
+            LEFT JOIN player_trophies pt ON pt.player_id = p.id
+            {where}
+            GROUP BY p.id
+            LIMIT 500
+            """,
+            [*prominent_titles, *params],
         ).fetchall()
     finally:
         db.close()
-    return jsonify({"players": [dict(r) for r in rows_db]})
+
+    ranked = sorted(rows_db, key=lambda row: _search_relevance(row, query_norm))[:20]
+    return jsonify({"players": [
+        {"id": r["id"], "name": r["name"], "current_club_name": r["current_club_name"],
+         "nationality": r["nationality"], "age": r["age"]}
+        for r in ranked
+    ]})
 
 
 @app.route("/api/game/solve")
