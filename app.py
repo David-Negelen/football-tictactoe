@@ -711,6 +711,16 @@ def _parse_csv_param(raw: str | None) -> set[str]:
     return {part.strip() for part in raw.split(",") if part.strip()}
 
 
+def _parse_difficulty(raw) -> int | None:
+    """Clamp to [1, 3], or None if `raw` isn't parseable as an int at all —
+    callers turn that into a 400 rather than letting a malformed value
+    (e.g. "abc") crash with an unhandled ValueError."""
+    try:
+        return min(3, max(1, int(raw)))
+    except (TypeError, ValueError):
+        return None
+
+
 @app.route("/api/categories")
 @limiter.limit(RATE_LIMIT_MODERATE)
 def api_categories():
@@ -766,7 +776,9 @@ def api_not_found(subpath):
 @app.route("/api/game/new")
 @limiter.limit(RATE_LIMIT_EXPENSIVE)
 def api_game_new():
-    difficulty = min(3, max(1, int(request.args.get("difficulty", 3))))
+    difficulty = _parse_difficulty(request.args.get("difficulty", 3))
+    if difficulty is None:
+        return jsonify({"error": "Ungültiger Schwierigkeitsgrad"}), 400
     league = request.args.get("league") or None
     excluded_types = _parse_csv_param(request.args.get("excluded_types"))
     excluded_ids = _parse_csv_param(request.args.get("excluded"))
@@ -1058,7 +1070,9 @@ def api_get_grid(code):
 @limiter.limit(RATE_LIMIT_EXPENSIVE)
 def api_mp_create_room():
     data = request.get_json(silent=True) or {}
-    difficulty = min(3, max(1, int(data.get("difficulty", 3))))
+    difficulty = _parse_difficulty(data.get("difficulty", 3))
+    if difficulty is None:
+        return jsonify({"error": "Ungültiger Schwierigkeitsgrad"}), 400
     # The room creator's settings govern the whole room, exactly mirroring how
     # difficulty already works — the joiner never supplies their own.
     league = data.get("league") or None
@@ -1191,10 +1205,14 @@ def api_mp_move(code):
     row, col, player_id = data.get("row"), data.get("col"), data.get("player_id")
     if row is None or col is None or player_id is None:
         return jsonify({"ok": False, "reason": "bad_input"}), 400
+    try:
+        row, col, player_id = int(row), int(col), int(player_id)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "reason": "bad_input"}), 400
 
     db = get_db()
     try:
-        ok, reason, placed = mp.apply_move(room, token, int(row), int(col), int(player_id), db)
+        ok, reason, placed = mp.apply_move(room, token, row, col, player_id, db)
     finally:
         db.close()
     return jsonify({"ok": ok, "reason": reason, "placed": placed})

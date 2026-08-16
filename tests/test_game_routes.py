@@ -35,6 +35,12 @@ def test_new_game_clamps_out_of_range_difficulty(app_client) -> None:
     assert resp.status_code == 200
 
 
+def test_new_game_rejects_non_numeric_difficulty(app_client) -> None:
+    resp = app_client.get("/api/game/new?difficulty=abc")
+    assert resp.status_code == 400
+    assert resp.get_json()["error"]
+
+
 # ─── /api/game/search ─────────────────────────────────────────────────────────
 
 def test_search_requires_three_characters(app_client) -> None:
