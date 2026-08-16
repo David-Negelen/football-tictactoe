@@ -27,15 +27,9 @@
       --accent: #ff7a1a;
       --accent-ink: #180f08;
       --accent-dim: rgba(255, 122, 26, .14);
-      /* X's color everywhere else stays --accent — this is only ever the
-         second player's color (1v1 local/online), so it's scoped to its
-         own variable instead of joining the app-wide accent/neutral pair.
-         Orange/blue also holds up for red-green color blindness, unlike
-         most "team color" pairs. */
+
       --o-color: #4da8ff;
-      /* Filled-cell backgrounds in 1v1 (see cellHtml) — a soft tint of the
-         owner's color over the dark theme, not a fully saturated block;
-         the X/O mark itself carries the full-strength color instead. */
+
       --accent-cell-bg: rgba(255, 122, 26, .2);
       --o-cell-bg: rgba(77, 168, 255, .2);
     }
@@ -49,79 +43,37 @@
       padding-bottom: env(safe-area-inset-bottom);
     }
 
-    /* One board slot (header cell or answer cell): scales with viewport
-       width instead of a fixed 128px, so 4 columns stay comfortably square
-       on a 375-414px phone instead of forcing content to overflow. */
     .tt-slot { height: clamp(72px, 21vw, 128px); }
 
-    /* Grid items default to min-width:auto, which lets a track with
-       highly-wrappable content (long category labels) get squeezed
-       narrower than its 1fr share while other tracks keep theirs — the
-       cause of the lopsided, near-illegible header column seen on real
-       phones. min-width:0 makes every column honor the same 1fr share. */
     #board > * { min-width: 0; }
 
-    /* Header icon (crest/flag/badge): scales down with the slot on narrow
-       phones so long category labels get more of the cell's height to
-       wrap into, instead of being squeezed by a fixed-size icon. */
     .tt-icon { width: clamp(30px, 9vw, 46px); height: clamp(30px, 9vw, 46px); }
 
-    /* Category label: wraps up to 2 lines. The starting font-size is this
-       clamp() (bigger on wider screens); game.js's fitBoardText() then
-       shrinks it further, per label, until the actual team/category name
-       fits within whatever height the icon above it leaves — a long name
-       like "1.FSV Mainz 05" gets a smaller font instead of being clipped
-       by the card's overflow:hidden. The line-clamp's own ellipsis is
-       only reached if even the JS shrink floor isn't small enough. */
     .tt-cat-label {
       font-size: clamp(9px, 2.6vw, 11px);
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
       overflow: hidden; overflow-wrap: anywhere;
     }
 
-    /* A filled cell's player name (see formatPlayerName in game.js, which
-       shows the last name only — short enough that this is single-line by
-       design). Never wraps or breaks mid-word: the starting size is this
-       clamp(), then game.js's fitBoardText() shrinks the font per cell
-       until the name actually fits on one line. text-overflow:ellipsis is
-       only a safety net for the rare name that still doesn't fit at the
-       shrink floor — truncation is the last resort, not the default. */
     .tt-cell-name {
       font-size: clamp(9px, 2.8vw, 13px);
       font-weight: 700; line-height: 1.25;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       max-width: 100%;
-      /* overflow:hidden (required for the ellipsis above) strips this flex
-         item's automatic min-height-from-content protection, which let a
-         crowded cell (badge+name+club) crush it to an unreadable sliver
-         instead of just sizing to one line. Pin the floor back. */
+
       flex-shrink: 0;
       min-height: 1.25em;
     }
 
-    /* ── Type scale: distinct roles instead of "everything bold+uppercase" ── */
     .tt-title { font-size: 1.375rem; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; color: var(--text); }
     .tt-label { font-size: .6875rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
     .tt-body  { font-size: .875rem; font-weight: 500; color: var(--text); }
 
-    /* ── One flat card style, everywhere: mode cards, panels, modals, and
-       (see game.js) every board slot whether it's a header, an empty
-       answer cell, or a filled one. No shadows, no gradients — state is
-       shown by content and border-color only. ── */
     .tt-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 10px; }
     .tt-card-hover { transition: border-color .12s; }
     .tt-card-hover:not(:disabled):hover { border-color: var(--accent); }
     .tt-card-hover:disabled { opacity: .5; }
 
-    /* Every scrollable panel (search results, category picker, stats modal,
-       solution sheet) — mobile browsers already render a slim overlay
-       scrollbar that doesn't need any help, but desktop browsers default to
-       a chunky, unstyled, light-gray OS scrollbar that clashes badly with
-       this dark theme (most visible on the stats modal, tall enough to
-       actually scroll once a few rounds are logged). Firefox gets the
-       standard property; everything else (Chromium, Safari) needs the
-       -webkit- pseudo-elements, since there's still no cross-browser way to
-       just say "make it match the theme". */
     .tt-scroll { scrollbar-width: thin; scrollbar-color: var(--card-border) transparent; }
     .tt-scroll::-webkit-scrollbar { width: 8px; }
     .tt-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -132,40 +84,17 @@
     button.tt-cell:not(:disabled):hover { border-color: var(--accent); }
     button.tt-cell:disabled { opacity: .5; }
     .tt-cell.is-active { border-color: var(--accent); }
-    /* Winning cells are always already filled (see cellHtml), and now
-       always already colored solid with their owner's color — a fixed
-       accent border/tint here would clash on an O win, so this is a
-       neutral ring that layers on top of either player's fill instead of
-       overriding it. */
+
     .tt-cell.is-win { box-shadow: 0 0 0 2px var(--text) inset; }
-    /* Retake mode only (see checkPendingThreatOutcome/isRetakeTarget): a
-       threatened cell (part of a pending 3-in-a-row) gets a dashed ring so
-       the defender can see exactly which cell(s) to retake; any cell
-       currently tappable to retake it gets a pointer cursor. */
+
     .tt-cell.is-threat { outline: 2px dashed var(--accent); outline-offset: -2px; }
     .tt-cell.is-retake-target { cursor: pointer; }
     .tt-cell.is-retake-target:hover { box-shadow: 0 0 0 2px var(--accent) inset; }
 
-    /* Generic fallback icons (globe/calendar/trophy/ball, and the "€"
-       market-value glyph) — no real crest/flag artwork exists for these, so
-       unlike those (which carry their own real colors and stay untouched),
-       these are deliberately accent-colored to read as a real part of the
-       UI instead of fading into a flat gray — same treatment already used
-       for the mode-select screen's icons. */
     .tt-icon-mono { color: var(--accent); }
 
-    /* Downloaded crest/flag artwork (categoryIconHtml's icon_image branch) —
-       object-fit:contain keeps the real aspect ratio within the fixed-size
-       .tt-icon square instead of stretching it (the browser's fill default
-       otherwise squashes non-square crests like SC Paderborn's circular
-       badge into an oval). No outline/contrast treatment beyond this —
-       tried a light outline for dark crests (Tottenham's navy, Newcastle's
-       black/white) but it wasn't wanted, removed. */
     .tt-icon-img { object-fit: contain; }
 
-    /* App-chrome icons (mode cards, daily card, header logo) — accent-
-       colored line icons, replacing the old grayscale-filtered emoji so
-       the mode-select screen isn't entirely neutral gray. */
     .tt-icon-app { flex-shrink: 0; }
 
     .tt-btn-accent { background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: background-color .12s; }
@@ -188,9 +117,6 @@
     .tt-pill:hover { color: var(--text); }
     .tt-pill.is-active { background: var(--accent); color: var(--accent-ink); }
 
-    /* List rows (menu items, search/category/solution results) — dense by
-       nature, so the row itself carries the 44px minimum rather than
-       relying on font size to get there. */
     .tt-row-hover {
       transition: background-color .12s;
       min-height: 44px; display: flex; align-items: center;
@@ -198,18 +124,10 @@
     .tt-row-hover:hover { background: var(--card-border); }
     .tt-row-hover.is-disabled { opacity: .4; cursor: not-allowed; }
 
-    /* Header (☰) menu button: deliberately NOT .tt-card-hover — that class's
-       border-color:accent hover reads as a stray orange rectangle clipping
-       the icon on a small square button (and gets "stuck" after a tap on
-       touch devices). State is shown by background + icon color only. */
     #btn-menu-toggle { transition: background-color .12s, color .12s; }
     #btn-menu-toggle:hover { background: var(--card-border); }
     #btn-menu-toggle.is-active { background: var(--accent-dim); border-color: var(--card-border); color: var(--accent); }
 
-    /* Dropdown: same card/radius as everywhere else, lifted off the header
-       with a real shadow (the app has no shadows anywhere else, but a
-       floating panel needs one to read as detached rather than stuck to
-       the header it shares a background and border tone with). */
     #menu-dropdown { box-shadow: 0 12px 28px -8px rgba(0, 0, 0, .6); }
     #menu-dropdown .tt-icon-menu { color: var(--text-dim); flex-shrink: 0; }
 
@@ -269,7 +187,6 @@
 
   <div class="flex flex-col items-center py-5 px-4 flex-1 w-full">
 
-  <!-- Modus-Auswahl -->
   <div id="screen-mode-select" class="w-full max-w-3xl flex flex-col items-center gap-6 py-8">
     <button id="daily-card"
       class="tt-card tt-card-hover w-full p-5 flex items-center gap-4 text-left">
@@ -311,7 +228,6 @@
     </div>
   </div>
 
-  <!-- Grid einstellen (Schwierigkeit & Liga) -->
   <div id="screen-setup" class="hidden w-full max-w-md flex flex-col items-center gap-6 py-8">
     <div class="tt-card w-full p-5 flex flex-col gap-5">
       <div>
@@ -338,8 +254,7 @@
           </div>
         </div>
       </div>
-      <!-- Only relevant (and only shown) for 1v1 Lokal — see enterSetupScreen,
-           which toggles this alongside setup-load-grid/setup-visibility-picker. -->
+
       <div id="setup-retake-picker" class="hidden">
         <div class="tt-label mb-2">Spielmodus</div>
         <div class="tt-card flex overflow-hidden">
@@ -348,8 +263,7 @@
         </div>
         <p class="text-xs mt-2" style="color:var(--text-dim)">Retake: Ist das Grid voll, erobert ihr abwechselnd ein gegnerisches Feld zurück, statt unentschieden zu spielen. Eine Dreierreihe gewinnt erst, wenn sie im nächsten Zug nicht durchbrochen wird.</p>
       </div>
-      <!-- Only relevant (and only shown) when hosting a 1v1 Online room —
-           see enterSetupScreen, which toggles this alongside setup-load-grid. -->
+
       <div id="setup-visibility-picker" class="hidden">
         <div class="tt-label mb-2">Sichtbarkeit</div>
         <div class="tt-card flex overflow-hidden">
@@ -361,10 +275,6 @@
     </div>
     <button id="btn-setup-continue" class="tt-btn-accent w-full text-sm px-4 py-3 rounded-xl">Los geht's →</button>
 
-    <!-- Loading a shared/custom grid by code always starts a solo round
-         (see loadAndStartCustomGrid) — only shown when that's actually
-         what's being set up, not for 1v1 Lokal/Online (setupLoadGrid in
-         game.js toggles this alongside the rest of enterSetupScreen). -->
     <div id="setup-load-grid" class="hidden w-full flex flex-col items-center gap-3">
       <div class="text-xs" style="color:var(--text-dim)">— oder —</div>
       <div class="tt-card w-full p-4">
@@ -381,12 +291,10 @@
     <button id="btn-setup-back" class="text-xs font-semibold transition-colors" style="color:var(--text-dim)">← Zurück</button>
   </div>
 
-  <!-- Online-Lobby -->
   <div id="screen-online-lobby" class="hidden w-full max-w-md flex flex-col items-center gap-4 py-8">
     <div id="online-lobby-body" class="w-full"></div>
   </div>
 
-  <!-- Daily Grid bereits gespielt -->
   <div id="screen-daily-done" class="hidden w-full max-w-md flex flex-col items-center gap-4 py-8 text-center">
     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>
@@ -401,7 +309,6 @@
     <button id="daily-done-menu" class="text-xs font-semibold transition-colors" style="color:var(--text-dim)">← Zurück zum Menü</button>
   </div>
 
-  <!-- Editor: eigenes Grid bauen, speichern & teilen, per Code laden -->
   <div id="screen-editor" class="hidden w-full max-w-2xl flex flex-col gap-5 py-8">
     <h2 class="tt-title">Editor</h2>
 
@@ -441,14 +348,8 @@
     <button id="btn-editor-back" class="self-start text-xs font-semibold transition-colors" style="color:var(--text-dim)">← Zurück zum Menü</button>
   </div>
 
-  <!-- Spielfeld-Screen (Solo / Lokal / Online) -->
   <div id="screen-board" class="hidden w-full flex flex-col items-center">
 
-    <!-- Statusleiste + Spielfeld: eine zusammenhängende Karte, keine
-         schwebende Pille über dem Grid — die Statuszeile ist die
-         oberste Reihe derselben Karte wie das Grid. Das Rundenergebnis
-         übernimmt dieselbe Statuszeile direkt (siehe showEndBanner in
-         game.js) statt einer eigenen Karte/Popup oder Zeile darunter. -->
     <div class="tt-card w-full max-w-3xl overflow-hidden">
       <div id="status-bar" class="flex items-center justify-between gap-3 text-sm px-4 py-2.5"
         style="border-bottom:1px solid var(--card-border);">
@@ -459,15 +360,10 @@
         </span>
       </div>
 
-      <!-- Spielfeld: 4×4 CSS-Grid. Same gap for every row (header row
-           included), same .tt-cell style for every slot (see game.js) —
-           so it reads as one grid, not a header glued to a 3×3 grid. -->
       <div id="board" class="grid gap-2 w-full p-3" style="grid-template-columns: repeat(4, 1fr);">
       </div>
     </div>
 
-    <!-- Buttons: "Aufgeben" while a round is live, swapped for the result
-         actions once it ends — same slot, not a second block. -->
     <div class="mt-4 flex flex-col gap-2 w-full max-w-xs px-4">
       <button id="btn-give-up" class="tt-btn-accent text-xs px-6 py-3 rounded-full tracking-widest uppercase">
         Aufgeben
@@ -488,9 +384,8 @@
 
   </div>
 
-  </div><!-- /content -->
+  </div>
 
-  <!-- Spieler-Suche Modal -->
   <div id="modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
     <div class="tt-card w-full max-w-sm overflow-hidden">
       <div class="px-5 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--card-border);">
@@ -509,7 +404,6 @@
     </div>
   </div>
 
-  <!-- Kategorie-Auswahl Modal (Editor) -->
   <div id="category-picker-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
     <div class="tt-card w-full max-w-sm overflow-hidden">
       <div class="px-5 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--card-border);">
@@ -524,7 +418,6 @@
     </div>
   </div>
 
-  <!-- Statistik-Modal -->
   <div id="stats-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
     <div class="tt-card w-full max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
       <div class="px-5 py-3 flex items-center justify-between flex-shrink-0" style="border-bottom:1px solid var(--card-border);">
@@ -538,8 +431,6 @@
     </div>
   </div>
 
-  <!-- Lösungs-Sheet: die volle Spielerliste für ein leer gebliebenes Feld —
-       als Bottom-Sheet auf dem Handy statt in die Zelle gequetscht. -->
   <div id="solution-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center">
     <div class="tt-card w-full sm:max-w-sm overflow-hidden max-h-[75vh] flex flex-col rounded-b-none sm:rounded-b-[10px]"
       style="padding-bottom:env(safe-area-inset-bottom);">

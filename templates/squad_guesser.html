@@ -23,7 +23,6 @@
       font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
     }
 
-    /* ══════════════ PITCH ══════════════ */
     .pitch {
       background: linear-gradient(180deg, #1a6b2a 0%, #1f7d31 50%, #1a6b2a 100%);
       background-image:
@@ -46,7 +45,6 @@
       border:1px solid rgba(255,255,255,.12);
     }
 
-    /* ══════════════ JERSEY ══════════════ */
     .jersey-wrap {
       display: flex; flex-direction: column; align-items: center;
       cursor: pointer; user-select: none;
@@ -74,7 +72,6 @@
     .pip { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.2); transition:background .2s; }
     .pip.used { background:#f87171; }
 
-    /* ══════════════ TEAM TABS ══════════════ */
     .team-tab {
       flex: 1; padding: 10px 8px; border-radius: 12px; cursor: pointer;
       border: 2px solid transparent; transition: border-color .2s, background .2s;
@@ -83,7 +80,6 @@
     .team-tab.active { border-color: rgba(99,179,237,.6); background: rgba(99,179,237,.08); }
     .team-tab:not(.active):hover { background: rgba(255,255,255,.05); }
 
-    /* ══════════════ WORDLE ══════════════ */
     .wordle-cell {
       width: var(--cs, 52px); height: var(--cs, 52px);
       border: 2px solid var(--border);
@@ -185,16 +181,13 @@
 
 <main class="flex flex-col items-center py-5 px-4 flex-1">
 
-<!-- ══════════════════════════ PITCH VIEW ════════════════════════════════════ -->
 <div id="view-pitch" class="w-full max-w-3xl flex flex-col items-center gap-3">
 
-  <!-- Match header -->
   <div id="match-header" class="hidden w-full bg-slate-800/60 backdrop-blur rounded-2xl border border-slate-700 px-4 py-3 text-center">
     <div id="header-competition" class="text-blue-400 font-semibold text-xs uppercase tracking-widest mb-0.5"></div>
     <div id="header-date" class="text-slate-400 text-xs"></div>
   </div>
 
-  <!-- Team tabs -->
   <div id="team-tabs" class="hidden w-full flex gap-2">
     <div id="tab-home" class="team-tab active" onclick="switchTeam('home')">
       <div id="tab-home-name" class="font-black text-sm leading-tight"></div>
@@ -212,10 +205,8 @@
     </div>
   </div>
 
-  <!-- Loading -->
   <div id="loading" class="text-slate-500 text-sm mt-24 animate-pulse">Loading match…</div>
 
-  <!-- Pitch -->
   <div id="pitch" class="hidden pitch w-full py-4 px-3">
     <div id="row-fwd" class="flex justify-center gap-1.5 mb-3 items-end"></div>
     <div id="row-mid" class="flex justify-center gap-1.5 mb-3 items-end"></div>
@@ -223,14 +214,12 @@
     <div id="row-gk"  class="flex justify-center gap-1.5 items-end"></div>
   </div>
 
-  <!-- Controls -->
   <div id="controls" class="hidden w-full flex gap-2 justify-end">
     <button id="btn-solve" class="action-btn" style="background:#475569">Solve All</button>
   </div>
 
 </div>
 
-<!-- ══════════════════════════ WORDLE VIEW ═══════════════════════════════════ -->
 <div id="view-wordle" class="hidden w-full max-w-3xl flex flex-col items-center gap-4">
 
   <div class="w-full flex items-center justify-between">
@@ -253,7 +242,6 @@
 </main>
 
 <script>
-// ─── Constants ────────────────────────────────────────────────────────────────
 const MAX_TRIES = 6;
 const KB_ROWS = [
   ['Q','W','E','R','T','Y','U','I','O','P'],
@@ -262,7 +250,6 @@ const KB_ROWS = [
 ];
 const GK_COLOUR = ['#ca8a04','#78350f'];
 
-// ─── Game state ───────────────────────────────────────────────────────────────
 const g = {
   match: {},
   teams: {
@@ -273,7 +260,6 @@ const g = {
 };
 const w = { team: null, idx: null, target:'', current:'', keyStates:{} };
 
-// ─── Load ─────────────────────────────────────────────────────────────────────
 async function loadGame() {
   showPitch();
   document.getElementById('loading').classList.remove('hidden');
@@ -314,7 +300,6 @@ async function loadGame() {
   updateTabScores();
 }
 
-// ─── Jersey SVG ───────────────────────────────────────────────────────────────
 function shirtSvg(primary, secondary, num, isGk, sw=64, sh=56) {
   const [fill, sleeve] = isGk ? GK_COLOUR : [primary, secondary];
   return `<div style="position:relative;width:${sw}px;height:${sh}px;flex-shrink:0">
@@ -334,7 +319,6 @@ function shirtSvg(primary, secondary, num, isGk, sw=64, sh=56) {
   </div>`;
 }
 
-// ─── Pitch render ─────────────────────────────────────────────────────────────
 function jerseySize(n) {
   const pitchW = Math.min(window.innerWidth - 64, 720);
   const sw = Math.min(72, Math.max(40, Math.floor((pitchW - (n - 1) * 6) / n)));
@@ -431,7 +415,6 @@ function showWordle() {
   document.getElementById('view-wordle').classList.remove('hidden');
 }
 
-// ─── Wordle open / close ──────────────────────────────────────────────────────
 function openWordle(team, idx) {
   w.team    = team;
   w.idx     = idx;
@@ -460,7 +443,6 @@ function updateWordleHeader() {
   document.getElementById('w-tries').textContent = `${MAX_TRIES - s.tries} tries left`;
 }
 
-// ─── Wordle logic ─────────────────────────────────────────────────────────────
 function targetFor(player) {
   if (player.guess_name) {
     return player.guess_name.normalize('NFD').replace(/[̀-ͯ]/g,'')
@@ -550,7 +532,6 @@ function submitGuess() {
   }
 }
 
-// ─── Grid render ──────────────────────────────────────────────────────────────
 function renderGrid() {
   const s   = g.teams[w.team].states[w.idx];
   const n   = w.target.length;
@@ -601,7 +582,6 @@ function setMsg(msg, color) {
   el.style.color = color || '#94a3b8';
 }
 
-// ─── Keyboard ─────────────────────────────────────────────────────────────────
 function renderKeyboard() {
   KB_ROWS.forEach((row, ri) => {
     const el = document.getElementById(`kb-row-${ri+1}`);
@@ -633,7 +613,6 @@ document.addEventListener('keydown', e => {
   if (/^[A-Z]$/.test(l)) addLetter(l);
 });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function posGroup(pos) {
   if (!pos) return 'Player';
   const l = pos.toLowerCase();
@@ -650,7 +629,6 @@ function esc(v) {
   return d.innerHTML;
 }
 
-// ─── Solve ────────────────────────────────────────────────────────────────────
 document.getElementById('btn-solve').addEventListener('click', () => {
   if (w.idx !== null) { closeWordle(true); }
   for (const side of ['home','away']) {
@@ -662,11 +640,9 @@ document.getElementById('btn-solve').addEventListener('click', () => {
   updateTabScores();
 });
 
-// ─── Buttons ──────────────────────────────────────────────────────────────────
 document.getElementById('btn-back').addEventListener('click', closeWordle);
 document.getElementById('btn-new').addEventListener('click', loadGame);
 
-// ─── Start ────────────────────────────────────────────────────────────────────
 loadGame();
 </script>
 

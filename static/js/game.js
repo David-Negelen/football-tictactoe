@@ -1,14 +1,3 @@
-// ─── Icons ──────────────────────────────────────────────────────────────────
-
-// One small hand-authored line-icon set replacing every decorative emoji in
-// the app (system emoji renders in fixed, uncontrollable multi-color glyphs
-// that clash with the rest of the flat, single-accent design language — see
-// the earlier header-menu icon pass). Every icon uses currentColor, so the
-// wrapping element's `color` decides whether it reads as neutral chrome or
-// picks up the accent — no separate color parameter needed here.
-// Flags (real content, not decoration) and plain typographic glyphs (✓ ✕ ☰)
-// are intentionally left alone — see CLAUDE.md-adjacent design notes in
-// earlier commits on why those are exempt.
 const ICON_PATHS = {
   fire: `<path d="M12 2c.5 3-2.5 4.5-2.5 8a2.5 2.5 0 0 0 5 0c0-1-.5-1.8-.9-2.5 1.4 1 2.4 3 2.4 5a4.5 4.5 0 0 1-9 0c0-4 2-6.5 3-7.5.3 1.5 1 2 1.5 1.5-.2-1.7 0-3 .5-4.5Z"/>`,
   trophy: `<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>`,
@@ -27,16 +16,11 @@ const ICON_PATHS = {
   ball: `<circle cx="12" cy="12" r="9"/><path d="M12 8l3 2-1 4H10l-1-4Z"/><path d="M12 3v5"/><path d="M6 8l3.5 2.5"/><path d="M18 8l-3.5 2.5"/><path d="M8 20l2-6"/><path d="M16 20l-2-6"/>`,
   play: `<path d="M6 4l13 8-13 8V4Z"/>`,
   clock: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>`,
-  // 1v1 board marks (see cellHtml) — same stroke-width-2 line-icon
-  // treatment as everything above, and deliberately matched bounding
-  // boxes (both span the 4-20 range) so X doesn't visually outweigh O the
-  // way the same font glyphs at an equal font-size used to.
+
   x: `<path d="M4 4l16 16"/><path d="M20 4 4 20"/>`,
   o: `<circle cx="12" cy="12" r="8"/>`,
 };
-// "play" stays filled — a solid triangle is the universal play-button
-// convention, not an emoji-like exception. Every other icon, fire
-// included, is an outline to match the rest of the icon system.
+
 const ICON_FILLED = new Set(['play']);
 
 function svgIcon(name, size = 18) {
@@ -46,24 +30,15 @@ function svgIcon(name, size = 18) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" ${attrs} style="flex-shrink:0">${ICON_PATHS[name]}</svg>`;
 }
 
-// Icon + text inline, for the many places an emoji used to sit directly in
-// front of a label (banners, buttons, status text).
 function iconText(name, text, { size = 16, gap = 6 } = {}) {
   return `<span style="display:inline-flex;align-items:center;gap:${gap}px">${svgIcon(name, size)}<span>${text}</span></span>`;
 }
 
-// ─── SVG & badges ───────────────────────────────────────────────────────────
-
 function shirtSvg() {
-  // Flat, single-color "+" — an empty slot, nothing more. No shading, no
-  // gradient, no icon library glyph. Accent-colored so "orange = tap here,
-  // this is interactive" reads consistently across the board.
+
   return `<span style="font-size:28px;line-height:1;font-weight:300;color:var(--accent)">+</span>`;
 }
 
-// The one place the app's palette grows a second color (--o-color, next to
-// --accent for X): player identity in 1v1 local/online — the filled-cell
-// background (see cellHtml), its corner glyph, and the turn-indicator dot.
 function playerColor(player) {
   return player === 1 ? 'var(--accent)' : 'var(--o-color)';
 }
@@ -75,55 +50,46 @@ function esc(v) {
   return d.innerHTML;
 }
 
-// ─── Zustand ──────────────────────────────────────────────────────────────────
-
 const g = {
-  mode: null,        // 'solo' | 'local' | 'online'
-  soloVariant: null,  // null | 'daily' | 'custom' — a solo round that isn't a plain random one
-  soloGridCode: null, // the saved-grid code when soloVariant === 'custom' (see /solo/<code>)
-  dailyDate: null,    // the server's date string for the currently-loaded daily grid
+  mode: null,
+  soloVariant: null,
+  soloGridCode: null,
+  dailyDate: null,
   rows: [], cols: [],
   board: [[null,null,null],[null,null,null],[null,null,null]],
-  current: 1,         // whose turn (local/online); unused in solo
-  winner: null,       // null | 1 | 2 | 'draw' | 'complete' (solo)
+  current: 1,
+  winner: null,
   winCells: [],
   usedIds: new Set(),
-  activeCell: null,   // {r, c}
+  activeCell: null,
   streak: { 1: 0, 2: 0 },
-  // local retake mode only (see setRetakeMode/checkWinnerLocal/retakeLocal):
-  retakeMode: false,  // chosen at setup time, fixed for the whole round
-  phase: 'fill',       // 'fill' | 'retake' — flips once the grid fills with no winner
-  // A 3-in-a-row formed during the retake phase doesn't win outright — the
-  // opponent gets exactly one more turn to break it by retaking one of its
-  // cells (see checkPendingThreatOutcome). null once there's nothing pending.
-  pendingThreat: null, // null | { owner: 1|2, lines: [[[r,c],[r,c],[r,c]], ...] }
+
+  retakeMode: false,
+  phase: 'fill',
+
+  pendingThreat: null,
   elapsedSeconds: 0,
-  solution: null,     // filled in after the round ends
-  // solo:
+  solution: null,
+
   soloAttempted: 0,
   soloCorrect: 0,
-  // online:
+
   onlineCode: null,
   onlineToken: null,
   onlineSlot: null,
   onlineConnected: 0,
   onlineEventSource: null,
-  lobbyEventSource: null, // SSE for the public lobby-browsing list — see connectLobbyListEvents
+  lobbyEventSource: null,
   onlineBoardEntered: false,
   onlineFinished: false,
-  // The `version` of the last wrong-guess flash we've already shown (see
-  // applyOnlineState) — undefined until the first state sync, which seeds
-  // it silently instead of flashing a guess that happened before we connected.
+
   onlineLastWrongGuessVersion: undefined,
-  // editor:
+
   editor: { row: [null, null, null], col: [null, null, null] },
   editorSavedCode: null,
-  editorCounts: null, // 3x3, entry is null until both that row+col are picked
+  editorCounts: null,
 };
 let difficulty = 3;
-
-// ─── Anonyme Identität & Statistik ─────────────────────────────────────────────
-// Kein Login — nur eine zufällige Geräte-ID + Statistik im localStorage des Browsers.
 
 function getDeviceId() {
   let id = localStorage.getItem('ttt_device_id');
@@ -136,15 +102,9 @@ function getDeviceId() {
 
 const DEFAULT_STATS = {
   local: { gamesPlayed: 0, wins: { 1: 0, 2: 0 }, draws: 0, correct: 0, wrong: 0, bestStreak: 0, fastestWinSeconds: null },
-  // streak/bestStreak: consecutive correct guesses in a row, across every
-  // solo round (daily/custom/random alike) — resets on any miss, same
-  // "hot streak" idea as local mode's per-player streak. scoreDistribution:
-  // count of random-practice rounds ending with each score 0-9, for the
-  // Wordle-style histogram in the stats modal.
+
   solo: { rounds: 0, correct: 0, cells: 0, bestCorrect: 0, streak: 0, bestStreak: 0, scoreDistribution: new Array(10).fill(0) },
-  // streak/bestStreak here: consecutive round *wins*, not guesses — a
-  // draw or a loss both break it, matching how a match-based mode's
-  // "streak" is usually understood.
+
   online: { rounds: 0, wins: 0, losses: 0, draws: 0, streak: 0, bestStreak: 0 },
 };
 
@@ -171,8 +131,8 @@ const deviceId = getDeviceId();
 let stats = loadStats();
 
 let selectedLeague = '';
-let onlineVisibility = 'private'; // 'private' | 'public' — see setVisibility, only used when hosting
-let retakeMode = false; // see setRetakeMode, only used when starting a 1v1 Lokal round
+let onlineVisibility = 'private';
+let retakeMode = false;
 
 function genParams() {
   const p = new URLSearchParams({ difficulty: String(difficulty) });
@@ -180,27 +140,6 @@ function genParams() {
   return p;
 }
 
-// ─── Router ───────────────────────────────────────────────────────────────────
-// Every top-level screen gets a real URL via the History API — the app stays
-// a single document (a live round's timer and the 1v1 Online SSE connection
-// must never be torn down by a full page navigation), but back/forward,
-// direct links, and a hard refresh all now land on the right screen instead
-// of always bouncing to mode-select. Modal overlays (#modal, #stats-modal,
-// etc.) are deliberately NOT part of this — they're not top-level screens.
-
-// A URL identifies a *resource*, not a raw DOM screen name — several of the
-// 6 screen-* divs are just different render states of the same resource
-// (online-lobby/board are both driven by one room's state; board/daily-done
-// are both driven by one day's puzzle), so this maps to /solo, /local,
-// /solo/<code>, /online/<code> etc. instead of a single generic /board. The
-// game lives at the site root (see the game() route in app.py) — /combos and
-// /squad-guesser are the only other top-level pages, and both are matched
-// ahead of this router's own catch-all. Setup, an online room, and a saved/
-// shared grid can be reconstructed from the URL alone (server state lives
-// under a code); a plain solo/local round has no server-side representation,
-// so a cold load of its URL instead falls back to tryResumeRound's
-// sessionStorage snapshot (see below) and, failing that, to that mode's
-// setup screen.
 function urlForScreen(name) {
   switch (name) {
     case 'setup': return `/setup/${g.pendingMode}`;
@@ -213,16 +152,11 @@ function urlForScreen(name) {
       if (g.mode === 'solo' && g.soloVariant === 'custom') return `/solo/${g.soloGridCode}`;
       if (g.mode === 'solo') return '/solo';
       if (g.mode === 'local') return '/local';
-      return '/board'; // unreachable in practice — g.mode is always set before showScreen('board')
+      return '/board';
     case 'mode-select': default: return '/';
   }
 }
 
-// Reads the current URL, used only for a cold load (see init()) — popstate
-// (back/forward within an already-open session) instead reads the concrete
-// screen straight off history.state, since `g` is still fully live then and
-// doesn't need to be re-derived from the URL at all (see the popstate
-// listener below).
 function parseLocation() {
   const path = location.pathname;
   let m;
@@ -237,10 +171,6 @@ function parseLocation() {
   return { screen: 'mode-select' };
 }
 
-// The pure DOM half of a screen change, with no history side effect — used
-// directly by showScreen below, and on its own by the popstate handler
-// (the browser already moved history for us there, re-pushing would just
-// create a duplicate/broken entry).
 function renderScreenDom(name) {
   document.getElementById('screen-mode-select').classList.toggle('hidden', name !== 'mode-select');
   document.getElementById('screen-setup').classList.toggle('hidden', name !== 'setup');
@@ -249,22 +179,10 @@ function renderScreenDom(name) {
   document.getElementById('screen-editor').classList.toggle('hidden', name !== 'editor');
   document.getElementById('screen-board').classList.toggle('hidden', name !== 'board');
   closeMenuDropdown();
-  // The public-lobby SSE connection (see connectLobbyListEvents) is only
-  // meaningful while actually browsing online-lobby's "home" sub-state —
-  // leaving the screen entirely always means leaving that sub-state too, so
-  // this one check covers every transition away (menu, setup, board, ...)
-  // without each of them separately remembering to call it. Reopened by
-  // renderLobbyHome the next time this screen is (re-)entered.
+
   if (name !== 'online-lobby') closeLobbyListEvents();
 }
 
-// push=true (the default) is every screen change a user actually navigated
-// to — clicking a mode, starting a round, opening the editor — so the
-// browser's own back button steps back through them one at a time. push:
-// false is for changes that aren't a new step: the very first screen on
-// load, a failed action reverting to where you already were, and automatic
-// SSE-driven transitions (entering the online board once an opponent
-// connects) — those replace the current entry instead of growing history.
 function showScreen(name, { push = true } = {}) {
   renderScreenDom(name);
   const url = urlForScreen(name);
@@ -273,18 +191,6 @@ function showScreen(name, { push = true } = {}) {
   else history.replaceState(state, '', url);
 }
 
-// Entry point for a URL with NO live `g` state behind it — a cold page
-// load (init()) or the rare popstate with no history.state payload. Each
-// branch either reconstructs the screen from data the URL/server/
-// sessionStorage/localStorage can actually supply, or — if there's no
-// saved round to resume either — bounces one level to that mode's setup
-// screen (replace, not push: this corrects an unresumable URL, it isn't a
-// new step) rather than all the way home, so relaunching is one tap
-// instead of a full re-navigation. A saved/shared grid (solo-custom) and
-// an online room can additionally be reconstructed cold from just the URL
-// (their state lives server-side under a code) even with no saved round —
-// tryResumeRound only ever gets in the way there if it were to restore
-// stale progress for a *different* code, which its match check rules out.
 function enterFromPath(parsed) {
   switch (parsed.screen) {
     case 'setup': enterSetupScreen(parsed.mode, { push: false }); break;
@@ -294,11 +200,7 @@ function enterFromPath(parsed) {
       g.mode = 'online';
       renderScreenDom('online-lobby');
       updateModeChrome();
-      // Bypasses showScreen/urlForScreen (which derives the URL from
-      // g.onlineCode, not yet meaningfully set at this point — a resume
-      // attempt hasn't run yet, and even on failure the code stays worth
-      // keeping visible in the URL, e.g. so a stale/expired invite link
-      // still shows what room the join UI is pre-filled for).
+
       history.replaceState({ screen: 'online-lobby' }, '', parsed.code ? `/online/${parsed.code}` : '/online');
       if (parsed.code) attemptOnlineResume(parsed.code);
       else renderLobbyHome();
@@ -319,9 +221,7 @@ window.addEventListener('popstate', e => {
     renderScreenDom(e.state.screen);
     return;
   }
-  // No state (e.g. the user hand-edited the URL, or landed on the very
-  // first entry from before any of our pushState calls) — same "no live
-  // session behind this URL" situation as a cold load.
+
   enterFromPath(parseLocation());
 });
 
@@ -329,9 +229,6 @@ function updateModeChrome() {
   resetGiveUpConfirm();
 }
 
-// Give-up uses an inline two-step confirm (click once to arm, click again
-// to confirm) instead of a browser confirm() popup, in every mode; clicking
-// anywhere else cancels it.
 let giveUpConfirming = false;
 
 function resetGiveUpConfirm() {
@@ -353,9 +250,6 @@ document.querySelectorAll('.league-btn').forEach(btn => {
   btn.addEventListener('click', () => setLeague(btn.dataset.league));
 });
 
-// Host-only setting (see setup-visibility-picker, toggled visible in
-// enterSetupScreen): whether the room additionally gets listed in the
-// public lobby (see connectLobbyListEvents) or stays link/code-only.
 function setVisibility(value) {
   onlineVisibility = value;
   document.querySelectorAll('.visibility-btn').forEach(btn => {
@@ -367,9 +261,6 @@ document.querySelectorAll('.visibility-btn').forEach(btn => {
   btn.addEventListener('click', () => setVisibility(btn.dataset.visibility));
 });
 
-// Local-only (see setup-retake-picker, toggled visible in enterSetupScreen):
-// once the grid fills up, instead of ending in a draw, players keep taking
-// turns retaking the opponent's cells — see checkWinnerLocal/retakeLocal.
 function setRetakeMode(value) {
   retakeMode = value;
   document.querySelectorAll('.retake-btn').forEach(btn => {
@@ -385,23 +276,16 @@ document.querySelectorAll('[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => selectMode(btn.dataset.mode));
 });
 
-// Difficulty and league are chosen once, on their own screen — for solo/
-// local right after picking the mode; for online, only after choosing to
-// host (see renderLobbyHome's "Raum erstellen" handler), since a joiner
-// never needs it at all — the room creator's settings apply to them too, and
-// making them pick unused settings before even seeing the host/join choice
-// was the previous (wrong) order.
 function enterSetupScreen(pendingMode, { push = true } = {}) {
   g.pendingMode = pendingMode;
   document.getElementById('btn-setup-continue').disabled = false;
-  // Loading a grid by code always starts a solo round — only relevant
-  // (and only shown) when solo is actually what's being set up.
+
   document.getElementById('setup-load-grid').classList.toggle('hidden', pendingMode !== 'solo');
   document.getElementById('setup-load-error').classList.add('hidden');
   document.getElementById('setup-load-code').value = '';
-  // Room visibility only makes sense when hosting a room in the first place.
+
   document.getElementById('setup-visibility-picker').classList.toggle('hidden', pendingMode !== 'online-host');
-  // Retake mode is a 1v1 Lokal-only variant for now (see setRetakeMode).
+
   document.getElementById('setup-retake-picker').classList.toggle('hidden', pendingMode !== 'local');
   showScreen('setup', { push });
 }
@@ -431,12 +315,7 @@ document.getElementById('btn-setup-continue').addEventListener('click', e => {
   if (mode === 'solo') { startSolo(); return; }
   if (mode === 'local') { startLocal(); return; }
   if (mode === 'online-host') {
-    // Creating a room is a ~0.5s round-trip — without this guard a fast
-    // double-click fires it twice, creating two rooms and leaving the
-    // client attached to whichever response happens to land last. Capture
-    // the button now, synchronously — Event.currentTarget is nulled out by
-    // the browser once dispatch finishes, so it can't be read inside the
-    // .finally() below (after the await in createOnlineRoom has yielded).
+
     const btn = e.currentTarget;
     if (btn.disabled) return;
     btn.disabled = true;
@@ -444,11 +323,6 @@ document.getElementById('btn-setup-continue').addEventListener('click', e => {
   }
 });
 
-// Lets a hard refresh on /online/<code> silently re-attach to a room
-// instead of landing on a bare join screen — the room itself already lives
-// server-side, this is just enough client-side memory of "which seat was
-// mine" to reuse it. sessionStorage (not localStorage): a stale token from a
-// finished session in an old tab shouldn't resurrect itself in a new one.
 const ONLINE_SESSION_KEY = 'ttt_online_session';
 
 function saveOnlineSession() {
@@ -462,13 +336,6 @@ function clearOnlineSession() {
   sessionStorage.removeItem(ONLINE_SESSION_KEY);
 }
 
-// Same idea, for solo/local rounds — these have no server-side game state to
-// reattach to at all, so this holds the actual board (not just an identity
-// token): rows/cols, filled cells, whose turn, elapsed time. Saved on every
-// move and cleared the instant a round ends or the player leaves to the
-// menu — a finished round's reload still bounces to setup (nothing of value
-// is lost there; they already saw the result) rather than trying to
-// reconstruct a result banner from storage too.
 const ROUND_SESSION_KEY = 'ttt_round_session';
 
 function saveRoundSession() {
@@ -486,13 +353,9 @@ function clearRoundSession() {
   sessionStorage.removeItem(ROUND_SESSION_KEY);
 }
 
-// Rebuilds g and the board DOM from a saved round session if one matches the
-// screen being entered — returns whether it did, so callers know whether to
-// fall back to their normal fresh-start path (no saved session, or it's for
-// a different mode/grid/day).
 function tryResumeRound(match) {
   let saved = null;
-  try { saved = JSON.parse(sessionStorage.getItem(ROUND_SESSION_KEY) || 'null'); } catch { /* corrupt entry — ignore */ }
+  try { saved = JSON.parse(sessionStorage.getItem(ROUND_SESSION_KEY) || 'null'); } catch {   }
   if (!saved || saved.mode !== match.mode) return false;
   if ((saved.soloVariant || null) !== (match.soloVariant || null)) return false;
   if (match.soloVariant === 'custom' && saved.soloGridCode !== match.gridCode) return false;
@@ -532,8 +395,6 @@ function goToMenu() {
 }
 document.getElementById('btn-logo').addEventListener('click', goToMenu);
 
-// ─── Kopfzeilen-Menü (☰) ────────────────────────────────────────────────────
-
 function closeMenuDropdown() {
   document.getElementById('menu-dropdown').classList.add('hidden');
   document.getElementById('btn-menu-toggle').classList.remove('is-active');
@@ -550,12 +411,6 @@ document.addEventListener('click', e => {
   }
 });
 
-// Closing the tab, navigating away, or reloading mid-game should forfeit
-// immediately instead of leaving the opponent waiting for the server's
-// ~20s disconnect timeout (see multiplayer.py's check_opponent_disconnected
-// for the fallback that still covers a crash/network loss, where no JS ever
-// gets to run). A regular fetch() gets cancelled when the page unloads —
-// sendBeacon is specifically designed to survive that.
 window.addEventListener('pagehide', () => {
   if (g.mode === 'online' && g.onlineCode && !g.winner) {
     const body = new Blob([JSON.stringify({ token: g.onlineToken })], { type: 'application/json' });
@@ -563,15 +418,6 @@ window.addEventListener('pagehide', () => {
   }
 });
 
-// ─── Spielfeld rendern (gemeinsam für alle Modi) ───────────────────────────────
-
-// Shrinks el's font-size, starting from whatever its CSS (usually a
-// clamp()) already resolved to, down to `min` — one step at a time — until
-// its content actually fits. `axis: 'width'` is for single-line text where
-// text-overflow:ellipsis is the fallback (player names); `axis: 'height'`
-// is for the multi-line line-clamped labels, where the clamp's own
-// ellipsis is the fallback. Either way, shrinking to fit is the default
-// behavior and truncation only kicks in if `min` itself still overflows.
 function shrinkFontToFit(el, axis, min, step = 0.5) {
   el.style.fontSize = '';
   let size = parseFloat(getComputedStyle(el).fontSize);
@@ -610,19 +456,11 @@ function renderBoard() {
   fitBoardText(board);
 }
 
-// A cell already owned by the opponent, while the retake phase is live, can
-// still be tapped (to retake it) — every other filled cell is inert. Only
-// applies in 1v1 Lokal; solo/online cells are never retake targets.
 function isRetakeTarget(r, c) {
   const entry = g.board[r][c];
   return !g.winner && g.mode === 'local' && g.phase === 'retake' && !!entry && entry.player !== g.current;
 }
 
-// Filled/missed cells have nothing to do on tap, except a retake-phase cell
-// owned by the opponent; an empty cell before the round ends opens the
-// player search; an empty cell after the round ends (once solutions are
-// loaded) opens the full-answer sheet instead — same data-cell wiring
-// either way, the state at click time decides.
 function handleCellClick(r, c) {
   if (g.board[r][c] && !isRetakeTarget(r, c)) return;
   if (g.winner !== null) {
@@ -637,13 +475,6 @@ function lastName(name) {
   return parts[parts.length - 1] || name || '';
 }
 
-// Last name alone identifies a player and is far shorter than the full
-// name — that's the default everywhere on the board. The only time it's
-// genuinely ambiguous is if two different filled cells on this board
-// happen to resolve to the same last name; only then do both get a
-// first-initial prefix back, to stay distinguishable. Mononyms (Neymar,
-// Pelé, Ronaldinho) have no "last name" to strip, so they pass through
-// unchanged either way.
 function formatPlayerName(name) {
   const parts = (name || '').trim().split(/\s+/);
   if (parts.length < 2) return name || '';
@@ -659,47 +490,24 @@ function formatPlayerName(name) {
 }
 
 function categoryIconHtml(cat) {
-  // Real crest/flag artwork and team/position brand colors are content, not
-  // decoration — they stay in full color. Only the generic fallback icons
-  // (trophy/globe/calendar/ball — not tied to any specific team) are
-  // flattened to grayscale, so the palette still can't pick up arbitrary
-  // extra hues. See app.py's _cat_display for how `icon`/`icon_letter`/
-  // `icon_color`/`icon_image` get set — every category resolves to exactly
-  // one of the four branches below, never a raw emoji character.
-  // Real downloaded flag/crest image (see fetch_flags.py, fetch_club_logos.py)
-  // wins whenever available — looks far better than any icon/badge.
+
   if (cat.icon_image) {
-    // Crest/flag downloads occasionally 404 (source removed the file, a
-    // scrape gap, etc.) — fall back to the same letter-badge/ball icon
-    // used when there's no image at all, instead of leaving a broken-image
-    // glyph in the cell.
-    // Single-quoted, hand-escaped JS string literals — the whole call then
-    // sits inside a double-quoted HTML attribute, so JSON.stringify's
-    // double quotes would collide with (and truncate) that attribute.
+
     const jsStr = s => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
     const onerror = `iconImgFallback(this, ${jsStr(cat.icon_letter || '')}, ${jsStr(cat.icon_color || '')})`;
     return `<img src="${esc(cat.icon_image)}" alt="" class="tt-icon tt-icon-img flex-shrink-0" onerror="${esc(onerror)}">`;
   }
-  // No real image for this category (the vast majority of ~6,500 clubs, all
-  // positions, and letter categories) — a small badge in a deliberate
-  // color, showing real text: a club/position initial, or the specific
-  // letter an initial/contains-letter category is actually about.
+
   if (!cat.icon && cat.icon_letter) {
     return `<div class="tt-icon rounded-full flex items-center justify-center text-white font-black text-sm flex-shrink-0"
       style="background:${esc(cat.icon_color || 'var(--card-border)')}">${esc(cat.icon_letter)}</div>`;
   }
-  // A named icon from the shared line-icon set (globe/calendar/trophy — see
-  // ICON_PATHS above) — category types with no real photo and no specific
-  // letter/abbreviation to show (continents, age brackets, awards, ...).
+
   if (cat.icon && ICON_PATHS[cat.icon]) {
-    // '100%' (not a fixed pixel size) so the SVG itself fills the
-    // responsive .tt-icon box on the wrapping div, the same way a real
-    // crest/flag <img> already scales with it — a fixed size here left it
-    // visibly smaller than photographic icons on wider screens.
+
     return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon(cat.icon, '100%')}</div>`;
   }
-  // A plain typographic symbol (e.g. "€" for market-value brackets) — not
-  // an SVG, not emoji, just text in the same treatment.
+
   if (cat.icon) {
     return `<div class="tt-icon-mono tt-icon leading-none flex-shrink-0 flex items-center justify-center"
       style="font-size:clamp(18px,6vw,26px)">${esc(cat.icon)}</div>`;
@@ -707,9 +515,6 @@ function categoryIconHtml(cat) {
   return `<div class="tt-icon-mono tt-icon flex-shrink-0 flex items-center justify-center">${svgIcon('ball', '100%')}</div>`;
 }
 
-// Swaps a broken crest/flag <img> for the same letter-badge (or generic
-// ball icon) categoryIconHtml would have rendered had icon_image been
-// absent to begin with — called from the img's onerror handler.
 function iconImgFallback(img, letter, color) {
   const div = document.createElement('div');
   if (letter) {
@@ -724,13 +529,7 @@ function iconImgFallback(img, letter, color) {
 }
 
 function headerCellHtml(cat) {
-  // The icon (crest/flag/emoji) carries the primary identification — the
-  // label backs it up, wrapping at word boundaries (overflow-wrap:anywhere
-  // is only a fallback for the rare single "word" — a long club name with
-  // no spaces — that still can't fit on its own line). Font size and icon
-  // size both scale down on narrow phones (.tt-icon, .tt-cat-label) so a
-  // name like "Bor. M'gladbach" gets enough room across 3 lines instead of
-  // being cut mid-word at 2.
+
   return `
     <div class="tt-cell flex flex-col items-center justify-center p-3 tt-slot overflow-hidden gap-1"
          title="${esc(cat.label)}">
@@ -746,10 +545,6 @@ function cellHtml(r, c) {
   const isWin = g.winCells.some(([wr, wc]) => wr === r && wc === c);
   const gone  = g.winner !== null;
 
-  // Every state below shares the same .tt-cell card (fill, border, radius) —
-  // only the content changes, and the only border-color states are
-  // .is-active (search modal open on this cell) and .is-win, both using
-  // the one accent color, flat, no glow/animation.
   if (entry && entry.status === 'missed') {
     return `
       <div class="tt-cell flex flex-col items-center justify-center p-2.5 tt-slot">
@@ -759,17 +554,9 @@ function cellHtml(r, c) {
   }
 
   if (entry) {
-    // The badge/glyph sits absolutely in the corner instead of its own flex
-    // row — on a 4-column mobile grid the cell is only ~50px of usable
-    // content height, and a dedicated badge row was eating enough of that
-    // to crush the name down to an unreadable sliver (a flex item with
-    // overflow: hidden — needed for the line-clamp below — loses its
-    // automatic min-height protection, so a too-tall stack doesn't just
-    // wrap, it silently shrinks below its own content size).
+
     if (g.mode === 'solo') {
-      // Solo has no "which player" concept, just correct-or-not — a small
-      // accent checkmark is enough (a missed guess never reaches this
-      // branch, it's the 'missed' one above).
+
       return `
         <div class="tt-cell ${isWin ? 'is-win' : ''} flex flex-col items-center justify-center p-3 tt-slot relative"
              data-cell="${r},${c}">
@@ -779,30 +566,11 @@ function cellHtml(r, c) {
           <div class="tt-cell-name text-center" style="color:var(--text)">${esc(formatPlayerName(entry.name))}</div>
         </div>`;
     }
-    // Local/online: the cell background carries a soft tint of that
-    // player's color (not a fully saturated block — two of those side by
-    // side just fight each other), while a big, bold but slightly
-    // translucent (opacity .8, softer than the fully solid stroke it
-    // started as) X/O mark sits centered behind the name as the actual
-    // "who owns this cell" signal — legible as a game mark on its own,
-    // before the name is even read. X and O share one line-icon (matched
-    // bounding box, same
-    // stroke-width — see ICON_PATHS) instead of the browser's X/O font glyphs,
-    // which don't carry equal visual weight at the same font-size (X's
-    // diagonal strokes read "bigger" than O's circle). Text stays the
-    // app's one usual near-white --text regardless of player — the tint
-    // is soft enough that dark ink is no longer needed for contrast.
-    // position:relative on the name (it's later in the DOM than the mark)
-    // is what lifts it above the mark — an absolutely-positioned box
-    // always paints above a plain static one regardless of source order,
-    // so the name needs to be "positioned" too to win that stacking fight.
+
     const color = playerColor(entry.player);
     const bg = entry.player === 1 ? 'var(--accent-cell-bg)' : 'var(--o-cell-bg)';
     const markPath = entry.player === 1 ? ICON_PATHS.x : ICON_PATHS.o;
-    // Retake mode: a threatened cell (part of a pending 3-in-a-row awaiting
-    // defense) gets a dashed ring; a cell the current player could tap right
-    // now to retake it gets a pointer cursor — see checkPendingThreatOutcome
-    // and isRetakeTarget.
+
     const isThreatened = g.pendingThreat?.lines.some(line => line.some(([tr, tc]) => tr === r && tc === c));
     const retakeable = isRetakeTarget(r, c);
     return `
@@ -815,21 +583,12 @@ function cellHtml(r, c) {
   }
 
   if (gone && g.solution) {
-    // A real name list overflows a mobile-width cell fast ("Mattia
-    // Graffiedi, Marco Donadel, Cristian Brocchi +2 weitere" wraps to 4-5
-    // lines and breaks the grid's rhythm) — so the cell itself only shows
-    // the most prominent answer (last name, same rule as a filled cell) on
-    // its own line, shrink-to-fit, and — only if there's more than one
-    // answer — a small "+N weitere" on a second line below it, rather than
-    // crowding both onto one line. Tapping the cell opens the full list in
-    // a sheet (openSolutionSheet) for the detail.
+
     const cellSol = g.solution[r][c];
     const count = cellSol.count || 0;
     const first = cellSol.players?.[0] ? esc(formatPlayerName(cellSol.players[0].name)) : '';
     const more = count - 1;
-    // No "LÖSUNG" caption — repeated on every one of these cells it was
-    // just noise, and the muted color plus the checkmark on cells you did
-    // answer (see above) already says "this one wasn't yours" on its own.
+
     return `
       <button data-cell="${r},${c}" class="tt-cell tt-card-hover flex flex-col items-center justify-center p-3 tt-slot text-center">
         <div class="tt-cell-name" style="color:var(--text-dim)">${count === 0 ? '–' : first}</div>
@@ -837,15 +596,9 @@ function cellHtml(r, c) {
       </button>`;
   }
 
-  // Online mode: names can only be entered on your own turn — the server
-  // already rejects an out-of-turn move, but the cell itself should refuse
-  // to even open the search modal instead of letting you type/search/pick
-  // a name first and only finding out afterward.
   const notYourTurn = g.mode === 'online' && g.onlineSlot && g.current !== g.onlineSlot;
   const disabled = gone || notYourTurn;
-  // The cell currently open in the search modal gets .is-active, recomputed
-  // here (not just set on click) so it survives an incidental re-render
-  // (e.g. an online-mode poll) while the modal is still open.
+
   const isActive = !disabled && g.activeCell && g.activeCell.r === r && g.activeCell.c === c;
   return `
     <button ${disabled ? 'disabled' : ''} data-cell="${r},${c}"
@@ -857,7 +610,7 @@ function cellHtml(r, c) {
 
 function refreshCell(r, c) {
   const board = document.getElementById('board');
-  const idx = 1 + 3 + r * 4 + 1 + c; // title + 3 col headers + row*(header + 3 cells)
+  const idx = 1 + 3 + r * 4 + 1 + c;
   const existing = board.children[idx];
   if (!existing) return;
   const tmp = document.createElement('div');
@@ -865,16 +618,10 @@ function refreshCell(r, c) {
   const newEl = tmp.firstElementChild;
   existing.replaceWith(newEl);
   fitBoardText(newEl);
-  // Always rebound, not just for empty cells — a filled cell can still be a
-  // live retake target (see handleCellClick/isRetakeTarget), which
-  // handleCellClick itself is what actually gates.
+
   newEl.addEventListener('click', () => handleCellClick(r, c));
 }
 
-// A newly-filled cell can turn a previously-unambiguous last name into a
-// collision with this one (see formatPlayerName) — refresh every filled
-// cell, not just the one that just changed, so an earlier cell picks up
-// its disambiguating initial too instead of only the new cell getting it.
 function refreshFilledCells() {
   g.board.forEach((row, r) => row.forEach((entry, c) => {
     if (entry && entry.status !== 'missed') refreshCell(r, c);
@@ -892,12 +639,10 @@ async function revealSolutions() {
     g.solution = data.grid;
     g.rows.forEach((_, r) => g.cols.forEach((__, c) => { if (!g.board[r][c]) refreshCell(r, c); }));
   } catch {
-    // Reveal is a nice-to-have; a network hiccup here shouldn't disrupt anything else.
+
   }
 }
 
-// The full answer list for a cell the player never filled — opened from
-// the compact "Lösung" summary in the cell itself (see cellHtml).
 function openSolutionSheet(r, c) {
   const cellSol = g.solution?.[r]?.[c];
   if (!cellSol) return;
@@ -917,17 +662,8 @@ document.getElementById('solution-modal').addEventListener('click', e => {
   if (e.target.id === 'solution-modal') closeSolutionSheet();
 });
 
-// ─── Zell-Interaktion (gemeinsam) ──────────────────────────────────────────────
-
 function markActiveCell(r, c) {
-  // Scoped to #board — .is-active is a shared class also used by the
-  // difficulty/league/visibility pickers and the header menu toggle, all of
-  // which live in the same document at once (screens are hidden via CSS,
-  // never removed from the DOM). An unscoped query here would silently
-  // clear whichever of those happened to be active whenever a cell opens —
-  // e.g. the setup screen's Schwierigkeit/Liga picker would show no
-  // selection at all on the next visit, even though difficulty/
-  // selectedLeague are still tracking a real value internally.
+
   document.querySelectorAll('#board .is-active').forEach(el => el.classList.remove('is-active'));
   document.querySelector(`[data-cell="${r},${c}"]`)?.classList.add('is-active');
 }
@@ -982,12 +718,6 @@ async function doSearch(q) {
     return;
   }
 
-  // The club used to be shown here as a second line, but it was mostly
-  // noise (the guess is the player's name, not their club) — dropped, but
-  // still carried via data-club so the filled cell can still record it.
-  // The one case a second line actually helps: two results with the exact
-  // same name are otherwise indistinguishable, so those (only those) show
-  // age instead, as a disambiguator.
   const nameCounts = {};
   data.players.forEach(p => { nameCounts[p.name] = (nameCounts[p.name] || 0) + 1; });
 
@@ -1025,14 +755,11 @@ async function selectPlayer(pid, name, club) {
   return localSelectPlayer(pid, name, club, r, c);
 }
 
-// ─── Status, Timer, Konfetti, Endspiel-Overlay (gemeinsam) ─────────────────────
-
 function updateStatus() {
   updateStreakDisplay();
   if (g.winner) return;
   if (g.mode === 'solo') {
-    // A running score (correct answers so far) instead of an attempt
-    // counter — "0/9" reads instantly, no "Zelle N von 9" framing needed.
+
     document.getElementById('status-text').innerHTML =
       `<span style="color:var(--accent)">${g.soloCorrect}</span> / 9`;
     return;
@@ -1044,15 +771,9 @@ function updateStatus() {
       : `<span style="color:var(--text-dim)">Gegner ist dran…</span>`;
     return;
   }
-  // The dot doubles as a preview of that player's cell color (see
-  // playerColor/cellHtml) — whose turn it is reads at a glance, not just
-  // from the glyph.
+
   const sym = g.current === 1 ? 'X' : 'O';
-  // Retake mode: a pending threat is always against g.current (the other
-  // player raised it last turn, then the turn passed) — see
-  // checkPendingThreatOutcome/retakeLocal. Spell out that this is their one
-  // chance to defend, since a normal turn-indicator dot alone doesn't say
-  // "the game ends now if you don't".
+
   if (g.pendingThreat) {
     const threatSym = g.pendingThreat.owner === 1 ? 'X' : 'O';
     document.getElementById('status-text').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;color:${playerColor(g.current)}">
@@ -1075,12 +796,6 @@ function setStatusLoading(msg) {
     `<span style="display:inline-flex;align-items:center;gap:8px;"><span class="tt-spinner"></span>${msg}</span>`;
 }
 
-// Briefly replaces the status line with a one-off message (e.g. "Gegner hat
-// XY versucht – falsch!") — online-only, since it's the one mode where the
-// opponent has no other way to see what just happened on the other client.
-// Reverts to the normal turn indicator on its own once the round is still
-// live; a round that ends mid-flash leaves the result banner alone instead
-// of stomping it back to a turn indicator that's no longer true.
 let onlineFlashTimer = null;
 function flashOnlineMessage(text, duration = 1800) {
   document.getElementById('status-text').textContent = text;
@@ -1102,12 +817,6 @@ function updateStreakDisplay() {
   }
 }
 
-// The round result folds into the existing status card instead of a
-// separate popup/overlay: the live "X / 9" or turn indicator in status-text
-// is replaced by the final result, and the button row swaps "Aufgeben" for
-// the result actions — no new block, no dimmed backdrop, and the revealed
-// board underneath stays fully visible and tappable the whole time (see
-// openSolutionSheet).
 function showEndBanner(icon, title, showReplay = true) {
   document.getElementById('status-text').innerHTML = iconText(icon, title);
 
@@ -1115,9 +824,7 @@ function showEndBanner(icon, title, showReplay = true) {
   replayBtn.classList.toggle('hidden', !showReplay);
   replayBtn.disabled = false;
   replayBtn.innerHTML = g.mode === 'online' ? iconText('rematch', 'Revanche', { size: 14 }) : 'Nochmal spielen';
-  // Only the daily-completion branch in endGameSolo shows this — reset it
-  // here so a stale "shown" state from an earlier daily round never leaks
-  // into a later solo/local/online banner.
+
   document.getElementById('end-share').classList.add('hidden');
 
   document.getElementById('btn-give-up').classList.add('hidden');
@@ -1131,15 +838,9 @@ function hideEndBanner() {
   document.getElementById('btn-give-up').classList.remove('hidden');
 }
 
-// Online rematches need both players' agreement — see updateRematchButtonState,
-// which keeps this button in sync (waiting / accept / ask) on every poll
-// while the round is over. Solo/local restart immediately on click since
-// there's no one else to ask.
 document.getElementById('end-new-game').addEventListener('click', () => {
   if (g.mode === 'solo' && g.soloVariant === 'custom') {
-    // Replay the exact same shared grid, not a new random one — matches
-    // what "Nochmal spielen" says (daily hides this button entirely, since
-    // it's already played for today; see endGameSolo).
+
     hideEndBanner();
     beginSoloRound();
     finishSoloRoundSetup(g.rows, g.cols);
@@ -1178,8 +879,6 @@ function stopTimer() {
 function updateTimerDisplay() {
   document.getElementById('timer-display').textContent = formatTime(g.elapsedSeconds);
 }
-
-// ─── Modus: 1v1 Lokal ───────────────────────────────────────────────────────────
 
 const WIN_LINES = [
   [[0,0],[0,1],[0,2]], [[1,0],[1,1],[1,2]], [[2,0],[2,1],[2,2]],
@@ -1226,11 +925,6 @@ async function newLocalRound() {
   saveRoundSession();
 }
 
-// Fill-phase win check — unchanged from classic mode even in retake mode: a
-// 3-in-a-row while cells are still empty wins outright, same as always. The
-// only retake-mode-specific branch is what a *full board with no winner*
-// means: normally that's a draw, but retake mode instead opens the retake
-// phase (see retakeLocal) rather than ending the round.
 function checkWinnerLocal() {
   for (const line of WIN_LINES) {
     const vals = line.map(([r, c]) => g.board[r][c]?.player);
@@ -1256,11 +950,7 @@ function placeLocal(r, c, playerId, name, club) {
   saveStats();
 
   checkWinnerLocal();
-  // Flip before rendering (not after) — refreshFilledCells reads g.current
-  // to decide which cells are retake targets (see isRetakeTarget), so the
-  // render has to see whoever's turn it actually is next, not the mover who
-  // just went. Doesn't matter for the win case (isRetakeTarget is always
-  // false once g.winner is set).
+
   if (g.winner) { refreshFilledCells(); endGameLocal(); return; }
   g.current = g.current === 1 ? 2 : 1;
   refreshFilledCells();
@@ -1272,14 +962,6 @@ function linesFullyOwnedBy(player) {
   return WIN_LINES.filter(line => line.every(([r, c]) => g.board[r][c]?.player === player));
 }
 
-// Called once per retake-phase turn, right after that turn's action (a
-// placed retake, or a wrong guess that placed nothing) is fully resolved.
-// If the OTHER player left a threat pending last turn, this is the "did you
-// defend it" check: any one of the threatened lines still intact means the
-// defense failed and the threat owner wins now. A fork (two lines from one
-// move) is always defensible with a single retake because both lines
-// necessarily share the cell that move just played — so "every line
-// broken" is the right bar, not "at least one".
 function checkPendingThreatOutcome() {
   if (!g.pendingThreat) return false;
   const stillIntact = g.pendingThreat.lines.some(line =>
@@ -1295,13 +977,6 @@ function checkPendingThreatOutcome() {
   return false;
 }
 
-// Once the grid is full (see checkWinnerLocal), retake mode replaces
-// further placement with retaking: g.current overwrites one of the
-// opponent's cells with their own pick (see handleCellClick/openCell for
-// the "opponent's cells only" restriction). A resulting 3-in-a-row doesn't
-// win immediately — it becomes a pending threat the opponent gets exactly
-// one more turn to break (checkPendingThreatOutcome, called at the top of
-// their next turn).
 function retakeLocal(r, c, playerId, name, club) {
   const previous = g.board[r][c];
   g.usedIds.delete(previous.id);
@@ -1318,7 +993,6 @@ function retakeLocal(r, c, playerId, name, club) {
     g.pendingThreat = newLines.length ? { owner: g.current, lines: newLines } : null;
   }
 
-  // Same flip-before-render reasoning as placeLocal.
   if (g.winner) { refreshFilledCells(); endGameLocal(); return; }
   g.current = g.current === 1 ? 2 : 1;
   refreshFilledCells();
@@ -1346,14 +1020,10 @@ async function localSelectPlayer(pid, name, club, r, c) {
     err.classList.remove('hidden');
     setTimeout(() => {
       closeModal();
-      // A wrong guess doesn't touch the board, so a threat left pending by
-      // the opponent stands unbroken — this is exactly the "failed to
-      // defend in time" case (see checkPendingThreatOutcome). No-op outside
-      // the retake phase, since g.pendingThreat is only ever set there.
+
       if (checkPendingThreatOutcome()) { endGameLocal(); return; }
       g.current = g.current === 1 ? 2 : 1;
-      // Board contents didn't change, but which cells count as retake
-      // targets did (see isRetakeTarget) — re-render to match.
+
       if (g.phase === 'retake') refreshFilledCells();
       updateStatus();
       saveRoundSession();
@@ -1364,9 +1034,7 @@ async function localSelectPlayer(pid, name, club, r, c) {
 async function endGameLocal() {
   stopTimer();
   clearRoundSession();
-  // The banner below now carries the result — the status bar just needs to
-  // stop showing a stale "X ist dran" from before the game ended (it used
-  // to sit unnoticed behind the old blocking modal).
+
   setStatus('Runde beendet.');
   document.getElementById('btn-give-up').disabled = true;
   g.rows.forEach((_, r) => g.cols.forEach((__, c) => refreshCell(r, c)));
@@ -1390,8 +1058,6 @@ async function endGameLocal() {
   await revealSolutions();
 }
 
-// ─── Modus: Solo ────────────────────────────────────────────────────────────────
-
 async function startSolo() {
   g.mode = 'solo';
   g.soloVariant = null;
@@ -1400,13 +1066,6 @@ async function startSolo() {
   await newSoloRound();
 }
 
-// Shared by plain solo, the daily grid, and a loaded/custom grid — all three
-// are mechanically identical (fill 9 cells alone, no opponent); they only
-// differ in where rows/cols come from and what happens once the round ends
-// (see endGameSolo's soloVariant branches). Split into a "clear the screen
-// and start loading" half and a "rows/cols are ready, build the board" half
-// so callers can fetch from wherever their puzzle actually comes from in
-// between.
 function beginSoloRound() {
   setStatusLoading('Grid wird geladen…');
   stopTimer();
@@ -1472,10 +1131,7 @@ async function soloSelectPlayer(pid, name, club, r, c) {
 }
 
 function giveUpSolo() {
-  // Leave untouched cells empty (not 'missed') so endGameSolo's
-  // revealSolutions() renders the actual answer in them, per cellHtml's
-  // `gone && g.solution` branch — "Falsch" is reserved for cells the
-  // player actually got wrong.
+
   g.soloAttempted = 9;
   g.winner = 'complete';
   endGameSolo();
@@ -1491,17 +1147,13 @@ async function endGameSolo() {
   const perfect = g.soloCorrect === 9;
 
   if (g.soloVariant === 'daily') {
-    // Giving up still "completes" today's puzzle and keeps the streak alive
-    // — the streak is about showing up daily, not about getting a perfect
-    // score (getting all 9 right is much harder here than guessing a
-    // Wordle, so requiring perfection would make streaks nearly unreachable).
+
     recordDailyCompletion(g.dailyDate, g.soloCorrect);
     updateDailyCardBadge();
-    showEndBanner(perfect ? 'trophy' : 'calendar', `${g.soloCorrect} / 9 richtig`, false); // already played today — no "Nochmal spielen"
+    showEndBanner(perfect ? 'trophy' : 'calendar', `${g.soloCorrect} / 9 richtig`, false);
     document.getElementById('end-share').classList.remove('hidden');
   } else if (g.soloVariant === 'custom') {
-    // Doesn't count toward the "Solo" stats — a shared/custom grid is a
-    // different activity, not a random practice round.
+
     showEndBanner(perfect ? 'trophy' : 'puzzle', `${g.soloCorrect} / 9 richtig`);
   } else {
     stats.solo.rounds++;
@@ -1514,15 +1166,6 @@ async function endGameSolo() {
   }
   await revealSolutions();
 }
-
-// ─── Modus: Daily Grid ────────────────────────────────────────────────
-// A daily grid the backend generates deterministically from the date (see
-// app.py's /api/daily/today) — everyone gets the same puzzle. The "once per
-// day" gate and the streak itself live entirely in localStorage, same as
-// every other bit of state in this app (stats, settings) — there's no
-// server-verified per-device identity anywhere here, and this matches how
-// Wordle itself actually works (also localStorage-gated, not server-
-// enforced).
 
 const DEFAULT_DAILY = { completed: {}, currentStreak: 0, bestStreak: 0 };
 
@@ -1545,8 +1188,6 @@ function saveDailyState(d) {
   localStorage.setItem('ttt_daily', JSON.stringify(d));
 }
 
-// Both dates are the server's "YYYY-MM-DD" (UTC) strings — compared as UTC
-// midnight instants so this never drifts with the browser's local timezone.
 function isNextUtcDay(prevDateStr, nextDateStr) {
   const prev = new Date(`${prevDateStr}T00:00:00Z`).getTime();
   const next = new Date(`${nextDateStr}T00:00:00Z`).getTime();
@@ -1555,7 +1196,7 @@ function isNextUtcDay(prevDateStr, nextDateStr) {
 
 function recordDailyCompletion(date, correct) {
   const d = loadDailyState();
-  if (d.completed[date]) return d; // already recorded — idempotent guard
+  if (d.completed[date]) return d;
   const priorDates = Object.keys(d.completed).sort();
   const prevDate = priorDates.length ? priorDates[priorDates.length - 1] : null;
   d.currentStreak = (prevDate && isNextUtcDay(prevDate, date)) ? d.currentStreak + 1 : 1;
@@ -1624,8 +1265,6 @@ document.getElementById('end-share').addEventListener('click', () => {
   setTimeout(() => { btn.innerHTML = iconText('share', 'Teilen', { size: 15 }); }, 1500);
 });
 
-// ─── Editor: eigenes Grid bauen, speichern & teilen, per Code laden ──────
-
 function goToEditor({ push = true } = {}) {
   showScreen('editor', { push });
   renderEditorGrid();
@@ -1637,9 +1276,6 @@ document.getElementById('btn-editor').addEventListener('click', () => {
 });
 document.getElementById('btn-editor-back').addEventListener('click', goToMenu);
 
-// Same header-cell look as the real board (headerCellHtml/cellHtml above),
-// but clickable and empty until a category is picked — so building a grid
-// looks like filling in the board you're about to play, not a form.
 function editorSlotHtml(side, i) {
   const cat = g.editor[side][i];
   if (cat) {
@@ -1695,9 +1331,6 @@ function renderEditorGrid() {
   document.getElementById('btn-editor-save').disabled = !allFilled;
 }
 
-// Debounced+ordered: a slow late response for a stale grid must never
-// overwrite a fresher one, so each call carries a token and only the most
-// recent one is allowed to apply its result.
 let editorCountsToken = 0;
 async function refreshEditorCounts() {
   const anyPicked = [...g.editor.row, ...g.editor.col].some(Boolean);
@@ -1712,7 +1345,7 @@ async function refreshEditorCounts() {
   try {
     const resp = await fetch(`/api/grids/preview?rows=${encodeURIComponent(rows)}&cols=${encodeURIComponent(cols)}`);
     const data = await resp.json();
-    if (token !== editorCountsToken) return; // superseded by a newer pick
+    if (token !== editorCountsToken) return;
     g.editorCounts = data.counts || null;
   } catch {
     if (token !== editorCountsToken) return;
@@ -1721,7 +1354,7 @@ async function refreshEditorCounts() {
   renderEditorGrid();
 }
 
-let editorActiveSlot = null; // {side: 'row'|'col', index: 0|1|2}
+let editorActiveSlot = null;
 let categoryPickerTimer = null;
 
 function openCategoryPicker(side, index) {
@@ -1753,9 +1386,7 @@ async function searchEditorCategories(query) {
     container.innerHTML = `<p class="text-xs text-center py-2" style="color:var(--text-faint)">Keine Treffer</p>`;
     return;
   }
-  // A category already used in another slot can't be picked again — but the
-  // slot currently being edited should still show its own existing pick as
-  // selectable (re-clicking it is a no-op close, not a blocked click).
+
   const activeCat = editorActiveSlot ? g.editor[editorActiveSlot.side][editorActiveSlot.index] : null;
   const usedIds = new Set(
     [...g.editor.row, ...g.editor.col].filter(c => c && c.id !== activeCat?.id).map(c => c.id)
@@ -1835,9 +1466,6 @@ document.getElementById('editor-load-code').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('btn-editor-load').click();
 });
 
-// Same load-by-code affordance as the editor, surfaced directly on the
-// solo setup screen too — the editor's own copy is one menu layer deeper
-// and easy to miss for someone who just has a code, not a grid to build.
 document.getElementById('btn-setup-load').addEventListener('click', () => {
   const code = document.getElementById('setup-load-code').value.trim();
   if (code.length < 4) return;
@@ -1880,8 +1508,6 @@ async function loadAndStartCustomGrid(code, errorElId = 'editor-load-error', btn
   }
 }
 
-// ─── Modus: 1v1 Online ──────────────────────────────────────────────────────────
-
 function renderLobbyHome() {
   document.getElementById('online-lobby-body').innerHTML = `
     <div class="tt-card p-6 flex flex-col gap-4 items-center text-center">
@@ -1901,9 +1527,7 @@ function renderLobbyHome() {
         <div class="text-xs" style="color:var(--text-dim)">Lädt…</div>
       </div>
     </div>`;
-  // Hosting needs difficulty/league first — that's the setup screen, shown
-  // only now (not before this host-vs-join choice) since a joiner never
-  // needs it at all (the room's creator-chosen settings apply to them too).
+
   document.getElementById('btn-create-room').addEventListener('click', () => {
     closeLobbyListEvents();
     enterSetupScreen('online-host');
@@ -1918,9 +1542,7 @@ function renderLobbyHome() {
   document.getElementById('join-code-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-join-room').click();
   });
-  // Bound once on the container itself, not per-row — renderPublicLobbyList
-  // below only ever replaces the container's innerHTML (on every SSE-driven
-  // refresh), which would silently drop a per-row listener each time.
+
   document.getElementById('public-lobbies-list').addEventListener('click', e => {
     const btn = e.target.closest('[data-join-code]');
     if (!btn || btn.disabled) return;
@@ -1940,7 +1562,7 @@ const LEAGUE_LABELS = {
 
 function renderPublicLobbyList(rooms) {
   const container = document.getElementById('public-lobbies-list');
-  if (!container) return; // navigated away since the fetch/event fired
+  if (!container) return;
   if (!rooms.length) {
     container.innerHTML = `<div class="text-xs" style="color:var(--text-dim)">Gerade keine offenen Lobbys — erstelle eine!</div>`;
     return;
@@ -1955,11 +1577,6 @@ function renderPublicLobbyList(rooms) {
     </button>`).join('');
 }
 
-// Keeps the public lobby list live for everyone browsing it: an initial
-// fetch for fast first paint, then an SSE connection (same version-diff
-// pattern as a room's own /events) that just signals "the list changed" —
-// the client always refetches the full list rather than trusting a payload
-// on the event itself.
 function connectLobbyListEvents() {
   closeLobbyListEvents();
   fetchPublicLobbies();
@@ -1979,11 +1596,6 @@ async function fetchPublicLobbies() {
   renderPublicLobbyList(data.rooms || []);
 }
 
-// navigator.clipboard requires a "secure context" (https:, or http://
-// localhost/127.0.0.1) — it's simply undefined everywhere else, e.g. when
-// two people test multiplayer across devices via the host's plain-http LAN
-// address. Falls back to the older execCommand('copy') approach, which
-// works in insecure contexts too.
 function copyToClipboard(text) {
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
@@ -2003,8 +1615,7 @@ function execCommandCopy(text) {
   try {
     document.execCommand('copy');
   } catch (_) {
-    // Nothing more we can do — the button's "Kopiert" feedback still
-    // fires, but that's a pre-existing tradeoff, not something new here.
+
   }
   document.body.removeChild(el);
 }
@@ -2045,11 +1656,7 @@ async function createOnlineRoom() {
     body: JSON.stringify({ difficulty, league: selectedLeague || undefined, visibility: onlineVisibility }),
   });
   if (!resp.ok) {
-    // Creation happens from the setup screen — surface the failure back on
-    // the lobby screen (where #lobby-error already lives from renderLobbyHome)
-    // rather than leaving the user stranded looking at the setup screen with
-    // nothing having visibly happened. Replace, not push: this reverts to a
-    // screen we were already conceptually at, it isn't a new step.
+
     showScreen('online-lobby', { push: false });
     showLobbyError('Raum konnte nicht erstellt werden.');
     connectLobbyListEvents();
@@ -2074,7 +1681,7 @@ async function joinOnlineRoom(code, { push = true } = {}) {
     showLobbyError('Raum nicht gefunden oder schon voll.');
     const btn = document.getElementById('btn-join-room');
     if (btn) btn.disabled = false;
-    connectLobbyListEvents(); // e.g. a public-lobby row that just filled up — refresh it away
+    connectLobbyListEvents();
     return;
   }
   const data = await resp.json();
@@ -2082,25 +1689,16 @@ async function joinOnlineRoom(code, { push = true } = {}) {
   g.onlineToken = data.token;
   g.onlineSlot = data.slot;
   saveOnlineSession();
-  // Not shown before this point in every caller (e.g. the ?join= deep-link
-  // path lands here before online-lobby has ever been the active screen) —
-  // (re-)showing it now is what actually puts the room code into the URL.
+
   showScreen('online-lobby', { push });
   renderLobbyWaiting(data.code);
   connectOnlineEvents();
   await refreshOnlineState();
 }
 
-// Cold-load-only: called from enterFromPath when landing on /online/<code>
-// with no live session behind it (a hard refresh, or a fresh tab
-// opened on a shared room link). Tries the sessionStorage seat first —
-// /state doesn't reject a bad/expired token with an HTTP error, it just
-// omits yourSlot, so that field (not resp.ok) is the actual validity
-// signal — and falls back to the normal join flow (pre-filled with the
-// code from the URL) if there's no stored session or it no longer holds.
 function attemptOnlineResume(code) {
   let stored = null;
-  try { stored = JSON.parse(sessionStorage.getItem(ONLINE_SESSION_KEY) || 'null'); } catch { /* ignore */ }
+  try { stored = JSON.parse(sessionStorage.getItem(ONLINE_SESSION_KEY) || 'null'); } catch {   }
   if (stored && stored.code === code) {
     g.onlineCode = stored.code;
     g.onlineToken = stored.token;
@@ -2142,11 +1740,7 @@ async function refreshOnlineState() {
 }
 
 function enterOnlineBoard() {
-  // No push: this fires automatically once the SSE state poll sees the
-  // opponent connect, not from a user click, and the URL doesn't actually
-  // change anyway — /online/<code> covers both the lobby and the live
-  // board for a room, the server-fetched state is what decides which one
-  // renders.
+
   showScreen('board', { push: false });
   updateModeChrome();
   hideEndBanner();
@@ -2158,9 +1752,7 @@ function enterOnlineBoard() {
 
 function applyOnlineState(data) {
   const justConnected = data.playersConnected === 2 && !g.onlineBoardEntered;
-  // A rematch looks like "the round we already finished is now back to no
-  // winner and an empty board" — reset the finished-flag and re-enter the
-  // board the same way both players do on first connecting.
+
   const isRematch = g.onlineFinished && data.winner === null;
   g.onlineConnected = data.playersConnected;
   g.rows = data.rows;
@@ -2187,12 +1779,6 @@ function applyOnlineState(data) {
   }
   if (document.getElementById('screen-board').classList.contains('hidden')) return;
 
-  // The opponent's only signal a wrong guess just happened, otherwise
-  // indistinguishable from "their turn just ended" (both just flip
-  // `current`) — see last_wrong_guess in multiplayer.py. `undefined` means
-  // this is the first sync since connecting (fresh load or a resumed
-  // session) — adopt silently instead of flashing a guess that happened
-  // before we were watching.
   let justFlashedWrongGuess = false;
   if (g.onlineLastWrongGuessVersion === undefined) {
     g.onlineLastWrongGuessVersion = data.lastWrongGuess ? data.lastWrongGuess.version : null;
@@ -2213,17 +1799,11 @@ function applyOnlineState(data) {
     }
     updateRematchButtonState(data.rematchRequested || []);
   } else if (!justFlashedWrongGuess) {
-    // Otherwise this immediately overwrites the flash with the normal turn
-    // indicator in the same tick — flashOnlineMessage's own timeout is what
-    // reverts it once it's actually had time to be seen.
+
     updateStatus();
   }
 }
 
-// Keeps the "Revanche" button in sync with both players' state on every
-// poll/SSE tick while the round is over: nobody has asked yet, you asked and
-// are waiting on the opponent, or the opponent asked and a click from you
-// would complete the match (handled server-side by request_rematch).
 function updateRematchButtonState(requested) {
   if (g.mode !== 'online') return;
   const btn = document.getElementById('end-new-game');
@@ -2266,11 +1846,7 @@ async function onlineSelectPlayer(pid, name, club, r, c) {
 }
 
 async function rematchOnline() {
-  // Records this player's vote server-side; the round only actually resets
-  // once the opponent has voted too. Refresh right away (rather than
-  // waiting for the next ~1s SSE tick) so the button's waiting/accepted
-  // state — or the actual round reset once both have agreed, picked up by
-  // applyOnlineState's "rematch detected" branch — shows up immediately.
+
   const resp = await fetch(`/api/multiplayer/rooms/${g.onlineCode}/rematch`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token: g.onlineToken }),
@@ -2282,10 +1858,6 @@ async function rematchOnline() {
   await refreshOnlineState();
 }
 
-// `reason` (from Room.end_reason — see multiplayer.py) is null for a normal
-// 3-in-a-row/draw, "forfeit" for an explicit give-up, or "disconnect" for
-// the ~20s auto-forfeit timeout — without it, "Du gewinnst!" reads like you
-// were outplayed when the opponent actually just left.
 async function finishOnline(reason) {
   stopTimer();
   setStatus('Runde beendet.');
@@ -2319,8 +1891,7 @@ async function finishOnline(reason) {
 
 document.getElementById('btn-give-up').addEventListener('click', async (e) => {
   if (g.winner) return;
-  // Same inline two-step confirm (click to arm, click again to confirm) for
-  // every mode — no browser confirm() popup, in solo or local/online either.
+
   if (!giveUpConfirming) {
     giveUpConfirming = true;
     e.currentTarget.textContent = 'Wirklich aufgeben?';
@@ -2348,16 +1919,8 @@ document.addEventListener('click', e => {
   if (giveUpConfirming && e.target.id !== 'btn-give-up') resetGiveUpConfirm();
 });
 
-// ─── Statistik-Anzeige ─────────────────────────────────────────────────────────
-
-// Same inline two-step confirm pattern as giveUpConfirming (see the
-// "Aufgeben" button) — click once to arm, click again to actually reset.
 let statsResetConfirming = false;
 
-// Shared Wordle-style histogram renderer — one flat accent bar per score
-// bucket (0-9), length relative to the largest bucket, used for both the
-// Solo and Daily Grid sections so "how much got solved" shows up as a
-// shape, not just one aggregate percentage.
 function distributionChartHtml(dist, emptyLabel) {
   const total = dist.reduce((a, b) => a + b, 0);
   if (total === 0) {
@@ -2380,10 +1943,7 @@ function renderStats() {
   const dailyScores = Object.values(d.completed).map(v => v.correct);
   const dailyAccuracy = dailyScores.length
     ? Math.round((dailyScores.reduce((a, b) => a + b, 0) / (dailyScores.length * 9)) * 100) : 0;
-  // Derived straight from d.completed each render, same as dailyAccuracy
-  // above — no separate persisted counter needed, unlike Solo's
-  // scoreDistribution (that one counts *rounds*, which aren't otherwise
-  // stored anywhere; a completed day's score already lives in d.completed).
+
   const dailyDistribution = new Array(10).fill(0);
   dailyScores.forEach(correct => { if (correct >= 0 && correct <= 9) dailyDistribution[correct]++; });
   const soloAccuracy = s.cells ? Math.round((s.correct / s.cells) * 100) : 0;
@@ -2435,8 +1995,7 @@ function renderStats() {
 
   statsResetConfirming = false;
   document.getElementById('btn-stats-reset').addEventListener('click', e => {
-    // Same inline two-step confirm as "Aufgeben" — no browser confirm()
-    // popup — so a stray tap can never wipe every stat by accident.
+
     if (!statsResetConfirming) {
       statsResetConfirming = true;
       e.currentTarget.textContent = 'Wirklich zurücksetzen?';
@@ -2476,8 +2035,6 @@ document.getElementById('stats-modal').addEventListener('click', e => {
   if (e.target.id === 'stats-modal') document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// ─── Schwierigkeitsgrad-Buttons ───────────────────────────────────────────────
-
 function setDifficulty(d) {
   difficulty = d;
   document.querySelectorAll('.diff-btn').forEach(btn => {
@@ -2490,8 +2047,6 @@ document.querySelectorAll('.diff-btn').forEach(btn => {
   btn.addEventListener('click', () => setDifficulty(parseInt(btn.dataset.diff)));
 });
 
-// ─── Sonstige Event-Listener ───────────────────────────────────────────────────
-
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal').addEventListener('click', e => {
   if (e.target.id === 'modal') closeModal();
@@ -2502,24 +2057,13 @@ document.addEventListener('keydown', e => {
   closeSolutionSheet();
 });
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-
 (function init() {
-  // ?join=/?grid= predate the path-based router (they used to be the only
-  // URL state this app had) — kept working as a compat shim since a link
-  // in that shape could still be sitting in a chat/bookmark somewhere, but
-  // both link generators (renderLobbyWaiting, the editor's copy-link
-  // button) now emit the canonical /online/<code> and /solo/<code> paths
-  // directly, so this branch is dead weight from here on, not a format
-  // this app still produces.
+
   const params = new URLSearchParams(location.search);
   const joinCode = params.get('join');
   const gridCode = params.get('grid');
   if (joinCode) {
-    // Normalizes the URL up front (not left dangling as the old ?join=
-    // form even if the resume/join below fails) — matches enterFromPath's
-    // 'online' case, which does the same for a code arriving via the path
-    // directly.
+
     const code = joinCode.toUpperCase();
     history.replaceState({ screen: 'online-lobby' }, '', `/online/${code}`);
     g.mode = 'online';
@@ -2527,12 +2071,7 @@ document.addEventListener('keydown', e => {
     updateModeChrome();
     attemptOnlineResume(code);
   } else if (gridCode) {
-    // No pre-emptive replaceState here: unlike the join case above, there's
-    // no meaningful "loading" screen to name it after, and loadAndStartCustomGrid
-    // already replaceState's to the real /solo/<code> itself once (and
-    // only if) the grid actually loads — claiming {screen:'board'} before
-    // that succeeds would leave history.state pointing at a screen that was
-    // never actually shown if the fetch fails.
+
     loadAndStartCustomGrid(gridCode, undefined, undefined, { push: false });
   } else {
     enterFromPath(parseLocation());
