@@ -513,17 +513,15 @@ def build_dynamic_trophies(
 # retired legends in the real dataset: Zidane, Maldini, Beckenbauer all
 # NULL).
 #
-# Deliberately leans toward well-traveled squad/journeyman players over
-# "greatest of all time" megastars (Messi/Ronaldo-tier were the original
-# picks here — swapped out for being too obvious/one-note) — a player
-# whose career touched many mid-table clubs across several countries
-# still makes a fair, checkable "played with X" fact, and gives a much
-# richer answer pool spread across clubs/eras than a marquee name whose
-# recognition comes from 2-3 superclubs. Every pick still needs a real
-# pool: verify before adding via TeammateCategory(id, label, player_id,
-# PROMINENT_CLUB_NAMES).eligible_player_ids(conn) against the real DB —
-# not enforced by a test, since that needs the real 179MB dataset the
-# fixture-based suite deliberately doesn't depend on (see conftest.py).
+# Global is the handful of the most universally recognizable names —
+# unlike the per-league lists below (still well-traveled journeymen), a
+# global-scope anchor needs to be guessable regardless of which league's
+# puzzle someone is playing, so this stays small and unambiguous. Every
+# pick still needs a real pool: verify before adding via TeammateCategory
+# (id, label, player_id, PROMINENT_CLUB_NAMES).eligible_player_ids(conn)
+# against the real DB — not enforced by a test, since that needs the real
+# 179MB dataset the fixture-based suite deliberately doesn't depend on
+# (see conftest.py).
 #
 # Keyed on players.source_url (the Transfermarkt profile URL), NOT name —
 # two real correctness bugs found while building this: (1) "Pedro" alone
@@ -539,16 +537,9 @@ def build_dynamic_trophies(
 # _stable_id) — sidesteps both problems entirely.
 TEAMMATE_ANCHOR_SOURCE_URLS: dict[str, str] = {
     # display name (for readability only) -> source_url (the actual match key)
-    "Kevin-Prince Boateng": "https://www.transfermarkt.de/kevin-prince-boateng/profil/spieler/16922",  # 20 clubs
-    "Marco Borriello": "https://www.transfermarkt.de/marco-borriello/profil/spieler/5825",  # 20 clubs
-    "Alberto Gilardino": "https://www.transfermarkt.de/alberto-gilardino/profil/spieler/5878",  # 18 clubs
-    "Antonio Cassano": "https://www.transfermarkt.de/antonio-cassano/profil/spieler/5962",  # 12 clubs
-    "Roberto Soldado": "https://www.transfermarkt.de/roberto-soldado/profil/spieler/34870",  # 14 clubs
-    "Mario Balotelli": "https://www.transfermarkt.de/mario-balotelli/profil/spieler/45146",  # 16 clubs
-    "Nicolas Anelka": "https://www.transfermarkt.de/nicolas-anelka/profil/spieler/3226",  # 16 clubs
-    "Diego Costa": "https://www.transfermarkt.de/diego-costa/profil/spieler/44779",  # 16 clubs
-    "Dimitar Berbatov": "https://www.transfermarkt.de/dimitar-berbatov/profil/spieler/65",  # 12 clubs
-    "Robbie Keane": "https://www.transfermarkt.de/robbie-keane/profil/spieler/3144",  # 14 clubs
+    "Zlatan Ibrahimović": "https://www.transfermarkt.de/zlatan-ibrahimovic/profil/spieler/3455",
+    "Cristiano Ronaldo": "https://www.transfermarkt.de/cristiano-ronaldo/profil/spieler/8198",
+    "Lionel Messi": "https://www.transfermarkt.de/lionel-messi/profil/spieler/28003",
 }
 TEAMMATE_ANCHOR_URLS: frozenset[str] = frozenset(TEAMMATE_ANCHOR_SOURCE_URLS.values())
 
