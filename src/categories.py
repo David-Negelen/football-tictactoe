@@ -194,66 +194,53 @@ class TrophyCategory(Category):
         )
 
 
-class LeagueCategory(Category):
+class _ClubWhitelistCategory(Category):
+    """Shared implementation for LeagueCategory and ContinentCategory: player
+    must have a career stint at any club in a fixed whitelist. The two
+    public subclasses below differ only in which CategoryType they're
+    tagged with — everything else (matching against career_stints.club_name)
+    is identical."""
+
+    def __init__(self, id: str, label: str, club_names: list[str], type: CategoryType, difficulty: int = 1) -> None:
+        super().__init__(id=id, label=label, type=type, difficulty=difficulty)
+        self.club_names = club_names
+
+    def _ph(self) -> str:
+        return ",".join("?" * len(self.club_names))
+
+    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
+        row = conn.execute(
+            f"SELECT 1 FROM career_stints WHERE player_id = ? AND club_name IN ({self._ph()}) LIMIT 1",
+            [player_id] + self.club_names,
+        ).fetchone()
+        return row is not None
+
+    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
+        rows = conn.execute(
+            f"SELECT DISTINCT player_id FROM career_stints WHERE club_name IN ({self._ph()})",
+            self.club_names,
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def sql_filter(self) -> tuple[str, list]:
+        return (
+            f"EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name IN ({self._ph()}))",
+            list(self.club_names),
+        )
+
+
+class LeagueCategory(_ClubWhitelistCategory):
     """Player must have a career stint at any first-team club in the league."""
 
     def __init__(self, id: str, label: str, club_names: list[str], difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.LEAGUE, difficulty=difficulty)
-        self.club_names = club_names
-
-    def _ph(self) -> str:
-        return ",".join("?" * len(self.club_names))
-
-    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
-        row = conn.execute(
-            f"SELECT 1 FROM career_stints WHERE player_id = ? AND club_name IN ({self._ph()}) LIMIT 1",
-            [player_id] + self.club_names,
-        ).fetchone()
-        return row is not None
-
-    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
-        rows = conn.execute(
-            f"SELECT DISTINCT player_id FROM career_stints WHERE club_name IN ({self._ph()})",
-            self.club_names,
-        ).fetchall()
-        return {row[0] for row in rows}
-
-    def sql_filter(self) -> tuple[str, list]:
-        return (
-            f"EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name IN ({self._ph()}))",
-            list(self.club_names),
-        )
+        super().__init__(id=id, label=label, club_names=club_names, type=CategoryType.LEAGUE, difficulty=difficulty)
 
 
-class ContinentCategory(Category):
+class ContinentCategory(_ClubWhitelistCategory):
     """Player must have a career stint at any club on the given continent."""
 
     def __init__(self, id: str, label: str, club_names: list[str], difficulty: int = 1) -> None:
-        super().__init__(id=id, label=label, type=CategoryType.CONTINENT, difficulty=difficulty)
-        self.club_names = club_names
-
-    def _ph(self) -> str:
-        return ",".join("?" * len(self.club_names))
-
-    def check_player(self, player_id: int, conn: sqlite3.Connection) -> bool:
-        row = conn.execute(
-            f"SELECT 1 FROM career_stints WHERE player_id = ? AND club_name IN ({self._ph()}) LIMIT 1",
-            [player_id] + self.club_names,
-        ).fetchone()
-        return row is not None
-
-    def _compute_eligible_player_ids(self, conn: sqlite3.Connection) -> set[int]:
-        rows = conn.execute(
-            f"SELECT DISTINCT player_id FROM career_stints WHERE club_name IN ({self._ph()})",
-            self.club_names,
-        ).fetchall()
-        return {row[0] for row in rows}
-
-    def sql_filter(self) -> tuple[str, list]:
-        return (
-            f"EXISTS (SELECT 1 FROM career_stints cs WHERE cs.player_id = p.id AND cs.club_name IN ({self._ph()}))",
-            list(self.club_names),
-        )
+        super().__init__(id=id, label=label, club_names=club_names, type=CategoryType.CONTINENT, difficulty=difficulty)
 
 
 class TeammateCategory(Category):
