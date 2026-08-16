@@ -94,6 +94,27 @@ class Database:
                     FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
                 );
 
+                -- Real "played together" facts scraped from Transfermarkt's own
+                -- "Gemeinsame Spiele" page (see src/scraper.py's
+                -- fetch_shared_matches / src/dynamic_categories.py's
+                -- ensure_teammate_data_scraped) — includes national-team
+                -- teammates as well as club ones, which career_stints alone
+                -- can't determine (no caps/roster data exists in this
+                -- dataset). One-directional (anchor -> teammate) is enough:
+                -- the only query pattern needed is "who are anchor X's real
+                -- teammates," never the reverse, and the underlying fact is
+                -- symmetric anyway.
+                CREATE TABLE IF NOT EXISTS player_teammates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    anchor_player_id INTEGER NOT NULL,
+                    teammate_player_id INTEGER NOT NULL,
+                    shared_games INTEGER,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(anchor_player_id, teammate_player_id),
+                    FOREIGN KEY(anchor_player_id) REFERENCES players(id) ON DELETE CASCADE,
+                    FOREIGN KEY(teammate_player_id) REFERENCES players(id) ON DELETE CASCADE
+                );
+
                 CREATE TABLE IF NOT EXISTS match_lineups (
                     espn_id            TEXT PRIMARY KEY,
                     league_id          TEXT NOT NULL,
@@ -151,6 +172,7 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_career_stints_player ON career_stints(player_id);
                 CREATE INDEX IF NOT EXISTS idx_player_trophies_title ON player_trophies(title);
                 CREATE INDEX IF NOT EXISTS idx_players_nationality ON players(nationality);
+                CREATE INDEX IF NOT EXISTS idx_player_teammates_anchor ON player_teammates(anchor_player_id);
 
                 -- Aggregated player stats for sorting and exploration.
                 -- career_start/end are "YY/YY" season strings (lexicographic order works for sorting).

@@ -26,6 +26,7 @@ import re
 import sqlite3
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from .categories import (
     Category,
@@ -33,7 +34,6 @@ from .categories import (
     NationalityCategory,
     TeammateCategory,
     TrophyCategory,
-    _season_year_sql,
     strip_jersey_prefix,
 )
 from .countries import COUNTRY_BY_NAME, parse_nationality_tokens
@@ -568,21 +568,18 @@ def build_dynamic_teammates(
     conn: sqlite3.Connection,
     anchor_urls: frozenset[str] = TEAMMATE_ANCHOR_URLS,
     prominent_trophy_titles: frozenset[str] = PROMINENT_TROPHY_TITLES,
-    overlap_club_names: frozenset[str] = PROMINENT_CLUB_NAMES,
     min_players: int = TEAMMATE_MIN_PLAYERS,
     id_prefix: str = "teammate",
 ) -> list[TeammateCategory]:
     """One TeammateCategory per anchor player in `anchor_urls` (matched on
     players.source_url — see TEAMMATE_ANCHOR_SOURCE_URLS for why not name)
-    with a real enough teammate pool (>= min_players) to be a fair puzzle
-    cell. `prominent_trophy_titles` only feeds difficulty tiering here, not
-    anchor selection. Pool size is computed with a single batched query
-    across all candidate anchors (not one query per anchor) — a naive
-    per-anchor self-join against the full career_stints table (548k rows)
-    measured ~12s at startup for a few hundred anchors; pre-filtering to
-    just the prominent-club rows (~70k) into a temp table with the
-    season->year conversion precomputed once brings the whole thing well
-    under 1s for a whitelist this size.
+    with a real enough scraped teammate pool (>= min_players) to be a fair
+    puzzle cell. Eligibility itself lives in player_teammates — real
+    "shared a match" facts scraped from Transfermarkt (see
+    ensure_teammate_data_scraped) — so this function only has to decide
+    which anchors clear the viability floor and assign difficulty;
+    `prominent_trophy_titles` feeds difficulty tiering only, not anchor
+    selection.
     """
     if not anchor_urls:
         return []
@@ -606,31 +603,12 @@ def build_dynamic_teammates(
         ).fetchall()
         anchor_trophy_count = dict(trophy_rows)
 
-    ph_club = ",".join("?" * len(overlap_club_names))
-    conn.execute("DROP TABLE IF EXISTS temp.teammate_pool_stints")
-    conn.execute(
-        f"CREATE TEMP TABLE teammate_pool_stints AS "
-        f"SELECT player_id, club_name, "
-        f"({_season_year_sql('start_season')}) AS start_year, "
-        f"({_season_year_sql('end_season')}) AS end_year "
-        f"FROM career_stints WHERE club_name IN ({ph_club})",
-        list(overlap_club_names),
-    )
-    conn.execute("CREATE INDEX idx_teammate_pool_stints_club ON teammate_pool_stints(club_name)")
-
-    overlap = (
-        "((a.start_year IS NULL) OR (cs.end_year IS NULL) OR (a.start_year <= cs.end_year)) "
-        "AND ((cs.start_year IS NULL) OR (a.end_year IS NULL) OR (cs.start_year <= a.end_year))"
-    )
     ph_anchor = ",".join("?" * len(anchor_ids))
     pool_rows = conn.execute(
-        f"SELECT a.player_id, COUNT(DISTINCT cs.player_id) FROM teammate_pool_stints a "
-        f"JOIN teammate_pool_stints cs ON cs.club_name = a.club_name AND cs.player_id != a.player_id AND {overlap} "
-        f"WHERE a.player_id IN ({ph_anchor}) GROUP BY a.player_id",
+        f"SELECT anchor_player_id, COUNT(*) FROM player_teammates "
+        f"WHERE anchor_player_id IN ({ph_anchor}) GROUP BY anchor_player_id",
         anchor_ids,
     ).fetchall()
-    conn.execute("DROP TABLE teammate_pool_stints")
-
     pool_size = dict(pool_rows)
     eligible_ids = [pid for pid in anchor_ids if pool_size.get(pid, 0) >= min_players]
     if not eligible_ids:
@@ -650,49 +628,121 @@ def build_dynamic_teammates(
         # rebuild/rescrape.
         cat_id = _stable_id(id_prefix, source_url or f"{pid}:{name}")
         label = f"Mit {name} gespielt"
-        categories.append(TeammateCategory(cat_id, label, pid, overlap_club_names, difficulty=difficulty))
+        categories.append(TeammateCategory(cat_id, label, pid, difficulty=difficulty))
     return categories
 
 
-# Per-league "played with X" anchors — same journeyman-over-megastar
-# philosophy as TEAMMATE_ANCHOR_SOURCE_URLS above, scoped to squad players
-# whose careers ran mainly through that league's own (often mid-table)
-# clubs rather than global icons. Overlap_club_names in
-# build_dynamic_league_teammates is the league's own current club list
-# (category_config.LEAGUE_CATEGORIES), not the global PROMINENT_CLUB_NAMES
-# — a "played with Kruse" match should require the overlap to have
-# actually happened at a Bundesliga club, not anywhere in Kruse's career.
-# This whole category only makes sense scoped to that league's own
-# puzzles: see build_dynamic_league_teammates/build_league_pools for how
-# visibility is restricted. Same source_url rationale as the global
-# whitelist (name matching is unsafe — see there).
+def ensure_teammate_data_scraped(
+    conn: sqlite3.Connection,
+    anchor_urls: frozenset[str] = TEAMMATE_ANCHOR_URLS,
+    scraper=None,
+) -> None:
+    """Populates player_teammates for any whitelisted anchor that doesn't
+    have data yet — the "scrape on demand when we add a player" routine:
+    add a name to TEAMMATE_ANCHOR_SOURCE_URLS, and the next app boot
+    scrapes it automatically instead of needing a separate manual step.
+    Only touches the network for anchors genuinely missing data — once
+    scraped, every later boot is a handful of fast SELECT 1 checks.
+
+    `scraper` is injectable (a fake in tests) specifically so this
+    function is safe to unit test without ever constructing a real
+    TransfermarktScraper; in production it's left None and only
+    instantiated lazily, the first time there's actual work to do (so an
+    app boot where every anchor is already scraped never imports
+    src.scraper or touches the network at all).
+
+    Not called from build_all()/build_dynamic_teammates() — this is a
+    separate, explicit step (see app.py) so the rest of the dynamic
+    category catalog stays network-free and safe to call from tests.
+    """
+    if not anchor_urls:
+        return
+    for url in anchor_urls:
+        anchor_row = conn.execute("SELECT id FROM players WHERE source_url = ?", (url,)).fetchone()
+        if anchor_row is None:
+            continue
+        anchor_id = anchor_row[0]
+        already_scraped = conn.execute(
+            "SELECT 1 FROM player_teammates WHERE anchor_player_id = ? LIMIT 1", (anchor_id,)
+        ).fetchone()
+        if already_scraped:
+            continue
+
+        if scraper is None:
+            from .scraper import TransfermarktScraper
+            scraper = TransfermarktScraper()
+
+        print(f"  ↻ no shared-match data yet for player {anchor_id} ({url}) — scraping...")
+        try:
+            records = scraper.fetch_shared_matches(url)
+        except Exception as exc:
+            print(f"  ✗ failed to scrape shared matches for {url}: {exc}")
+            continue
+
+        teammate_urls = [r.teammate_source_url for r in records]
+        resolved: dict[str, int] = {}
+        if teammate_urls:
+            ph = ",".join("?" * len(teammate_urls))
+            resolved = dict(
+                conn.execute(
+                    f"SELECT source_url, id FROM players WHERE source_url IN ({ph})", teammate_urls
+                ).fetchall()
+            )
+
+        now = datetime.now(timezone.utc).isoformat()
+        rows_to_insert = [
+            (anchor_id, resolved[r.teammate_source_url], r.shared_games, now)
+            for r in records
+            if r.teammate_source_url in resolved
+        ]
+        conn.execute("DELETE FROM player_teammates WHERE anchor_player_id = ?", (anchor_id,))
+        conn.executemany(
+            "INSERT OR IGNORE INTO player_teammates (anchor_player_id, teammate_player_id, shared_games, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            rows_to_insert,
+        )
+        conn.commit()
+        print(f"  ✓ {len(rows_to_insert)}/{len(records)} scraped teammates matched to local players")
+
+
+# Per-league "played with X" anchors — TEMPORARILY DISABLED (every entry
+# below is commented out). These were built for the old career_stints
+# overlap model, scoped via overlap_club_names = that league's own club
+# list. The new player_teammates data source (real scraped "shared a
+# match" facts — see build_dynamic_teammates/ensure_teammate_data_scraped)
+# has no per-match league/competition tag, so "scoped to this league" has
+# no equivalent yet — re-enabling this needs its own design, not just
+# uncommenting names. Left in place (not deleted) so the picks and
+# plumbing aren't lost; with every dict empty, build_dynamic_league_
+# teammates is a no-op for every league via the `if not urls: continue`
+# guard below.
 TEAMMATE_ANCHOR_SOURCE_URLS_BY_LEAGUE: dict[str, dict[str, str]] = {
     "league_buli": {
-        "Max Kruse": "https://www.transfermarkt.de/max-kruse/profil/spieler/36182",
-        "Anthony Ujah": "https://www.transfermarkt.de/anthony-ujah/profil/spieler/142281",
-        "Anthony Modeste": "https://www.transfermarkt.de/anthony-modeste/profil/spieler/50512",
-        "Kevin Volland": "https://www.transfermarkt.de/kevin-volland/profil/spieler/82009",
-        "Marko Marin": "https://www.transfermarkt.de/marko-marin/profil/spieler/35251",
+        # "Max Kruse": "https://www.transfermarkt.de/max-kruse/profil/spieler/36182",
+        # "Anthony Ujah": "https://www.transfermarkt.de/anthony-ujah/profil/spieler/142281",
+        # "Anthony Modeste": "https://www.transfermarkt.de/anthony-modeste/profil/spieler/50512",
+        # "Kevin Volland": "https://www.transfermarkt.de/kevin-volland/profil/spieler/82009",
+        # "Marko Marin": "https://www.transfermarkt.de/marko-marin/profil/spieler/35251",
     },
     "league_pl": {
-        "Darren Bent": "https://www.transfermarkt.de/darren-bent/profil/spieler/13239",
-        "Steve Sidwell": "https://www.transfermarkt.de/steve-sidwell/profil/spieler/13427",
-        "Craig Bellamy": "https://www.transfermarkt.de/craig-bellamy/profil/spieler/3297",
-        "Danny Murphy": "https://www.transfermarkt.de/danny-murphy/profil/spieler/3221",
-        "Nicklas Bendtner": "https://www.transfermarkt.de/nicklas-bendtner/profil/spieler/34557",
+        # "Darren Bent": "https://www.transfermarkt.de/darren-bent/profil/spieler/13239",
+        # "Steve Sidwell": "https://www.transfermarkt.de/steve-sidwell/profil/spieler/13427",
+        # "Craig Bellamy": "https://www.transfermarkt.de/craig-bellamy/profil/spieler/3297",
+        # "Danny Murphy": "https://www.transfermarkt.de/danny-murphy/profil/spieler/3221",
+        # "Nicklas Bendtner": "https://www.transfermarkt.de/nicklas-bendtner/profil/spieler/34557",
     },
     "league_laliga": {
-        "Sandro Ramírez": "https://www.transfermarkt.de/sandro-ramirez/profil/spieler/199369",
-        "Munir El Haddadi": "https://www.transfermarkt.de/munir-el-haddadi/profil/spieler/223725",
-        "Aritz Aduriz": "https://www.transfermarkt.de/aritz-aduriz/profil/spieler/29124",
-        "Michu": "https://www.transfermarkt.de/michu/profil/spieler/70789",
+        # "Sandro Ramírez": "https://www.transfermarkt.de/sandro-ramirez/profil/spieler/199369",
+        # "Munir El Haddadi": "https://www.transfermarkt.de/munir-el-haddadi/profil/spieler/223725",
+        # "Aritz Aduriz": "https://www.transfermarkt.de/aritz-aduriz/profil/spieler/29124",
+        # "Michu": "https://www.transfermarkt.de/michu/profil/spieler/70789",
     },
     "league_seriea": {
-        "Ciro Immobile": "https://www.transfermarkt.de/ciro-immobile/profil/spieler/105521",
-        "Andrea Belotti": "https://www.transfermarkt.de/andrea-belotti/profil/spieler/167727",
-        "Simone Zaza": "https://www.transfermarkt.de/simone-zaza/profil/spieler/96828",
-        "Emanuele Giaccherini": "https://www.transfermarkt.de/emanuele-giaccherini/profil/spieler/84835",
-        "Fabio Quagliarella": "https://www.transfermarkt.de/fabio-quagliarella/profil/spieler/22328",
+        # "Ciro Immobile": "https://www.transfermarkt.de/ciro-immobile/profil/spieler/105521",
+        # "Andrea Belotti": "https://www.transfermarkt.de/andrea-belotti/profil/spieler/167727",
+        # "Simone Zaza": "https://www.transfermarkt.de/simone-zaza/profil/spieler/96828",
+        # "Emanuele Giaccherini": "https://www.transfermarkt.de/emanuele-giaccherini/profil/spieler/84835",
+        # "Fabio Quagliarella": "https://www.transfermarkt.de/fabio-quagliarella/profil/spieler/22328",
     },
 }
 
@@ -704,15 +754,11 @@ def build_dynamic_league_teammates(
     prominent_trophy_titles: frozenset[str] = PROMINENT_TROPHY_TITLES,
     min_players: int = TEAMMATE_MIN_PLAYERS,
 ) -> dict[str, list[TeammateCategory]]:
-    """League id -> that league's own "played with X" categories, built with
-    the league's own club list as overlap_club_names (not the global
-    PROMINENT_CLUB_NAMES — see TEAMMATE_ANCHOR_SOURCE_URLS_BY_LEAGUE).
-    `id_prefix` is namespaced per league so a player who happened to appear
-    as an anchor in more than one league's whitelist wouldn't collide on
-    category id (doesn't happen with the current lists, but isn't assumed).
-    Returned separately from DynamicCatalog.all() — these are meant to
-    populate a league's own LEAGUE_POOLS entry only, never the general/
-    unscoped catalog (see build_league_pools).
+    """League id -> that league's own "played with X" categories. Currently
+    a no-op for every league (see TEAMMATE_ANCHOR_SOURCE_URLS_BY_LEAGUE's
+    comment) — kept working end-to-end so re-enabling later is just
+    uncommenting names once the league-scoping question is resolved, not
+    rebuilding this function.
     """
     result: dict[str, list[TeammateCategory]] = {}
     for league in league_categories:
@@ -723,7 +769,6 @@ def build_dynamic_league_teammates(
             conn,
             anchor_urls=frozenset(urls.values()),
             prominent_trophy_titles=prominent_trophy_titles,
-            overlap_club_names=frozenset(league.club_names),
             min_players=min_players,
             id_prefix=f"teammate_{league.id}",
         )

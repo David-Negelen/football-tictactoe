@@ -32,6 +32,13 @@ class TrophyRecord:
 
 
 @dataclass
+class TeammateRecord:
+    teammate_source_url: str
+    teammate_name: str
+    shared_games: Optional[int]
+
+
+@dataclass
 class CareerStint:
     club_name: str
     start_season: Optional[str]

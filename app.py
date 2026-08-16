@@ -2,6 +2,7 @@ from flask import Flask, Response, abort, jsonify, render_template, request
 import hashlib
 import logging
 import sqlite3
+import sys
 import time
 import unicodedata
 import os
@@ -136,11 +137,32 @@ def get_db() -> sqlite3.Connection:
 # instead of moving it onto whichever request happens to be first.
 _startup_conn = get_db()
 try:
+    # Scrapes real "played together" data (Transfermarkt's own "Gemeinsame
+    # Spiele" page — see src/scraper.py's fetch_shared_matches) for any
+    # whitelisted teammate anchor that doesn't have it yet. A no-op fast
+    # path once every anchor has been scraped once; the *first* boot after
+    # a new name is added to TEAMMATE_ANCHOR_SOURCE_URLS will block here
+    # for tens of seconds (rate-limited, paginated scraping) — that's the
+    # deliberate one-time cost of "just add a player and it self-populates"
+    # instead of a separate manual import step. Must run before build_all()
+    # so build_dynamic_teammates sees the freshly-scraped rows.
+    #
+    # Skipped under pytest: several test files `import app` directly (see
+    # tests/conftest.py's app_client fixture) to get a real Flask app to
+    # monkeypatch DB_PATH/ALL_CATEGORIES onto — but that import runs this
+    # module-level startup code against the *real* DB_PATH before the
+    # monkeypatch can redirect it. Without this guard, merely running the
+    # test suite would make live network calls and write scrape results
+    # into the real production database — exactly what the fixture-based
+    # test architecture (see conftest.py, README) exists to avoid.
+    if "pytest" not in sys.modules:
+        dynamic_categories.ensure_teammate_data_scraped(_startup_conn)
     _dynamic_catalog = dynamic_categories.build_all(_startup_conn)
-    # Per-league "played with X" anchors (players famous mainly to that
-    # league's own fans, e.g. Bundesliga's Kahn/Ballack) — built separately
-    # from build_all() since they're deliberately excluded from the general
-    # catalog below (see build_dynamic_league_teammates/build_league_pools).
+    # Per-league "played with X" anchors — currently a no-op for every
+    # league (see TEAMMATE_ANCHOR_SOURCE_URLS_BY_LEAGUE's comment: the
+    # league-scoped-overlap model doesn't carry over to the new scraped
+    # data source yet). Still called so re-enabling later needs no wiring
+    # changes here.
     _league_teammates = dynamic_categories.build_dynamic_league_teammates(
         _startup_conn, category_config.LEAGUE_CATEGORIES
     )

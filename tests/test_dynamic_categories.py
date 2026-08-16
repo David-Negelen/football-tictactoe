@@ -29,7 +29,9 @@ from src.dynamic_categories import (
     build_dynamic_teammates,
     build_dynamic_trophies,
     build_league_pools,
+    ensure_teammate_data_scraped,
 )
+from src.models import TeammateRecord
 
 # The fixture roster below uses made-up club names to get precise control
 # over distinct-player counts for tier/reserve/youth-filter testing — none of
@@ -93,10 +95,23 @@ def _player_source_url(conn, name: str) -> str:
     return conn.execute("SELECT source_url FROM players WHERE name = ?", (name,)).fetchone()[0]
 
 
+def _add_teammate(conn: sqlite3.Connection, anchor_name: str, teammate_name: str, shared_games: int = 10) -> None:
+    """Seeds a real "played together" fact directly into player_teammates —
+    the table ensure_teammate_data_scraped populates from the real scrape
+    in production; tests never touch the network, so they seed this table
+    directly instead."""
+    anchor_id = _player_id(conn, anchor_name)
+    teammate_id = _player_id(conn, teammate_name)
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT INTO player_teammates (anchor_player_id, teammate_player_id, shared_games, created_at) VALUES (?, ?, ?, ?)",
+        (anchor_id, teammate_id, shared_games, now),
+    )
+
+
 def _build_teammates(conn, anchor_player_names=("Alan Adler",), **kwargs):
     kwargs.setdefault("anchor_urls", frozenset(_player_source_url(conn, n) for n in anchor_player_names))
     kwargs.setdefault("prominent_trophy_titles", TEAMMATE_TEST_TROPHY_TITLES)
-    kwargs.setdefault("overlap_club_names", frozenset({TEAMMATE_TEST_CLUB}))
     kwargs.setdefault("min_players", 1)
     return build_dynamic_teammates(conn, **kwargs)
 
@@ -522,39 +537,6 @@ def test_league_pools_scope_clubs_to_the_leagues_own_club_list(dynamic_db_conn) 
     assert pool_club_names == {"Bayern München"}  # Testville FC etc. excluded — not in this league
 
 
-def test_build_dynamic_league_teammates_scopes_overlap_to_the_leagues_own_clubs(fixture_db_path: Path) -> None:
-    from src.categories import LeagueCategory
-
-    conn = sqlite3.connect(fixture_db_path)
-    try:
-        # Alan Adler and Bella Bauer overlap at TEAMMATE_TEST_CLUB (in the
-        # league) — real teammates. Carl Cole only overlaps Alan at
-        # "Karriereende" (not a league club) — must NOT count, even though
-        # the seasons line up, because build_dynamic_league_teammates should
-        # scope overlap to the league's own club_names, not the global
-        # PROMINENT_CLUB_NAMES whitelist.
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB, start_season="20/21", end_season=None)
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB, start_season="20/21", end_season=None)
-        _add_career_stint(conn, "Carl Cole", "Karriereende", start_season="20/21", end_season=None)
-        _add_career_stint(conn, "Alan Adler", "Karriereende", start_season="20/21", end_season=None)
-        conn.commit()
-
-        alan_url = _player_source_url(conn, "Alan Adler")
-        bella_id, carl_id = _player_id(conn, "Bella Bauer"), _player_id(conn, "Carl Cole")
-
-        league = LeagueCategory("league_test", "Test League", [TEAMMATE_TEST_CLUB], difficulty=1)
-        result = build_dynamic_league_teammates(
-            conn, [league],
-            anchor_urls_by_league={"league_test": {"Alan Adler": alan_url}},
-            prominent_trophy_titles=TEAMMATE_TEST_TROPHY_TITLES,
-            min_players=1,
-        )
-        cat = result["league_test"][0]
-        assert cat.check_player(bella_id, conn)
-        assert not cat.check_player(carl_id, conn)
-    finally:
-        conn.close()
-
 
 def test_build_dynamic_league_teammates_skips_leagues_without_a_whitelist_entry(fixture_db_path: Path) -> None:
     from src.categories import LeagueCategory
@@ -574,8 +556,7 @@ def test_league_pools_include_league_specific_teammates_unwrapped(fixture_db_pat
 
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
+        _add_teammate(conn, "Alan Adler", "Bella Bauer")
         conn.commit()
         alan_url = _player_source_url(conn, "Alan Adler")
 
@@ -599,15 +580,13 @@ def test_league_pools_include_league_specific_teammates_unwrapped(fixture_db_pat
 
 def test_build_dynamic_teammates_only_anchors_whitelisted_players(fixture_db_path: Path) -> None:
     # Anchor eligibility is a hand-picked whitelist (TEAMMATE_ANCHOR_URLS in
-    # production), not a trophy-count threshold — a player not on the
-    # whitelist never anchors a category, no matter how big their teammate
-    # pool is.
+    # production), not derived from the data — a player not on the
+    # whitelist never anchors a category, no matter how big their real
+    # scraped teammate pool is.
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
-        _add_career_stint(conn, "Carl Cole", TEAMMATE_TEST_CLUB)
-        _add_career_stint(conn, "Dana Diaz", TEAMMATE_TEST_CLUB)
+        _add_teammate(conn, "Alan Adler", "Bella Bauer")
+        _add_teammate(conn, "Carl Cole", "Dana Diaz")
         conn.commit()
         anchors = {t.anchor_player_id for t in _build_teammates(conn, anchor_player_names=("Carl Cole",))}
         alan_id, carl_id = _player_id(conn, "Alan Adler"), _player_id(conn, "Carl Cole")
@@ -634,26 +613,25 @@ def test_build_dynamic_teammates_disambiguates_same_name_players_by_source_url(f
             "INSERT INTO players (source_url, name, created_at, updated_at) VALUES (?, 'Pedro', ?, ?)",
             ("https://example.test/pedro/obscure", now, now),
         ).lastrowid
-        # Both same-named players get their own real stint at the same club,
-        # in the same season — if anchor selection matched on name, either
-        # (or both) could end up chosen; a working URL-keyed lookup must
-        # pick exactly the whitelisted one.
+        bella_id = _player_id(conn, "Bella Bauer")
+        # Both same-named players get their own real teammate row — if
+        # anchor selection matched on name, either (or both) could end up
+        # chosen; a working URL-keyed lookup must pick exactly the
+        # whitelisted one.
         conn.execute(
-            "INSERT INTO career_stints (player_id, club_name, start_season, end_season, start_date, end_date) "
-            "VALUES (?, ?, '20/21', NULL, NULL, NULL)", (famous_id, TEAMMATE_TEST_CLUB),
+            "INSERT INTO player_teammates (anchor_player_id, teammate_player_id, shared_games, created_at) "
+            "VALUES (?, ?, 10, ?)", (famous_id, bella_id, now),
         )
         conn.execute(
-            "INSERT INTO career_stints (player_id, club_name, start_season, end_season, start_date, end_date) "
-            "VALUES (?, ?, '20/21', NULL, NULL, NULL)", (obscure_id, TEAMMATE_TEST_CLUB),
+            "INSERT INTO player_teammates (anchor_player_id, teammate_player_id, shared_games, created_at) "
+            "VALUES (?, ?, 10, ?)", (obscure_id, bella_id, now),
         )
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
         conn.commit()
         anchors = {
             t.anchor_player_id
             for t in build_dynamic_teammates(
                 conn, anchor_urls=frozenset({"https://example.test/pedro/famous"}),
-                prominent_trophy_titles=TEAMMATE_TEST_TROPHY_TITLES,
-                overlap_club_names=frozenset({TEAMMATE_TEST_CLUB}), min_players=1,
+                prominent_trophy_titles=TEAMMATE_TEST_TROPHY_TITLES, min_players=1,
             )
         }
     finally:
@@ -662,76 +640,10 @@ def test_build_dynamic_teammates_disambiguates_same_name_players_by_source_url(f
     assert obscure_id not in anchors
 
 
-def test_build_dynamic_teammates_requires_season_overlap(fixture_db_path: Path) -> None:
-    conn = sqlite3.connect(fixture_db_path)
-    try:
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB, start_season="96/97", end_season="98/99")
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB, start_season="10/11", end_season="12/13")  # no overlap
-        _add_career_stint(conn, "Carl Cole", TEAMMATE_TEST_CLUB, start_season="97/98", end_season="99/00")  # overlaps
-        conn.commit()
-        cats = {t.anchor_player_id: t for t in _build_teammates(conn)}
-        alan_id = _player_id(conn, "Alan Adler")
-        bella_id, carl_id = _player_id(conn, "Bella Bauer"), _player_id(conn, "Carl Cole")
-        cat = cats[alan_id]
-        assert not cat.check_player(bella_id, conn)
-        assert cat.check_player(carl_id, conn)
-    finally:
-        conn.close()
-
-
-def test_build_dynamic_teammates_treats_null_end_season_as_ongoing(fixture_db_path: Path) -> None:
-    conn = sqlite3.connect(fixture_db_path)
-    try:
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB, start_season="20/21", end_season=None)  # ongoing
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB, start_season="22/23", end_season="23/24")
-        conn.commit()
-        cats = {t.anchor_player_id: t for t in _build_teammates(conn)}
-        alan_id = _player_id(conn, "Alan Adler")
-        bella_id = _player_id(conn, "Bella Bauer")
-        assert cats[alan_id].check_player(bella_id, conn)
-    finally:
-        conn.close()
-
-
-def test_build_dynamic_teammates_treats_null_start_season_as_unbounded_early(fixture_db_path: Path) -> None:
-    conn = sqlite3.connect(fixture_db_path)
-    try:
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB, start_season=None, end_season="05/06")  # earliest known stint
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB, start_season="04/05", end_season="06/07")
-        conn.commit()
-        cats = {t.anchor_player_id: t for t in _build_teammates(conn)}
-        alan_id = _player_id(conn, "Alan Adler")
-        bella_id = _player_id(conn, "Bella Bauer")
-        assert cats[alan_id].check_player(bella_id, conn)
-    finally:
-        conn.close()
-
-
-def test_build_dynamic_teammates_ignores_non_whitelisted_clubs(fixture_db_path: Path) -> None:
-    # "Karriereende" is Transfermarkt's status placeholder, not a real club
-    # (27k+ real rows carry it) — two players sharing it in the same season
-    # must NOT register as having "played together", even though they do
-    # share a club_name with overlapping seasons. The default
-    # overlap_club_names (only TEAMMATE_TEST_CLUB) already excludes it —
-    # this is exactly the mechanism that has to hold for the real
-    # PROMINENT_CLUB_NAMES whitelist to be a correctness guard, not just a
-    # fame nicety.
-    conn = sqlite3.connect(fixture_db_path)
-    try:
-        _add_career_stint(conn, "Alan Adler", "Karriereende", start_season="20/21", end_season=None)
-        _add_career_stint(conn, "Bella Bauer", "Karriereende", start_season="20/21", end_season=None)
-        conn.commit()
-        teammates = _build_teammates(conn)
-    finally:
-        conn.close()
-    assert teammates == []  # Alan's only shared club isn't whitelisted -> no pool -> below the floor
-
-
 def test_build_dynamic_teammates_below_min_players_floor_is_dropped(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)  # exactly 1 overlapping teammate
+        _add_teammate(conn, "Alan Adler", "Bella Bauer")  # exactly 1 real teammate
         conn.commit()
         at_floor = _build_teammates(conn, min_players=1)
         above_floor = _build_teammates(conn, min_players=2)
@@ -748,8 +660,8 @@ def test_teammate_difficulty_comes_from_prominent_trophy_count(fixture_db_path: 
         _grant_trophies(conn, "Alan Adler", titles)          # 6 -> tier 1
         _grant_trophies(conn, "Carl Cole", titles[:4])        # 4 -> tier 2
         _grant_trophies(conn, "Bella Bauer", titles[:3])      # 3 -> tier 3 (floor)
-        for name in ("Alan Adler", "Carl Cole", "Bella Bauer", "Dana Diaz"):
-            _add_career_stint(conn, name, TEAMMATE_TEST_CLUB)
+        for anchor in ("Alan Adler", "Carl Cole", "Bella Bauer"):
+            _add_teammate(conn, anchor, "Dana Diaz")
         conn.commit()
         anchor_urls = frozenset(
             _player_source_url(conn, n) for n in ("Alan Adler", "Carl Cole", "Bella Bauer")
@@ -759,7 +671,6 @@ def test_teammate_difficulty_comes_from_prominent_trophy_count(fixture_db_path: 
             for t in build_dynamic_teammates(
                 conn, anchor_urls=anchor_urls,
                 prominent_trophy_titles=frozenset(titles),
-                overlap_club_names=frozenset({TEAMMATE_TEST_CLUB}),
                 min_players=1,
             )
         }
@@ -776,8 +687,7 @@ def test_teammate_difficulty_comes_from_prominent_trophy_count(fixture_db_path: 
 def test_teammate_category_label_and_id(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
+        _add_teammate(conn, "Alan Adler", "Bella Bauer")
         conn.commit()
         cats = _build_teammates(conn)
     finally:
@@ -790,8 +700,7 @@ def test_teammate_category_label_and_id(fixture_db_path: Path) -> None:
 def test_building_teammates_twice_produces_identical_ids(fixture_db_path: Path) -> None:
     conn = sqlite3.connect(fixture_db_path)
     try:
-        _add_career_stint(conn, "Alan Adler", TEAMMATE_TEST_CLUB)
-        _add_career_stint(conn, "Bella Bauer", TEAMMATE_TEST_CLUB)
+        _add_teammate(conn, "Alan Adler", "Bella Bauer")
         conn.commit()
         first = {t.anchor_player_id: t.id for t in _build_teammates(conn)}
         second = {t.anchor_player_id: t.id for t in _build_teammates(conn)}
@@ -800,51 +709,150 @@ def test_building_teammates_twice_produces_identical_ids(fixture_db_path: Path) 
     assert first == second
 
 
-def test_teammate_categories_agree_across_check_eligible_and_sql(dynamic_db_conn) -> None:
+def test_teammate_categories_agree_across_check_eligible_and_sql(fixture_db_path: Path) -> None:
     """Mirrors test_category_consistency.py's check_player/eligible_player_ids/
     sql_filter agreement invariant, but for the new dynamic teammate
     categories — dynamic categories (clubs/nationalities/trophies too)
     aren't covered by that generic test, which only iterates
-    category_config.ALL_CATEGORIES. Seasons below are deliberately staggered
-    and include NULL start/end so the overlap SQL's open-interval and
-    century-pivot branches all get exercised, not just the fixture's default
-    always-overlapping stint."""
-    all_player_ids = {row[0] for row in dynamic_db_conn.execute("SELECT id FROM players")}
-    players = [r[0] for r in dynamic_db_conn.execute("SELECT name FROM players").fetchall()]
-    titles = list(TEAMMATE_TEST_TROPHY_TITLES)
-    _grant_trophies(dynamic_db_conn, players[0], titles)
-    _grant_trophies(dynamic_db_conn, players[1], titles)
-    seasons = [
-        ("96/97", "98/99"), ("97/98", None), (None, "01/02"),
-        ("10/11", "12/13"), ("20/21", None), ("05/06", "07/08"),
-        ("99/00", "00/01"), ("30/31", "32/33"),
-    ]
-    for name, (start, end) in zip(players, seasons):
-        _add_career_stint(dynamic_db_conn, name, TEAMMATE_TEST_CLUB, start_season=start, end_season=end)
-    dynamic_db_conn.commit()
+    category_config.ALL_CATEGORIES."""
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        all_player_ids = {row[0] for row in conn.execute("SELECT id FROM players")}
+        players = [r[0] for r in conn.execute("SELECT name FROM players").fetchall()]
+        titles = list(TEAMMATE_TEST_TROPHY_TITLES)
+        _grant_trophies(conn, players[0], titles)
+        _grant_trophies(conn, players[1], titles)
+        # players[0] and players[1] both anchor a category; each gets a
+        # different subset of the rest of the fixture roster as real
+        # teammates, so eligible sets differ per anchor and aren't trivially
+        # "everyone" or "no one".
+        for teammate in players[2:6]:
+            _add_teammate(conn, players[0], teammate)
+        for teammate in players[4:9]:
+            _add_teammate(conn, players[1], teammate)
+        conn.commit()
 
-    anchor_urls = frozenset(_player_source_url(dynamic_db_conn, n) for n in players[:2])
-    teammates = build_dynamic_teammates(
-        dynamic_db_conn,
-        anchor_urls=anchor_urls,
-        prominent_trophy_titles=frozenset(titles),
-        overlap_club_names=frozenset({TEAMMATE_TEST_CLUB}),
-        min_players=1,
-    )
-    assert teammates, "fixture setup must produce at least one teammate category"
+        anchor_urls = frozenset(_player_source_url(conn, n) for n in players[:2])
+        teammates = build_dynamic_teammates(
+            conn, anchor_urls=anchor_urls, prominent_trophy_titles=frozenset(titles), min_players=1,
+        )
+        assert teammates, "fixture setup must produce at least one teammate category"
 
-    for cat in teammates:
-        eligible = cat.eligible_player_ids(dynamic_db_conn)
-        checked = {pid for pid in all_player_ids if cat.check_player(pid, dynamic_db_conn)}
-        assert eligible == checked, (
-            f"{cat.id}: eligible_player_ids() disagrees with check_player() "
-            f"(eligible-only: {eligible - checked}, checked-only: {checked - eligible})"
+        for cat in teammates:
+            eligible = cat.eligible_player_ids(conn)
+            checked = {pid for pid in all_player_ids if cat.check_player(pid, conn)}
+            assert eligible == checked, (
+                f"{cat.id}: eligible_player_ids() disagrees with check_player() "
+                f"(eligible-only: {eligible - checked}, checked-only: {checked - eligible})"
+            )
+
+            sql, params = cat.sql_filter()
+            rows = conn.execute(f"SELECT p.id FROM players p WHERE {sql}", params).fetchall()
+            from_sql = {row[0] for row in rows}
+            assert eligible == from_sql, (
+                f"{cat.id}: eligible_player_ids() disagrees with sql_filter() "
+                f"(eligible-only: {eligible - from_sql}, sql-only: {from_sql - eligible})"
+            )
+    finally:
+        conn.close()
+
+
+class _FakeScraper:
+    """Stands in for TransfermarktScraper in ensure_teammate_data_scraped
+    tests — no real scraper (and no network) is ever constructed as long as
+    this is passed explicitly, exercising the same injection point
+    ensure_teammate_data_scraped offers in production."""
+
+    def __init__(self, results_by_url: dict[str, list[TeammateRecord]], raise_for_urls: frozenset[str] = frozenset()):
+        self.results_by_url = results_by_url
+        self.raise_for_urls = raise_for_urls
+        self.calls: list[str] = []
+
+    def fetch_shared_matches(self, url: str) -> list[TeammateRecord]:
+        self.calls.append(url)
+        if url in self.raise_for_urls:
+            raise RuntimeError("scrape failed")
+        return self.results_by_url.get(url, [])
+
+
+def test_ensure_teammate_data_scraped_scrapes_missing_anchors(fixture_db_path: Path) -> None:
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        alan_url = _player_source_url(conn, "Alan Adler")
+        bella_url = _player_source_url(conn, "Bella Bauer")
+        fake = _FakeScraper({alan_url: [TeammateRecord(bella_url, "Bella Bauer", 5)]})
+
+        ensure_teammate_data_scraped(conn, anchor_urls=frozenset({alan_url}), scraper=fake)
+
+        alan_id, bella_id = _player_id(conn, "Alan Adler"), _player_id(conn, "Bella Bauer")
+        rows = conn.execute(
+            "SELECT teammate_player_id, shared_games FROM player_teammates WHERE anchor_player_id = ?", (alan_id,)
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [(bella_id, 5)]
+    assert fake.calls == [alan_url]
+
+
+def test_ensure_teammate_data_scraped_skips_already_scraped_anchors(fixture_db_path: Path) -> None:
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        alan_url = _player_source_url(conn, "Alan Adler")
+        _add_teammate(conn, "Alan Adler", "Bella Bauer")
+        conn.commit()
+        fake = _FakeScraper({})
+
+        ensure_teammate_data_scraped(conn, anchor_urls=frozenset({alan_url}), scraper=fake)
+    finally:
+        conn.close()
+    assert fake.calls == []  # already has data -> never even calls the scraper
+
+
+def test_ensure_teammate_data_scraped_continues_after_one_anchor_fails(fixture_db_path: Path) -> None:
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        alan_url = _player_source_url(conn, "Alan Adler")
+        carl_url = _player_source_url(conn, "Carl Cole")
+        bella_url = _player_source_url(conn, "Bella Bauer")
+        fake = _FakeScraper(
+            {carl_url: [TeammateRecord(bella_url, "Bella Bauer", 3)]}, raise_for_urls=frozenset({alan_url})
         )
 
-        sql, params = cat.sql_filter()
-        rows = dynamic_db_conn.execute(f"SELECT p.id FROM players p WHERE {sql}", params).fetchall()
-        from_sql = {row[0] for row in rows}
-        assert eligible == from_sql, (
-            f"{cat.id}: eligible_player_ids() disagrees with sql_filter() "
-            f"(eligible-only: {eligible - from_sql}, sql-only: {from_sql - eligible})"
-        )
+        ensure_teammate_data_scraped(conn, anchor_urls=frozenset({alan_url, carl_url}), scraper=fake)
+
+        alan_id, carl_id = _player_id(conn, "Alan Adler"), _player_id(conn, "Carl Cole")
+        alan_rows = conn.execute("SELECT COUNT(*) FROM player_teammates WHERE anchor_player_id = ?", (alan_id,)).fetchone()[0]
+        carl_rows = conn.execute("SELECT COUNT(*) FROM player_teammates WHERE anchor_player_id = ?", (carl_id,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert alan_rows == 0  # the failing anchor gets nothing, not a crash
+    assert carl_rows == 1  # the other anchor still gets scraped
+    assert set(fake.calls) == {alan_url, carl_url}
+
+
+def test_ensure_teammate_data_scraped_skips_teammates_not_in_the_local_dataset(fixture_db_path: Path) -> None:
+    # A teammate Transfermarkt knows about but this dataset never scraped
+    # isn't a guessable answer in this game anyway (same reasoning already
+    # applied to the old overlap_club_names whitelist).
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        alan_url = _player_source_url(conn, "Alan Adler")
+        fake = _FakeScraper({alan_url: [TeammateRecord("https://example.test/unknown-player", "Unknown Player", 1)]})
+
+        ensure_teammate_data_scraped(conn, anchor_urls=frozenset({alan_url}), scraper=fake)
+
+        alan_id = _player_id(conn, "Alan Adler")
+        count = conn.execute("SELECT COUNT(*) FROM player_teammates WHERE anchor_player_id = ?", (alan_id,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert count == 0
+
+
+def test_ensure_teammate_data_scraped_skips_anchor_urls_not_in_the_local_dataset(fixture_db_path: Path) -> None:
+    conn = sqlite3.connect(fixture_db_path)
+    try:
+        fake = _FakeScraper({})
+        ensure_teammate_data_scraped(conn, anchor_urls=frozenset({"https://example.test/nobody"}), scraper=fake)
+    finally:
+        conn.close()
+    assert fake.calls == []

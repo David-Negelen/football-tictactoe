@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 from .config import BASE_URL
 from .http import HttpClient
-from .models import CareerStint, PlayerRecord, TrophyRecord, TransferRecord
+from .models import CareerStint, PlayerRecord, TeammateRecord, TrophyRecord, TransferRecord
 
 
 @dataclass
@@ -62,6 +62,30 @@ class TransfermarktScraper:
         if not player_id:
             return []
         return self._fetch_trophies(player_id, result.html, result.final_url)
+
+    def fetch_shared_matches(self, player_url: str) -> list[TeammateRecord]:
+        """Every player who has shared an official match with this one, per
+        Transfermarkt's own "Gemeinsame Spiele" page — includes national-team
+        teammates as well as club ones (Transfermarkt tracks both under the
+        same match history), which career_stints-based overlap computation
+        structurally can't see (no caps/roster data exists in this dataset).
+        """
+        shared_url = re.sub(r'/profil/spieler/', '/gemeinsameSpiele/spieler/', player_url)
+        try:
+            result = self._http.get_html(shared_url)
+        except Exception:
+            return []
+        soup = BeautifulSoup(result.html, "html.parser")
+        teammates = self._extract_shared_matches_page(soup)
+
+        total_pages = self._extract_last_page(soup)
+        for page in range(2, total_pages + 1):
+            try:
+                page_result = self._http.get_html(f"{shared_url}/page/{page}")
+            except Exception:
+                continue
+            teammates.extend(self._extract_shared_matches_page(BeautifulSoup(page_result.html, "html.parser")))
+        return teammates
 
     def parse_club_page(self, html: str, fallback_url: str) -> ParsedClubPage:
         soup = BeautifulSoup(html, "html.parser")
@@ -262,6 +286,54 @@ class TransfermarktScraper:
             if existing is None or (existing.count is None and trophy.count is not None):
                 merged[trophy.title] = trophy
         return list(merged.values())
+
+    def _extract_shared_matches_page(self, soup: BeautifulSoup) -> list[TeammateRecord]:
+        """Parses one page of a "gemeinsameSpiele" table (table.items — the
+        same class Transfermarkt uses for squad/transfer lists elsewhere):
+        one row per teammate, an inline-table in the first <td> carries the
+        name/profile link, the second <td> carries the shared-match count."""
+        items_table = soup.find("table", class_="items")
+        if items_table is None:
+            return []
+        tbody = items_table.find("tbody")
+        if tbody is None:
+            return []
+
+        teammates: list[TeammateRecord] = []
+        for row in tbody.find_all("tr", recursive=False):
+            cells = row.find_all("td", recursive=False)
+            if len(cells) < 2:
+                continue
+            link = cells[0].find("a", href=lambda h: h and "/profil/spieler/" in h)
+            if link is None:
+                continue
+            href = link.get("href") or ""
+            absolute_url = urljoin(BASE_URL, href)
+            parts = urlsplit(absolute_url)
+            teammate_source_url = urlunsplit(parts._replace(query="", fragment=""))
+            teammate_name = (link.get("title") or link.get_text(" ", strip=True) or "").strip()
+            if not teammate_name:
+                continue
+            shared_games = self._parse_int(cells[1].get_text(" ", strip=True))
+            teammates.append(TeammateRecord(
+                teammate_source_url=teammate_source_url,
+                teammate_name=teammate_name,
+                shared_games=shared_games,
+            ))
+        return teammates
+
+    def _extract_last_page(self, soup: BeautifulSoup) -> int:
+        """Highest page number in the pager (.tm-pagination) — 1 if there's
+        no pager at all (single-page result)."""
+        pager = soup.find(class_="tm-pagination")
+        if pager is None:
+            return 1
+        pages = [
+            int(m.group(1))
+            for a in pager.find_all("a", href=True)
+            if (m := re.search(r'/page/(\d+)', a["href"]))
+        ]
+        return max(pages, default=1)
 
     def _parse_trophy_text(self, text: str) -> tuple[Optional[str], Optional[int]]:
         raw = " ".join(text.split()).strip()
