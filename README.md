@@ -49,6 +49,7 @@ consistent with their current terms of service.
 ## Testing
 
 ```bash
+pip install -r requirements-dev.txt  # pytest isn't in requirements.txt — see below
 pytest -v
 ```
 
@@ -57,6 +58,23 @@ not the real `data/tictactoe.db` — they pass with or without a real dataset
 present. Coverage includes: category engine consistency (`check_player()` /
 `eligible_player_ids()` / `sql_filter()` must always agree), puzzle
 generation invariants, and the `/api/game/*` routes.
+
+## Linting & type-checking
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+mypy app.py src/
+pip-audit
+```
+
+`requirements-dev.txt` layers on top of `requirements.txt` (via `-r`) and
+adds `pytest`, `ruff`, `mypy`, and `pip-audit` — none of these are needed to
+actually run the app, only to develop it. Config lives in `pyproject.toml`
+(`[tool.ruff]` / `[tool.mypy]`); both are deliberately permissive for now
+(default rule set, no strict mode) since this was the first pass of either
+tool run against this codebase — see CI's `lint` job, which runs both but
+doesn't fail the build on findings yet.
 
 ## Deployment
 
@@ -82,7 +100,8 @@ trusted proxy in front — setting it with no real proxy there would let any
 client spoof their IP via that header and dodge rate limits entirely.
 
 CI (`.github/workflows/ci.yml`) runs the test suite and a Docker build check
-on every push/PR to `main`.
+on every push/PR to `main`, plus a non-blocking `lint` job (ruff + mypy —
+see [Linting & type-checking](#linting--type-checking)).
 
 ## Project layout
 

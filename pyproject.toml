@@ -1,0 +1,12 @@
+[tool.ruff]
+# Default rule set (no select/ignore overrides) — just matching the two
+# settings that actually depend on how this codebase is written.
+line-length = 120
+target-version = "py313"
+
+[tool.mypy]
+# Permissive on purpose: this is the first pass of type-checking this
+# codebase has ever had. No strict mode, no disallow_untyped_defs — just
+# enough to run and be useful without a wall of unrelated new errors.
+python_version = "3.13"
+ignore_missing_imports = true

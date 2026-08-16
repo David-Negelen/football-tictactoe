@@ -17,9 +17,34 @@ jobs:
           python-version: "3.13"
           cache: "pip"
 
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-dev.txt
 
       - run: pytest -v
+
+  lint:
+    runs-on: ubuntu-latest
+    # First pass of lint/type-checking on this repo — there are pre-existing
+    # findings (see README) nobody's triaged yet, so this doesn't block the
+    # build until that backlog is cleared. Still runs on every push/PR so
+    # regressions are visible without being enforced yet.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: ruff
+        run: ruff check .
+        continue-on-error: true
+
+      - name: mypy
+        run: mypy app.py src/
+        continue-on-error: true
 
   docker-build:
     runs-on: ubuntu-latest

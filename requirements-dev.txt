@@ -1,0 +1,12 @@
+-r requirements.txt
+
+# Testing
+pytest>=8.0.0
+
+# Linting, type-checking, dependency-vulnerability scanning — see README's
+# "Linting & type-checking" section for the commands. Pinned exactly (not
+# >=) since lint/type output can shift between tool versions and this is
+# meant to be reproducible, unlike the loose runtime bounds above.
+ruff==0.16.3
+mypy==2.3.1
+pip-audit==2.10.1

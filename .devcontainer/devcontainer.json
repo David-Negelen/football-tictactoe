@@ -22,9 +22,12 @@
   },
   // Dockerfile's image already has requirements.txt installed, but the repo
   // itself is bind-mounted live over that (not baked from the image build),
-  // so re-run on create in case requirements.txt has moved on since the
-  // image was last built.
-  "postCreateCommand": "pip install --no-cache-dir -r requirements.txt",
+  // so re-run on create in case requirements has moved on since the image
+  // was last built. requirements-dev.txt (not requirements.txt) so pytest/
+  // ruff/mypy/pip-audit are available for local dev — this container is
+  // never what actually ships (see Dockerfile), so the extra dev tooling
+  // costs nothing here.
+  "postCreateCommand": "pip install --no-cache-dir -r requirements-dev.txt",
   "customizations": {
     "vscode": {
       "extensions": ["ms-python.python"],
