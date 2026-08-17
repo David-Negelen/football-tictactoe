@@ -71,6 +71,8 @@ const g = {
   elapsedSeconds: 0,
   solution: null,
 
+  offlineSolveGrid: null,
+
   soloAttempted: 0,
   soloCorrect: 0,
 
@@ -138,6 +140,122 @@ function genParams() {
   const p = new URLSearchParams({ difficulty: String(difficulty) });
   if (selectedLeague) p.set('league', selectedLeague);
   return p;
+}
+
+const OFFLINE_POOL_KEY = 'ttt_offline_pool';
+const OFFLINE_PREFETCH_COUNT = 10;
+const OFFLINE_FETCH_TIMEOUT_MS = 5000;
+
+function loadOfflinePool() {
+  try {
+    const pool = JSON.parse(localStorage.getItem(OFFLINE_POOL_KEY) || '[]');
+    return Array.isArray(pool) ? pool : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveOfflinePool(pool) {
+  try {
+    localStorage.setItem(OFFLINE_POOL_KEY, JSON.stringify(pool));
+  } catch {
+
+  }
+}
+
+function popOfflinePuzzle() {
+  const pool = loadOfflinePool();
+  const puzzle = pool.shift();
+  if (puzzle) saveOfflinePool(pool);
+  return puzzle || null;
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function updateOfflinePoolCount() {
+  const el = document.getElementById('offline-pool-count');
+  if (el) el.textContent = `${loadOfflinePool().length} bereit`;
+}
+
+let offlinePrefetchInFlight = false;
+
+async function prefetchOfflinePuzzles() {
+  if (offlinePrefetchInFlight) return;
+  offlinePrefetchInFlight = true;
+  const btn = document.getElementById('btn-offline-prefetch');
+  const countEl = document.getElementById('offline-pool-count');
+  btn.disabled = true;
+  const pool = loadOfflinePool();
+  let added = 0;
+  for (let i = 0; i < OFFLINE_PREFETCH_COUNT; i++) {
+    countEl.textContent = `Lade ${i + 1} / ${OFFLINE_PREFETCH_COUNT}…`;
+    try {
+      const newResp = await fetchWithTimeout(`/api/game/new?${genParams().toString()}`, OFFLINE_FETCH_TIMEOUT_MS);
+      if (!newResp.ok) break;
+      const { rows, cols } = await newResp.json();
+      const rowIds = rows.map(c => c.id).join(',');
+      const colIds = cols.map(c => c.id).join(',');
+      const solveResp = await fetchWithTimeout(`/api/game/solve?rows=${rowIds}&cols=${colIds}`, OFFLINE_FETCH_TIMEOUT_MS);
+      if (!solveResp.ok) break;
+      const { grid } = await solveResp.json();
+      pool.push({ rows, cols, solveGrid: grid });
+      added++;
+    } catch {
+      break;
+    }
+  }
+  saveOfflinePool(pool);
+  btn.disabled = false;
+  updateOfflinePoolCount();
+  if (added === 0) countEl.textContent = `${pool.length} bereit – keine Verbindung`;
+  offlinePrefetchInFlight = false;
+}
+
+document.getElementById('btn-offline-prefetch')?.addEventListener('click', prefetchOfflinePuzzles);
+
+let statusFlashTimer = null;
+function flashStatus(text, duration = 2500) {
+  document.getElementById('status-text').textContent = text;
+  clearTimeout(statusFlashTimer);
+  statusFlashTimer = setTimeout(() => { if (!g.winner) updateStatus(); }, duration);
+}
+
+async function loadRowsAndCols() {
+  if (navigator.onLine !== false) {
+    try {
+      const resp = await fetchWithTimeout(`/api/game/new?${genParams().toString()}`, OFFLINE_FETCH_TIMEOUT_MS);
+      if (resp.ok) {
+        const data = await resp.json();
+        return { rows: data.rows, cols: data.cols, offlineSolveGrid: null };
+      }
+    } catch {
+
+    }
+  }
+  const puzzle = popOfflinePuzzle();
+  return puzzle ? { rows: puzzle.rows, cols: puzzle.cols, offlineSolveGrid: puzzle.solveGrid } : null;
+}
+
+async function validatePlayer(pid, r, c) {
+  if (g.offlineSolveGrid) {
+    const players = g.offlineSolveGrid[r]?.[c]?.players || [];
+    return players.some(p => p.id === pid);
+  }
+  const resp = await fetch('/api/game/validate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ player_id: pid, row_id: g.rows[r].id, col_id: g.cols[c].id }),
+  });
+  const data = await resp.json();
+  return data.valid;
 }
 
 function urlForScreen(name) {
@@ -287,6 +405,9 @@ function enterSetupScreen(pendingMode, { push = true } = {}) {
   document.getElementById('setup-visibility-picker').classList.toggle('hidden', pendingMode !== 'online-host');
 
   document.getElementById('setup-retake-picker').classList.toggle('hidden', pendingMode !== 'local');
+
+  document.getElementById('setup-offline-pool').classList.toggle('hidden', pendingMode === 'online-host');
+  updateOfflinePoolCount();
   showScreen('setup', { push });
 }
 
@@ -346,6 +467,7 @@ function saveRoundSession() {
     usedIds: [...g.usedIds], streak: g.streak, elapsedSeconds: g.elapsedSeconds,
     soloAttempted: g.soloAttempted, soloCorrect: g.soloCorrect,
     retakeMode: g.retakeMode, phase: g.phase, pendingThreat: g.pendingThreat,
+    offlineSolveGrid: g.offlineSolveGrid,
   }));
 }
 
@@ -368,6 +490,7 @@ function tryResumeRound(match) {
     streak: saved.streak || { 1: 0, 2: 0 }, elapsedSeconds: saved.elapsedSeconds || 0,
     soloAttempted: saved.soloAttempted || 0, soloCorrect: saved.soloCorrect || 0, solution: null,
     retakeMode: saved.retakeMode || false, phase: saved.phase || 'fill', pendingThreat: saved.pendingThreat || null,
+    offlineSolveGrid: saved.offlineSolveGrid || null,
   });
   showScreen('board', { push: false });
   updateModeChrome();
@@ -630,6 +753,12 @@ function refreshFilledCells() {
 
 async function revealSolutions() {
   if (!g.rows.length || !g.cols.length) return;
+
+  if (g.offlineSolveGrid) {
+    g.solution = g.offlineSolveGrid;
+    g.rows.forEach((_, r) => g.cols.forEach((__, c) => { if (!g.board[r][c]) refreshCell(r, c); }));
+    return;
+  }
   const params = g.mode === 'online'
     ? `code=${encodeURIComponent(g.onlineCode)}&token=${encodeURIComponent(g.onlineToken)}`
     : `rows=${g.rows.map(c => c.id).join(',')}&cols=${g.cols.map(c => c.id).join(',')}`;
@@ -708,21 +837,47 @@ document.getElementById('search-input').addEventListener('input', e => {
   searchTimer = setTimeout(() => doSearch(q), 280);
 });
 
-async function doSearch(q) {
-  if (!g.activeCell) return;
-  const resp = await fetch(`/api/game/search?q=${encodeURIComponent(q)}`);
-  const data = await resp.json();
-  const container = document.getElementById('search-results');
+function normalizeText(s) {
+  return (s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
 
-  if (!data.players?.length) {
+function offlineSearchPlayers(q) {
+  if (!g.offlineSolveGrid) return [];
+  const seen = new Map();
+  g.offlineSolveGrid.forEach(row => row.forEach(cell => {
+    (cell.players || []).forEach(p => { if (!seen.has(p.id)) seen.set(p.id, p); });
+  }));
+  const queryNorm = normalizeText(q).trim();
+  const words = queryNorm.split(/\s+/).filter(Boolean);
+  return [...seen.values()]
+    .filter(p => {
+      const nameNorm = normalizeText(p.name);
+      return words.every(w => nameNorm.includes(w));
+    })
+    .map(p => {
+      const nameNorm = normalizeText(p.name);
+      const nameWords = nameNorm.split(/\s+/);
+      let tier;
+      if (nameNorm === queryNorm || nameWords.includes(queryNorm)) tier = 0;
+      else if (nameNorm.startsWith(queryNorm) || nameWords.some(w => w.startsWith(queryNorm))) tier = 1;
+      else tier = 2;
+      return { p, tier };
+    })
+    .sort((a, b) => a.tier - b.tier || a.p.name.localeCompare(b.p.name))
+    .map(x => x.p);
+}
+
+function renderSearchResults(players) {
+  const container = document.getElementById('search-results');
+  if (!players.length) {
     container.innerHTML = `<p class="text-xs text-center py-2" style="color:var(--text-faint)">Keine Spieler gefunden</p>`;
     return;
   }
 
   const nameCounts = {};
-  data.players.forEach(p => { nameCounts[p.name] = (nameCounts[p.name] || 0) + 1; });
+  players.forEach(p => { nameCounts[p.name] = (nameCounts[p.name] || 0) + 1; });
 
-  container.innerHTML = data.players.map(p => {
+  container.innerHTML = players.map(p => {
     const used = g.usedIds.has(p.id);
     const isDup = nameCounts[p.name] > 1;
     return `
@@ -746,6 +901,17 @@ async function doSearch(q) {
     if (g.usedIds.has(pid)) return;
     el.addEventListener('click', () => selectPlayer(pid, name, club));
   });
+}
+
+async function doSearch(q) {
+  if (!g.activeCell) return;
+  if (g.offlineSolveGrid) {
+    renderSearchResults(offlineSearchPlayers(q));
+    return;
+  }
+  const resp = await fetch(`/api/game/search?q=${encodeURIComponent(q)}`);
+  const data = await resp.json();
+  renderSearchResults(data.players || []);
 }
 
 async function selectPlayer(pid, name, club) {
@@ -906,24 +1072,25 @@ async function newLocalRound() {
     board: [[null,null,null],[null,null,null],[null,null,null]],
     current: 1, winner: null, usedIds: new Set(), activeCell: null, winCells: [],
     streak: { 1: 0, 2: 0 }, elapsedSeconds: 0, solution: null,
-    retakeMode, phase: 'fill', pendingThreat: null,
+    retakeMode, phase: 'fill', pendingThreat: null, offlineSolveGrid: null,
   });
   updateStreakDisplay();
   updateTimerDisplay();
 
-  const resp = await fetch(`/api/game/new?${genParams().toString()}`);
-  if (!resp.ok) {
-    setStatus('Kein Grid gefunden – bitte erneut versuchen.');
+  const loaded = await loadRowsAndCols();
+  if (!loaded) {
+    setStatus('Kein Grid gefunden – keine Verbindung und keine Offline-Grids übrig.');
     return;
   }
-  const data = await resp.json();
-  g.rows = data.rows;
-  g.cols = data.cols;
+  g.rows = loaded.rows;
+  g.cols = loaded.cols;
+  g.offlineSolveGrid = loaded.offlineSolveGrid;
 
   renderBoard();
   updateStatus();
   startTimer();
   saveRoundSession();
+  if (g.offlineSolveGrid) flashStatus(`Offline-Grid geladen · noch ${loadOfflinePool().length} übrig`);
 }
 
 function checkWinnerLocal() {
@@ -1002,13 +1169,8 @@ function retakeLocal(r, c, playerId, name, club) {
 }
 
 async function localSelectPlayer(pid, name, club, r, c) {
-  const resp = await fetch('/api/game/validate', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ player_id: pid, row_id: g.rows[r].id, col_id: g.cols[c].id }),
-  });
-  const data = await resp.json();
-  if (data.valid) {
+  const valid = await validatePlayer(pid, r, c);
+  if (valid) {
     closeModal();
     if (g.phase === 'retake') retakeLocal(r, c, pid, name, club);
     else placeLocal(r, c, pid, name, club);
@@ -1081,6 +1243,8 @@ function finishSoloRoundSetup(rows, cols) {
     board: [[null,null,null],[null,null,null],[null,null,null]],
     current: 1, winner: null, usedIds: new Set(), activeCell: null, winCells: [],
     elapsedSeconds: 0, solution: null, soloAttempted: 0, soloCorrect: 0,
+
+    offlineSolveGrid: null,
   });
   updateTimerDisplay();
   renderBoard();
@@ -1092,26 +1256,22 @@ function finishSoloRoundSetup(rows, cols) {
 async function newSoloRound() {
   g.soloVariant = null;
   beginSoloRound();
-  const resp = await fetch(`/api/game/new?${genParams().toString()}`);
-  if (!resp.ok) {
-    setStatus('Kein Grid gefunden – bitte erneut versuchen.');
+  const loaded = await loadRowsAndCols();
+  if (!loaded) {
+    setStatus('Kein Grid gefunden – keine Verbindung und keine Offline-Grids übrig.');
     return;
   }
-  const data = await resp.json();
-  finishSoloRoundSetup(data.rows, data.cols);
+  finishSoloRoundSetup(loaded.rows, loaded.cols);
+  g.offlineSolveGrid = loaded.offlineSolveGrid;
+  if (g.offlineSolveGrid) flashStatus(`Offline-Grid geladen · noch ${loadOfflinePool().length} übrig`);
 }
 
 async function soloSelectPlayer(pid, name, club, r, c) {
-  const resp = await fetch('/api/game/validate', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ player_id: pid, row_id: g.rows[r].id, col_id: g.cols[c].id }),
-  });
-  const data = await resp.json();
+  const valid = await validatePlayer(pid, r, c);
   closeModal();
   g.usedIds.add(pid);
   g.soloAttempted++;
-  if (data.valid) {
+  if (valid) {
     g.board[r][c] = { status: 'correct', player: 1, id: pid, name, club };
     g.soloCorrect++;
     stats.solo.streak++;
