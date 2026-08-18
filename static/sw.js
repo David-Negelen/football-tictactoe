@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ttt-shell-v68';
+const CACHE_NAME = 'ttt-shell-v70';
 const SHELL_URLS = [
   '/',
   '/static/manifest.json',

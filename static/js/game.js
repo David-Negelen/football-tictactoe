@@ -1677,7 +1677,7 @@ function renderLobbyHome() {
       <div class="text-xs" style="color:var(--text-dim)">— oder —</div>
       <div class="w-full flex gap-2">
         <input id="join-code-input" maxlength="5" placeholder="CODE" autocomplete="off"
-          class="tt-input flex-1 uppercase tracking-widest text-center rounded-lg px-3 py-2 text-sm font-bold">
+          class="tt-input flex-1 min-w-0 uppercase tracking-widest text-center rounded-lg px-3 py-2 text-sm font-bold">
         <button id="btn-join-room" class="tt-btn-neutral text-sm px-4 py-2 rounded-lg">Beitreten</button>
       </div>
       <p id="lobby-error" class="text-xs hidden" style="color:var(--accent)"></p>
